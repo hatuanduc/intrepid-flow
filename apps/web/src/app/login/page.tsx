@@ -28,9 +28,9 @@ export default function LoginPage() {
       const result = await login(username.trim(), password);
       setToken(result.token);
       router.replace('/');
+      // keep loading=true — component sẽ unmount khi navigate
     } catch (err) {
       setError('Tên đăng nhập hoặc mật khẩu không đúng.');
-    } finally {
       setLoading(false);
     }
   }
@@ -55,7 +55,6 @@ export default function LoginPage() {
       <div className={styles.cardWrap}>
         <div className={styles.card}>
           <h1 className={styles.title}>Đăng nhập</h1>
-          <p className={styles.subtitle}>Chào mừng trở lại. Vui lòng nhập thông tin.</p>
 
           <form className={styles.form} onSubmit={onSubmit}>
             <label className={styles.field}>
