@@ -23,12 +23,13 @@
 }
 
 .brand {
-  font-size: var(--text-md);
-  font-weight: var(--weight-bold);
+  font-size: 1.25rem;
+  font-weight: 700;
   color: var(--color-ink);
-  letter-spacing: -0.3px;
+  letter-spacing: -0.5px;
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 /* Wrapper that centers the card in remaining space */

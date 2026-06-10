@@ -14,7 +14,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Intrepid Flow",
+  title: {
+    default: "Intrepid",
+    template: "%s | Intrepid",
+  },
   description: "Intrepid Flow - E-commerce accounting automation",
 };
 

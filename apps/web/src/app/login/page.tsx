@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { login } from '../../lib/api';
@@ -50,7 +51,9 @@ export default function LoginPage() {
 
       {/* Page-level header — brand outside card */}
       <header className={styles.header}>
-        <span className={styles.brand}>intrepid</span>
+        <span className={styles.brand}>
+          <Image src="/logo.png" alt="Intrepid" width={143} height={28} priority />
+        </span>
       </header>
 
       {/* Centered card */}
