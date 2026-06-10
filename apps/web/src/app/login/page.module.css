@@ -1,4 +1,4 @@
-/* ── Full-page with ribbons behind centered card ── */
+/* ── Full-page, Stripe style ── */
 .page {
   min-height: 100dvh;
   display: flex;
@@ -9,30 +9,19 @@
   overflow: hidden;
 }
 
-/* Page-level brand header */
+/* Header bar với thin border — như Stripe */
 .header {
   position: relative;
   z-index: 2;
-  padding: 0 40px;
-  border-bottom: 1.5px solid rgba(0,0,0,0.14);
-  background: transparent;
-  flex-shrink: 0;
-  display: flex;
-  align-items: stretch;
-  height: 64px;
-}
-
-.brand {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-ink);
-  letter-spacing: -0.5px;
+  height: 60px;
+  padding: 0 44px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.10);
+  flex-shrink: 0;
 }
 
-/* Wrapper that centers the card in remaining space */
+/* Card centered in full page */
 .cardWrap {
   flex: 1;
   display: flex;
@@ -43,6 +32,7 @@
   z-index: 1;
 }
 
+
 /* ── Ribbon background ── */
 .bg {
   position: fixed;
@@ -51,7 +41,7 @@
   z-index: 0;
 }
 
-.r1, .r2, .r3, .r4 {
+.r1, .r2, .r3, .r4, .r5 {
   position: absolute;
   width: 55%;
   height: 160%;
@@ -86,6 +76,13 @@
   animation: sway4 14s ease-in-out infinite;
   transform-origin: 50% 35%;
 }
+.r5 {
+  background: linear-gradient(170deg, rgba(255,100,20,0.55) 0%, rgba(255,210,80,0.55) 100%);
+  top: -65%; left: 18%;
+  transform: rotate(-22deg);
+  animation: sway1 16s ease-in-out infinite;
+  transform-origin: 50% 20%;
+}
 
 @keyframes sway1 {
   0%, 100% { transform: rotate(-18deg) translateY(0); }
@@ -104,13 +101,12 @@
   50%       { transform: rotate(9deg) translateY(-4%); }
 }
 
-/* ── Centered white card ── */
+/* ── Login card ── */
 .card {
-  width: min(480px, calc(100vw - 48px));
+  width: min(440px, calc(100vw - 48px));
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
-  overflow: hidden;
   padding: 40px 44px;
   box-sizing: border-box;
 }
@@ -123,18 +119,17 @@
 }
 
 .title {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-medium);
-  color: var(--color-ink);
-  letter-spacing: -0.3px;
-  margin: 0 0 6px;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #0f172a;
+  letter-spacing: -0.5px;
+  margin: 0 0 8px;
 }
 
 .subtitle {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-regular);
-  color: var(--color-muted);
-  margin: 0 0 28px;
+  font-size: 0.875rem;
+  color: #64748b;
+  margin: 0 0 32px;
   line-height: 1.5;
 }
 
@@ -143,30 +138,29 @@
 .field { display: flex; flex-direction: column; gap: 6px; }
 
 .label {
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-  color: var(--color-muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #475569;
 }
 
 .input {
-  padding: 10px 13px;
-  border-radius: 6px;
-  border: 1px solid #e3e8ee;
-  background: #fff;
-  color: var(--color-ink);
-  font-size: var(--text-base);
-  font-weight: var(--weight-regular);
+  padding: 11px 14px;
+  border-radius: 8px;
+  border: 1.5px solid #e2e8f0;
+  background: #f8fafc;
+  color: #0f172a;
+  font-size: 0.9375rem;
   outline: none;
   width: 100%;
   box-sizing: border-box;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 .input:focus {
-  border-color: var(--color-accent);
+  border-color: #635bff;
   background: #fff;
   box-shadow: 0 0 0 3px rgba(99,91,255,0.12);
 }
-.input::placeholder { color: var(--color-subtle); }
+.input::placeholder { color: #94a3b8; }
 
 /* Password wrap */
 .passwordWrap {
@@ -200,25 +194,25 @@
   padding: 10px 14px;
 }
 
-/* Button */
+/* Button — Stripe style */
 .button {
-  margin-top: 4px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 13px;
   width: 100%;
-  border-radius: 6px;
+  border-radius: 8px;
   border: none;
-  background: var(--color-accent);
+  background: #635bff;
   color: #fff;
-  font-size: var(--text-base);
-  font-weight: var(--weight-medium);
+  font-size: 0.9375rem;
+  font-weight: 600;
   cursor: pointer;
   letter-spacing: 0.01em;
-  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+  transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
 }
 .button:hover:not(:disabled) {
-  background: var(--color-accent-hover);
+  background: #4f46e5;
+  box-shadow: 0 4px 16px rgba(99,91,255,0.4);
   transform: translateY(-1px);
-  box-shadow: 0 4px 14px rgba(99,91,255,0.35);
 }
 .button:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
-.button:disabled { opacity: 0.5; cursor: not-allowed; }
+.button:disabled { opacity: 0.45; cursor: not-allowed; }

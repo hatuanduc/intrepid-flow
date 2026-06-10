@@ -1,8 +1,8 @@
 'use client';
 
-import Image from 'next/image';
+import BrandLogo from '../../components/BrandLogo';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { login } from '../../lib/api';
 import { getToken, setToken } from '../../lib/auth';
 import styles from './page.module.css';
@@ -19,10 +19,6 @@ export default function LoginPage() {
     const token = getToken();
     if (token) router.replace('/');
   }, [router]);
-
-  const canSubmit = useMemo(() => {
-    return username.trim().length > 0 && password.trim().length > 0 && !loading;
-  }, [username, password, loading]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -43,20 +39,19 @@ export default function LoginPage() {
     <main className={styles.page}>
       {/* Background ribbons */}
       <div className={styles.bg}>
+        <div className={styles.r5} />
         <div className={styles.r1} />
         <div className={styles.r2} />
         <div className={styles.r3} />
         <div className={styles.r4} />
       </div>
 
-      {/* Page-level header — brand outside card */}
+      {/* Logo floats top-left */}
       <header className={styles.header}>
-        <span className={styles.brand}>
-          <Image src="/logo.png" alt="Intrepid" width={143} height={28} priority />
-        </span>
+        <BrandLogo height={36} />
       </header>
 
-      {/* Centered card */}
+      {/* Card centered on the page */}
       <div className={styles.cardWrap}>
         <div className={styles.card}>
           <h1 className={styles.title}>Đăng nhập</h1>
@@ -117,7 +112,7 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button className={styles.button} type="submit" disabled={!canSubmit}>
+            <button className={styles.button} type="submit" disabled={loading}>
               {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
             </button>
           </form>
