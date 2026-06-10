@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
+import PageLoader from '../../components/common/PageLoader';
 import { me } from '../../lib/api';
 import { clearToken, getToken } from '../../lib/auth';
 import { UserContext, type User } from './user-context';
@@ -32,13 +33,7 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
     run();
   }, [router]);
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100dvh', color: '#697386', fontSize: 14 }}>
-        Đang tải...
-      </div>
-    );
-  }
+  if (loading) return <PageLoader />;
 
   if (!user) return null;
 
