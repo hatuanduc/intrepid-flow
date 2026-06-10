@@ -1,0 +1,90 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../../../../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id              String            @id @default(uuid())
+  email           String            @unique
+  name            String?
+  password        String
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  roles           UserRole[]
+  branchRoles     UserBranchRole[]
+}
+
+model Branch {
+  id          String           @id @default(uuid())
+  code        String           @unique
+  name        String
+  address     String?
+  isActive    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  userRoles   UserBranchRole[]
+}
+
+model UserBranchRole {
+  id         String   @id @default(uuid())
+  userId     String
+  branchId   String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId, roleId])
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  key         String           @unique
+  name        String
+  description String?
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       UserRole[]
+  branchUsers UserBranchRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(uuid())
+  key         String           @unique
+  module      String
+  action      String
+  label       String
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime @updatedAt
+  roles       RolePermission[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}

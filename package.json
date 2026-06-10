@@ -1,0 +1,29 @@
+{
+  "name": "intrepid",
+  "private": true,
+
+  "workspaces": [
+    "apps/*"
+  ],
+
+  "scripts": {
+    "dev": "concurrently -k \"pnpm --filter @intrepid/api dev\" \"pnpm --filter @intrepid/web dev\"",
+    "build": "pnpm --filter @intrepid/api build && pnpm --filter @intrepid/web build",
+    "lint": "pnpm --filter @intrepid/web lint",
+    "start": "pnpm --filter @intrepid/api start"
+  },
+  "devDependencies": {
+    "concurrently": "^9.0.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "@prisma/client",
+      "@prisma/engines",
+      "esbuild",
+      "prisma",
+      "sharp",
+      "unrs-resolver"
+    ]
+  }
+}

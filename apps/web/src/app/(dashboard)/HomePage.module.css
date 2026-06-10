@@ -1,0 +1,172 @@
+.page {
+  padding: 28px 32px;
+  max-width: 1100px;
+}
+
+/* ── Header ── */
+.header {
+  margin-bottom: 24px;
+}
+
+.greeting {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1f36;
+  letter-spacing: -0.3px;
+  margin: 0 0 2px;
+}
+
+.date {
+  font-size: 13px;
+  color: #8898aa;
+}
+
+/* ── Stats row ── */
+.statsRow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.statCard {
+  background: #fff;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  padding: 18px 20px;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #8898aa;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.statValue {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a1f36;
+  letter-spacing: -0.5px;
+  line-height: 1;
+  margin-bottom: 6px;
+}
+
+.statDelta {
+  font-size: 12px;
+  color: #8898aa;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deltaUp { color: #24b47e; }
+.deltaDown { color: #e25950; }
+
+/* ── Chart card ── */
+.chartCard {
+  background: #fff;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  padding: 20px 24px;
+  margin-bottom: 28px;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.chartTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1f36;
+}
+
+.chartMeta {
+  font-size: 12px;
+  color: #8898aa;
+}
+
+.chartWrap {
+  width: 100%;
+  overflow: hidden;
+}
+
+/* ── Recent orders ── */
+.section {
+  background: #fff;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e3e8ee;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1f36;
+}
+
+.sectionLink {
+  font-size: 13px;
+  color: #625afa;
+  text-decoration: none;
+  font-weight: 500;
+}
+.sectionLink:hover { text-decoration: underline; }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8898aa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  padding: 10px 20px;
+  border-bottom: 1px solid #e3e8ee;
+  background: #f7fafc;
+}
+
+.table td {
+  font-size: 13px;
+  color: #3c4257;
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f4f8;
+}
+
+.table tr:last-child td { border-bottom: none; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.badgeGreen  { background: #d4f0e4; color: #0e6245; }
+.badgeYellow { background: #fef3c7; color: #92400e; }
+.badgeGray   { background: #f0f4f8; color: #697386; }
+
+.amount {
+  font-weight: 600;
+  color: #1a1f36;
+}

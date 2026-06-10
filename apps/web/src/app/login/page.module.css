@@ -1,0 +1,223 @@
+/* ── Full-page with ribbons behind centered card ── */
+.page {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-sans);
+  background: #fff;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Page-level brand header */
+.header {
+  position: relative;
+  z-index: 2;
+  padding: 0 40px;
+  border-bottom: 1.5px solid rgba(0,0,0,0.14);
+  background: transparent;
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  height: 64px;
+}
+
+.brand {
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  color: var(--color-ink);
+  letter-spacing: -0.3px;
+  display: flex;
+  align-items: center;
+}
+
+/* Wrapper that centers the card in remaining space */
+.cardWrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  position: relative;
+  z-index: 1;
+}
+
+/* ── Ribbon background ── */
+.bg {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.r1, .r2, .r3, .r4 {
+  position: absolute;
+  width: 55%;
+  height: 160%;
+  border-radius: 50%;
+}
+
+.r1 {
+  background: linear-gradient(170deg, rgba(255,130,40,0.82) 0%, rgba(255,185,60,0.82) 100%);
+  top: -55%; left: 32%;
+  transform: rotate(-18deg);
+  animation: sway1 12s ease-in-out infinite;
+  transform-origin: 50% 20%;
+}
+.r2 {
+  background: linear-gradient(170deg, rgba(255,45,160,0.78) 0%, rgba(255,95,140,0.78) 100%);
+  top: -45%; left: 52%;
+  transform: rotate(-10deg);
+  animation: sway2 15s ease-in-out infinite;
+  transform-origin: 50% 30%;
+}
+.r3 {
+  background: linear-gradient(170deg, rgba(110,55,155,0.78) 0%, rgba(160,70,245,0.78) 100%);
+  top: -30%; left: 68%;
+  transform: rotate(-5deg);
+  animation: sway3 18s ease-in-out infinite;
+  transform-origin: 50% 40%;
+}
+.r4 {
+  background: linear-gradient(170deg, rgba(65,55,225,0.75) 0%, rgba(115,125,248,0.75) 100%);
+  top: -20%; left: 82%;
+  transform: rotate(5deg);
+  animation: sway4 14s ease-in-out infinite;
+  transform-origin: 50% 35%;
+}
+
+@keyframes sway1 {
+  0%, 100% { transform: rotate(-18deg) translateY(0); }
+  50%       { transform: rotate(-14deg) translateY(4%); }
+}
+@keyframes sway2 {
+  0%, 100% { transform: rotate(-10deg) translateY(0); }
+  50%       { transform: rotate(-14deg) translateY(-5%); }
+}
+@keyframes sway3 {
+  0%, 100% { transform: rotate(-5deg) translateY(0); }
+  50%       { transform: rotate(-1deg) translateY(4%); }
+}
+@keyframes sway4 {
+  0%, 100% { transform: rotate(5deg) translateY(0); }
+  50%       { transform: rotate(9deg) translateY(-4%); }
+}
+
+/* ── Centered white card ── */
+.card {
+  width: min(480px, calc(100vw - 48px));
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
+  overflow: hidden;
+  padding: 40px 44px;
+  box-sizing: border-box;
+}
+
+/* Brand bar with bottom border — remove, no longer needed */
+
+/* Form area */
+.formWrap {
+  display: none;
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-medium);
+  color: var(--color-ink);
+  letter-spacing: -0.3px;
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: var(--color-muted);
+  margin: 0 0 28px;
+  line-height: 1.5;
+}
+
+/* ── Fields ── */
+.form  { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+
+.label {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+}
+
+.input {
+  padding: 10px 13px;
+  border-radius: 6px;
+  border: 1px solid #e3e8ee;
+  background: #fff;
+  color: var(--color-ink);
+  font-size: var(--text-base);
+  font-weight: var(--weight-regular);
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.input:focus {
+  border-color: var(--color-accent);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(99,91,255,0.12);
+}
+.input::placeholder { color: var(--color-subtle); }
+
+/* Password wrap */
+.passwordWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.passwordWrap .input { padding-right: 44px; }
+.eyeBtn {
+  position: absolute;
+  right: 12px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #8898aa;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s;
+}
+.eyeBtn:hover { color: #374151; }
+
+/* Error */
+.error {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  color: #df1b41;
+  background: #fff0f3;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px 14px;
+}
+
+/* Button */
+.button {
+  margin-top: 4px;
+  padding: 12px;
+  width: 100%;
+  border-radius: 6px;
+  border: none;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  letter-spacing: 0.01em;
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.button:hover:not(:disabled) {
+  background: var(--color-accent-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99,91,255,0.35);
+}
+.button:active:not(:disabled) { transform: translateY(0); box-shadow: none; }
+.button:disabled { opacity: 0.5; cursor: not-allowed; }

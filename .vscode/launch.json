@@ -1,0 +1,33 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug api",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--require",
+        "ts-node/register",
+        "--inspect"
+      ],
+      "args": ["${workspaceFolder}/apps/api/src/main.ts"],
+      "cwd": "${workspaceFolder}/apps/api",
+      "env": {
+        "TS_NODE_PROJECT": "${workspaceFolder}/apps/api/tsconfig.json"
+      },
+      "sourceMaps": true,
+      "console": "integratedTerminal",
+      "restart": true
+    },
+    {
+      "name": "Debug api (attach)",
+      "type": "node",
+      "request": "attach",
+      "port": 9229,
+      "restart": true,
+      "sourceMaps": true,
+      "outFiles": ["${workspaceFolder}/apps/api/dist/**/*.js"]
+    }
+  ]
+}
