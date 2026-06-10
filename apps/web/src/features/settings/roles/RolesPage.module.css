@@ -1,0 +1,147 @@
+.page {
+  padding: 28px 32px;
+  max-width: 960px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1f36;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.btnPrimary {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: none;
+  background: #635bff;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnPrimary:hover { background: #4f46e5; }
+
+.empty {
+  font-size: 13px;
+  color: #8898aa;
+  padding: 40px 0;
+  text-align: center;
+}
+
+/* ── Groups ── */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.group {
+  border: 1px solid #e3e8ee;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #f7fafc;
+  border-bottom: 1px solid #e3e8ee;
+}
+
+.groupIcon { color: #697386; }
+
+.groupLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3c4257;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.groupCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: #697386;
+  background: #eef2f7;
+  padding: 1px 6px;
+  border-radius: 10px;
+  margin-left: 2px;
+}
+
+.groupBody {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Role row ── */
+.roleRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px solid #f0f4f8;
+  transition: background 0.1s;
+  width: 100%;
+}
+.roleRow:last-child { border-bottom: none; }
+.roleRow:hover { background: #fafbfd; }
+
+.roleMain {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.roleName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1f36;
+}
+
+.roleDesc {
+  font-size: 12px;
+  color: #697386;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.roleMeta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-shrink: 0;
+}
+
+.roleMetaItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #697386;
+}
+
+.chevron {
+  color: #c4cdd6;
+  flex-shrink: 0;
+}
+.roleRow:hover .chevron { color: #697386; }

@@ -1,0 +1,248 @@
+.page {
+  padding: 28px 32px;
+  max-width: 960px;
+}
+
+.pageHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.pageTitle {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1f36;
+  letter-spacing: -0.3px;
+  margin: 0;
+}
+
+.btnPrimary {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: none;
+  background: #635bff;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnPrimary:hover { background: #4f46e5; }
+
+/* ── Tabs ── */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e3e8ee;
+  margin-bottom: 0;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #697386;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  margin-bottom: -1px;
+}
+.tab:hover { color: #1a1f36; }
+
+.tabActive {
+  color: #625afa;
+  border-bottom-color: #625afa;
+}
+
+.tabCount {
+  background: #f0f4f8;
+  color: #697386;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+.tabActive .tabCount {
+  background: #ebe8ff;
+  color: #625afa;
+}
+
+/* ── Table ── */
+.tableWrap {
+  border: 1px solid #e3e8ee;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8898aa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  padding: 10px 16px;
+  background: #f7fafc;
+  border-bottom: 1px solid #e3e8ee;
+}
+
+.table td {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #3c4257;
+  border-bottom: 1px solid #f0f4f8;
+  vertical-align: middle;
+}
+
+.table tr:last-child td { border-bottom: none; }
+.table tr:hover td { background: #fafbfd; }
+
+.empty {
+  padding: 40px 24px;
+  text-align: center;
+  font-size: 13px;
+  color: #8898aa;
+}
+
+/* ── Name cell ── */
+.nameCell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #625afa;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userName {
+  font-weight: 500;
+  color: #1a1f36;
+}
+
+.emailCell {
+  color: #697386;
+}
+
+/* ── Roles ── */
+.roleList {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #1a1f36;
+}
+
+.roleMore {
+  font-size: 11px;
+  font-weight: 600;
+  color: #697386;
+  background: #f0f4f8;
+  padding: 1px 6px;
+  border-radius: 10px;
+}
+
+.noRole { color: #c4cdd6; }
+
+/* ── Status badges ── */
+.badgeActive {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0e6245;
+  background: #d1fae5;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+.badgeActive::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #059669;
+  flex-shrink: 0;
+}
+
+.badgeInactive {
+  display: inline-flex;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+/* ── More menu ── */
+.moreWrap { position: relative; }
+
+.moreBtn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8898aa;
+  transition: background 0.1s;
+}
+.moreBtn:hover { background: #f0f4f8; color: #1a1f36; }
+
+.moreDropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: #fff;
+  border: 1px solid #e3e8ee;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+  padding: 4px;
+  min-width: 140px;
+  z-index: 10;
+}
+
+.moreItem {
+  display: block;
+  width: 100%;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: #1a1f36;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  cursor: pointer;
+}
+.moreItem:hover { background: #f6f9fc; }

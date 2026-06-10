@@ -1,86 +1,141 @@
-"use client";
-import React, { useEffect, useState } from 'react';
+'use client';
+
+import { useEffect, useState } from 'react';
 import { listUsers, type UserItem } from '../../../lib/api';
-import AddUserModal from './AddUserModal';
-import UserBranchRolesPanel from './UserBranchRolesPanel';
-import { Button, Table } from '../../../components/common';
+import AddUserPanel from './AddUserPanel';
+import s from './UsersPage.module.css';
+
+type Tab = 'all' | 'active' | 'inactive';
+
+function StatusBadge({ isActive }: { isActive: boolean }) {
+  return (
+    <span className={isActive ? s.badgeActive : s.badgeInactive}>
+      {isActive ? 'Hoạt động' : 'Đã khóa'}
+    </span>
+  );
+}
+
+function MoreMenu({ onEdit }: { onEdit: () => void }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={s.moreWrap}>
+      <button className={s.moreBtn} onClick={() => setOpen(v => !v)}>
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="2" cy="7" r="1.2" fill="currentColor"/>
+          <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="7" r="1.2" fill="currentColor"/>
+        </svg>
+      </button>
+      {open && (
+        <div className={s.moreDropdown}>
+          <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>Chỉnh sửa</button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<Tab>('all');
   const [showAdd, setShowAdd] = useState(false);
-  const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     try {
       const res = await listUsers();
-      setUsers(res.items ?? res ?? []);
-    } catch (err) {
-      console.error('load users', err);
+      setUsers(res.items ?? []);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => {
-    load();
-  }, []);
+  useEffect(() => { load(); }, []);
+
+  const active = users.filter(u => u.isActive);
+  const inactive = users.filter(u => !u.isActive);
+  const filtered = tab === 'active' ? active : tab === 'inactive' ? inactive : users;
 
   return (
-    <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3>Danh sách người dùng</h3>
-        <div>
-          <Button onClick={() => setShowAdd(true)} variant="primary">+ Tạo tài khoản</Button>
-        </div>
+    <div className={s.page}>
+      <div className={s.pageHeader}>
+        <h1 className={s.pageTitle}>Tài khoản người dùng</h1>
+        <button className={s.btnPrimary} onClick={() => setShowAdd(true)}>
+          + Thêm tài khoản
+        </button>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <Table>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px' }}>Tên</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px' }}>Email</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px' }}>Vai trò</th>
-              <th style={{ textAlign: 'left', borderBottom: '1px solid #eee', padding: '8px' }}>Trạng thái</th>
-              <th style={{ borderBottom: '1px solid #eee', padding: '8px' }}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <React.Fragment key={u.id}>
-                <tr>
-                  <td style={{ padding: '8px', borderBottom: '1px solid #fafafa' }}>{u.name ?? '-'}</td>
-                  <td style={{ padding: '8px', borderBottom: '1px solid #fafafa' }}>{u.email}</td>
-                  <td style={{ padding: '8px', borderBottom: '1px solid #fafafa' }}>{(u.roles || []).map((r) => r.key ?? r.name).join(', ')}</td>
-                  <td style={{ padding: '8px', borderBottom: '1px solid #fafafa' }}>{u.isActive ? 'Đang hoạt động' : 'Đã khóa'}</td>
-                  <td style={{ padding: '8px', borderBottom: '1px solid #fafafa', textAlign: 'right' }}>
-                    <Button
-                      variant="secondary"
-                      onClick={() => setExpandedUserId(expandedUserId === u.id ? null : u.id)}
-                      style={{ fontSize: 12 }}
-                    >
-                      {expandedUserId === u.id ? 'Ẩn chi nhánh ▲' : 'Chi nhánh ▼'}
-                    </Button>
-                  </td>
-                </tr>
-                {expandedUserId === u.id && (
-                  <tr>
-                    <td colSpan={5} style={{ padding: '0 16px 16px 16px', background: '#fafafa' }}>
-                      <UserBranchRolesPanel userId={u.id} />
-                    </td>
-                  </tr>
-                )}
-              </React.Fragment>
-            ))}
-          </tbody>
-        </Table>
-      )}
+      {/* Tabs */}
+      <div className={s.tabs}>
+        {([
+          { key: 'all',      label: 'Tất cả',         count: users.length },
+          { key: 'active',   label: 'Đang hoạt động', count: active.length },
+          { key: 'inactive', label: 'Đã khóa',        count: inactive.length },
+        ] as { key: Tab; label: string; count: number }[]).map(t => (
+          <button
+            key={t.key}
+            className={[s.tab, tab === t.key ? s.tabActive : ''].filter(Boolean).join(' ')}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}
+            <span className={s.tabCount}>{t.count}</span>
+          </button>
+        ))}
+      </div>
 
-      {showAdd && <AddUserModal onClose={() => { setShowAdd(false); load(); }} />}
-    </section>
+      {/* Table */}
+      <div className={s.tableWrap}>
+        {loading ? (
+          <div className={s.empty}>Đang tải...</div>
+        ) : filtered.length === 0 ? (
+          <div className={s.empty}>Không có tài khoản nào.</div>
+        ) : (
+          <table className={s.table}>
+            <thead>
+              <tr>
+                <th>Tên</th>
+                <th>Email</th>
+                <th>Vai trò</th>
+                <th>Trạng thái</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(u => (
+                <tr key={u.id}>
+                  <td>
+                    <div className={s.nameCell}>
+                      <span className={s.avatar}>{(u.name ?? u.email)[0].toUpperCase()}</span>
+                      <span className={s.userName}>{u.name ?? '—'}</span>
+                    </div>
+                  </td>
+                  <td className={s.emailCell}>{u.email}</td>
+                  <td>
+                    {(u.roles ?? []).length > 0 ? (
+                      <span className={s.roleList}>
+                        {u.roles[0].name}
+                        {u.roles.length > 1 && (
+                          <span className={s.roleMore}>+{u.roles.length - 1}</span>
+                        )}
+                      </span>
+                    ) : (
+                      <span className={s.noRole}>—</span>
+                    )}
+                  </td>
+                  <td><StatusBadge isActive={u.isActive} /></td>
+                  <td><MoreMenu onEdit={() => {}} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      <AddUserPanel
+        open={showAdd}
+        onClose={() => { setShowAdd(false); load(); }}
+      />
+    </div>
   );
 }

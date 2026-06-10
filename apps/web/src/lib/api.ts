@@ -183,6 +183,14 @@ export async function createRole(input: {
   });
 }
 
+export async function updateRole(id: string, input: { name?: string; description?: string; permissionIds?: string[] }) {
+  return request<{ item: RoleItem }>(`/management/roles/${id}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listPermissions() {
   return request<{ items: PermissionItem[] }>('/management/permissions', {
     method: 'GET',
@@ -258,5 +266,31 @@ export async function removeBranchRole(id: string) {
   return request<{ success: boolean }>(`/management/users/branch-roles/${id}`, {
     method: 'DELETE',
     auth: true,
+  });
+}
+
+// --- Workflow Modules ---
+
+export type WorkflowModuleItem = {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  isEnabled: boolean;
+  sortOrder: number;
+};
+
+export async function listWorkflowModules() {
+  return request<{ items: WorkflowModuleItem[] }>('/management/modules', {
+    method: 'GET',
+    auth: true,
+  });
+}
+
+export async function updateWorkflowModule(key: string, input: { isEnabled?: boolean }) {
+  return request<{ item: WorkflowModuleItem }>(`/management/modules/${key}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(input),
   });
 }

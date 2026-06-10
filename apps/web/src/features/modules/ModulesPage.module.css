@@ -1,0 +1,142 @@
+.page {
+  padding: 28px 32px;
+  max-width: 900px;
+}
+
+.header {
+  margin-bottom: 28px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1f36;
+  letter-spacing: -0.3px;
+  margin: 0 0 6px;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: #697386;
+}
+
+.empty {
+  font-size: 13px;
+  color: #8898aa;
+  padding: 40px 0;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+}
+
+.card {
+  background: #fff;
+  border: 1px solid #e3e8ee;
+  border-radius: 10px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.15s;
+}
+
+.cardEnabled {
+  border-color: #c7d2fe;
+}
+
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.iconWrap {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #f6f9fc;
+  color: #697386;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.iconEnabled {
+  background: #f0effe;
+  color: #625afa;
+}
+
+.badgeOn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.badgeOff {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1a1f36;
+  margin: 0;
+}
+
+.cardDesc {
+  font-size: 13px;
+  color: #697386;
+  line-height: 1.55;
+  margin: 0;
+  flex: 1;
+}
+
+.cardFooter {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid #f0f4f8;
+}
+
+.btnEnable {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid #c7d2fe;
+  background: #f0effe;
+  color: #625afa;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnEnable:hover:not(:disabled) { background: #e0e7ff; }
+
+.btnDisable {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1px solid #e3e8ee;
+  background: #f6f9fc;
+  color: #697386;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnDisable:hover:not(:disabled) { background: #eef2f7; }
+
+.btnEnable:disabled,
+.btnDisable:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -31,7 +31,8 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
       }
     }
     run();
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (loading) return <PageLoader />;
 

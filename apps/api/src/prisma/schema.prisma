@@ -88,3 +88,14 @@ model RolePermission {
 
   @@id([roleId, permissionId])
 }
+
+model WorkflowModule {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  name        String
+  description String?
+  isEnabled   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

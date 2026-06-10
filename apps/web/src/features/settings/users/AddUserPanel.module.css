@@ -1,0 +1,145 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #3c4257;
+}
+
+.input {
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1.5px solid #e3e8ee;
+  background: #fff;
+  font-size: 14px;
+  color: #1a1f36;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.input:focus {
+  border-color: #625afa;
+  box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
+}
+.input::placeholder { color: #a3acb9; }
+
+.divider {
+  height: 1px;
+  background: #e3e8ee;
+  margin: 4px 0;
+}
+
+/* ── Role groups ── */
+.roleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roleGroupLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8898aa;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 4px 0 8px;
+}
+
+.roleOption {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid #e3e8ee;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.roleOption:hover { border-color: #c7d2fe; background: #fafbff; }
+
+.roleOptionSelected {
+  border-color: #625afa;
+  background: #f5f3ff;
+}
+
+.roleCheckbox {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  accent-color: #625afa;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.roleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.roleName {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1a1f36;
+}
+
+.roleDesc {
+  font-size: 12px;
+  color: #697386;
+  line-height: 1.4;
+}
+
+.noResult {
+  font-size: 13px;
+  color: #8898aa;
+  text-align: center;
+  padding: 16px 0;
+}
+
+.error {
+  font-size: 13px;
+  color: #df1b41;
+  background: #fff0f3;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+/* Footer buttons */
+.btnPrimary {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: none;
+  background: #635bff;
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnPrimary:hover:not(:disabled) { background: #4f46e5; }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnSecondary {
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 500;
+  border-radius: 6px;
+  border: 1.5px solid #e3e8ee;
+  background: #fff;
+  color: #3c4257;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btnSecondary:hover { background: #f6f9fc; }

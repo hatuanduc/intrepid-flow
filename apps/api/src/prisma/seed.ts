@@ -23,6 +23,23 @@ async function main() {
     { key: 'roles:view', module: 'roles', action: 'view', label: 'Xem vai trò' },
     { key: 'roles:create', module: 'roles', action: 'create', label: 'Tạo vai trò' },
     { key: 'roles:update', module: 'roles', action: 'update', label: 'Cập nhật vai trò' },
+    { key: 'modules:view', module: 'modules', action: 'view', label: 'Xem danh sách quy trình' },
+    { key: 'modules:manage', module: 'modules', action: 'manage', label: 'Bật/tắt và cấu hình quy trình' },
+  ];
+
+  const initialWorkflowModules = [
+    {
+      key: 'bank_statement',
+      name: 'Sao kê ngân hàng',
+      description: 'Tự động lấy sao kê từ cổng ngân hàng điện tử và đồng bộ vào hệ thống.',
+      sortOrder: 1,
+    },
+    {
+      key: 'gmail_invoice',
+      name: 'Hóa đơn từ Gmail',
+      description: 'Tự động quét và trích xuất hóa đơn từ tài khoản Gmail được ủy quyền.',
+      sortOrder: 2,
+    },
   ];
 
   for (const permission of defaultPermissions) {
@@ -98,6 +115,14 @@ async function main() {
     },
     update: {},
   });
+
+  for (const wm of initialWorkflowModules) {
+    await prisma.workflowModule.upsert({
+      where: { key: wm.key },
+      create: { ...wm, isEnabled: false },
+      update: { name: wm.name, description: wm.description, sortOrder: wm.sortOrder },
+    });
+  }
 
   console.log('Seed user ready:', user.email);
 }

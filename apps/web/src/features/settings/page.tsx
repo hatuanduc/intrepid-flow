@@ -64,23 +64,6 @@ const GROUPS: Group[] = [
       },
     ],
   },
-  {
-    label: 'Cài đặt hàng hóa',
-    cards: [
-      {
-        title: 'Danh mục & Mã vải',
-        desc: 'Quản lý danh mục sản phẩm và mã phân loại hàng hóa.',
-        href: '/goods/categories',
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-            <path d="M1.5 3.5h13l-1 9h-11l-1-9z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
-            <path d="M5.5 3.5V2.5a2.5 2.5 0 015 0v1" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            <path d="M5.5 8h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-          </svg>
-        ),
-      },
-    ],
-  },
 ];
 
 export default function SettingsRoot() {
