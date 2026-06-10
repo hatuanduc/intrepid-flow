@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Query, UseGuards, Param } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Put, Query, UseGuards, Param } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -9,7 +9,8 @@ export class UsersController {
 
   @Get('users')
   async getUsers(@Query('search') search?: string) {
-    return this.users.listUsers(search as string | undefined);
+    const items = await this.users.listUsers(search as string | undefined);
+    return { items };
   }
 
   @Post('users')
@@ -21,5 +22,11 @@ export class UsersController {
   @Put('users/:id')
   async putUser(@Param('id') id: string, @Body() body: any) {
     return this.users.updateUser(id, body);
+  }
+
+  @Delete('users/:id')
+  async deleteUser(@Param('id') id: string) {
+    await this.users.deleteUser(id);
+    return { ok: true };
   }
 }

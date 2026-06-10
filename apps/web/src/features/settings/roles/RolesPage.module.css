@@ -13,7 +13,7 @@
 .pageTitle {
   font-size: 20px;
   font-weight: 600;
-  color: #1a1f36;
+  color: var(--color-ink);
   letter-spacing: -0.3px;
   margin: 0;
 }
@@ -24,16 +24,16 @@
   font-weight: 500;
   border-radius: 6px;
   border: none;
-  background: #635bff;
+  background: var(--color-accent);
   color: #fff;
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnPrimary:hover { background: #4f46e5; }
+.btnPrimary:hover { background: var(--color-accent-hover); }
 
 .empty {
   font-size: 13px;
-  color: #8898aa;
+  color: var(--color-subtle);
   padding: 40px 0;
   text-align: center;
 }
@@ -46,10 +46,10 @@
 }
 
 .group {
-  border: 1px solid #e3e8ee;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--bg-surface);
 }
 
 .groupHeader {
@@ -57,16 +57,16 @@
   align-items: center;
   gap: 8px;
   padding: 12px 16px;
-  background: #f7fafc;
-  border-bottom: 1px solid #e3e8ee;
+  background: var(--bg-table-head);
+  border-bottom: 1px solid var(--color-border);
 }
 
-.groupIcon { color: #697386; }
+.groupIcon { color: var(--color-muted); }
 
 .groupLabel {
   font-size: 12px;
   font-weight: 600;
-  color: #3c4257;
+  color: var(--color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -74,8 +74,8 @@
 .groupCount {
   font-size: 11px;
   font-weight: 600;
-  color: #697386;
-  background: #eef2f7;
+  color: var(--color-muted);
+  background: var(--bg-subtle);
   padding: 1px 6px;
   border-radius: 10px;
   margin-left: 2px;
@@ -96,12 +96,12 @@
   background: none;
   text-align: left;
   cursor: pointer;
-  border-bottom: 1px solid #f0f4f8;
+  border-bottom: 1px solid var(--color-border-light);
   transition: background 0.1s;
   width: 100%;
 }
 .roleRow:last-child { border-bottom: none; }
-.roleRow:hover { background: #fafbfd; }
+.roleRow:hover { background: var(--bg-hover); }
 
 .roleMain {
   flex: 1;
@@ -114,12 +114,12 @@
 .roleName {
   font-size: 14px;
   font-weight: 500;
-  color: #1a1f36;
+  color: var(--color-ink);
 }
 
 .roleDesc {
   font-size: 12px;
-  color: #697386;
+  color: var(--color-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -137,11 +137,11 @@
   align-items: center;
   gap: 5px;
   font-size: 12px;
-  color: #697386;
+  color: var(--color-muted);
 }
 
 .chevron {
-  color: #c4cdd6;
+  color: var(--color-border-strong);
   flex-shrink: 0;
 }
-.roleRow:hover .chevron { color: #697386; }
+.roleRow:hover .chevron { color: var(--color-muted); }

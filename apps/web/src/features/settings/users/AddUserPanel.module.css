@@ -13,30 +13,30 @@
 .label {
   font-size: 13px;
   font-weight: 500;
-  color: #3c4257;
+  color: var(--color-secondary);
 }
 
 .input {
   padding: 9px 12px;
   border-radius: 6px;
-  border: 1.5px solid #e3e8ee;
-  background: #fff;
+  border: 1.5px solid var(--color-border);
+  background: var(--bg-surface);
   font-size: 14px;
-  color: #1a1f36;
+  color: var(--color-ink);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   width: 100%;
   box-sizing: border-box;
 }
 .input:focus {
-  border-color: #625afa;
+  border-color: var(--color-accent-active);
   box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
 }
-.input::placeholder { color: #a3acb9; }
+.input::placeholder { color: var(--color-subtle); }
 
 .divider {
   height: 1px;
-  background: #e3e8ee;
+  background: var(--color-border);
   margin: 4px 0;
 }
 
@@ -50,7 +50,7 @@
 .roleGroupLabel {
   font-size: 11px;
   font-weight: 600;
-  color: #8898aa;
+  color: var(--color-subtle);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   padding: 4px 0 8px;
@@ -61,7 +61,7 @@
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1.5px solid #e3e8ee;
+  border: 1.5px solid var(--color-border);
   border-radius: 8px;
   cursor: pointer;
   transition: border-color 0.12s, background 0.12s;
@@ -69,7 +69,7 @@
 .roleOption:hover { border-color: #c7d2fe; background: #fafbff; }
 
 .roleOptionSelected {
-  border-color: #625afa;
+  border-color: var(--color-accent-active);
   background: #f5f3ff;
 }
 
@@ -77,7 +77,7 @@
   margin-top: 2px;
   width: 15px;
   height: 15px;
-  accent-color: #625afa;
+  accent-color: var(--color-accent-active);
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -91,20 +91,42 @@
 .roleName {
   font-size: 13px;
   font-weight: 500;
-  color: #1a1f36;
+  color: var(--color-ink);
 }
 
 .roleDesc {
   font-size: 12px;
-  color: #697386;
+  color: var(--color-muted);
   line-height: 1.4;
 }
 
 .noResult {
   font-size: 13px;
-  color: #8898aa;
+  color: var(--color-subtle);
   text-align: center;
   padding: 16px 0;
+}
+
+.inputDisabled {
+  opacity: 0.55;
+  background: var(--bg-subtle);
+  cursor: not-allowed;
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--color-secondary);
+  cursor: pointer;
+}
+
+.checkRow input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-accent-active);
+  cursor: pointer;
 }
 
 .error {
@@ -123,12 +145,12 @@
   font-weight: 500;
   border-radius: 6px;
   border: none;
-  background: #635bff;
+  background: var(--color-accent);
   color: #fff;
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnPrimary:hover:not(:disabled) { background: #4f46e5; }
+.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
 .btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnSecondary {
@@ -136,10 +158,10 @@
   font-size: 13px;
   font-weight: 500;
   border-radius: 6px;
-  border: 1.5px solid #e3e8ee;
-  background: #fff;
-  color: #3c4257;
+  border: 1.5px solid var(--color-border);
+  background: var(--bg-surface);
+  color: var(--color-secondary);
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnSecondary:hover { background: #f6f9fc; }
+.btnSecondary:hover { background: var(--bg-page); }

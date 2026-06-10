@@ -15,16 +15,18 @@ async function main() {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@intrepid.com';
   const password = process.env.DEMO_PASSWORD ?? 'intrepid';
   const hashed = bcrypt.hashSync(password, 10);
-  const defaultPermissions = [
-    { key: 'dashboard:view', module: 'dashboard', action: 'view', label: 'Xem tổng quan' },
-    { key: 'users:view', module: 'users', action: 'view', label: 'Xem danh sách người dùng' },
-    { key: 'users:create', module: 'users', action: 'create', label: 'Tạo người dùng' },
-    { key: 'users:update', module: 'users', action: 'update', label: 'Cập nhật người dùng' },
-    { key: 'roles:view', module: 'roles', action: 'view', label: 'Xem vai trò' },
-    { key: 'roles:create', module: 'roles', action: 'create', label: 'Tạo vai trò' },
-    { key: 'roles:update', module: 'roles', action: 'update', label: 'Cập nhật vai trò' },
-    { key: 'modules:view', module: 'modules', action: 'view', label: 'Xem danh sách quy trình' },
-    { key: 'modules:manage', module: 'modules', action: 'manage', label: 'Bật/tắt và cấu hình quy trình' },
+  const corePermissions = [
+    { key: 'dashboard:view',  module: 'dashboard', action: 'view',   label: 'Xem tổng quan' },
+    { key: 'users:view',      module: 'users',     action: 'view',   label: 'Xem danh sách người dùng' },
+    { key: 'users:create',    module: 'users',     action: 'create', label: 'Tạo người dùng' },
+    { key: 'users:update',    module: 'users',     action: 'update', label: 'Cập nhật người dùng' },
+    { key: 'roles:view',      module: 'roles',     action: 'view',   label: 'Xem vai trò' },
+    { key: 'roles:create',    module: 'roles',     action: 'create', label: 'Tạo vai trò' },
+    { key: 'roles:update',    module: 'roles',     action: 'update', label: 'Cập nhật vai trò' },
+    { key: 'branches:view',   module: 'branches',  action: 'view',   label: 'Xem chi nhánh' },
+    { key: 'branches:create', module: 'branches',  action: 'create', label: 'Tạo chi nhánh' },
+    { key: 'branches:update', module: 'branches',  action: 'update', label: 'Cập nhật chi nhánh' },
+    { key: 'modules:view',    module: 'modules',   action: 'view',   label: 'Xem danh sách quy trình' },
   ];
 
   const initialWorkflowModules = [
@@ -42,15 +44,26 @@ async function main() {
     },
   ];
 
-  for (const permission of defaultPermissions) {
+  // Seed workflow modules first (permissions reference their names)
+  for (const wm of initialWorkflowModules) {
+    await prisma.workflowModule.upsert({
+      where: { key: wm.key },
+      create: { ...wm, isEnabled: false },
+      update: { name: wm.name, description: wm.description, sortOrder: wm.sortOrder },
+    });
+  }
+
+  // Core permissions + per-workflow-module permissions
+  const workflowModulePerms = initialWorkflowModules.flatMap(wm => [
+    { key: `${wm.key}:view`,   module: wm.key, action: 'view',   label: `Xem ${wm.name}` },
+    { key: `${wm.key}:manage`, module: wm.key, action: 'manage', label: `Quản lý ${wm.name}` },
+  ]);
+
+  for (const permission of [...corePermissions, ...workflowModulePerms]) {
     await prisma.permission.upsert({
       where: { key: permission.key },
       create: permission,
-      update: {
-        module: permission.module,
-        action: permission.action,
-        label: permission.label,
-      },
+      update: { label: permission.label },
     });
   }
 
@@ -115,14 +128,6 @@ async function main() {
     },
     update: {},
   });
-
-  for (const wm of initialWorkflowModules) {
-    await prisma.workflowModule.upsert({
-      where: { key: wm.key },
-      create: { ...wm, isEnabled: false },
-      update: { name: wm.name, description: wm.description, sortOrder: wm.sortOrder },
-    });
-  }
 
   console.log('Seed user ready:', user.email);
 }

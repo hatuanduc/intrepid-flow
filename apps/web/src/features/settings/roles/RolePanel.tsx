@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createRole, updateRole, listPermissions, type RoleItem, type PermissionItem } from '../../../lib/api';
 import RightPanel from '../../../components/common/RightPanel';
+import { Spinner } from '../../../components/common/PageLoader';
 import s from './RolePanel.module.css';
 
 type Props = {
@@ -12,8 +13,21 @@ type Props = {
   onSaved: () => void;
 };
 
+const MODULE_LABELS: Record<string, string> = {
+  dashboard: 'Tổng quan',
+  users:     'Người dùng',
+  roles:     'Vai trò',
+  branches:  'Chi nhánh',
+  modules:   'Trang quy trình',
+};
+
+function moduleLabel(mod: string) {
+  return MODULE_LABELS[mod] ?? mod.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
 export default function RolePanel({ role, open, onClose, onSaved }: Props) {
   const isNew = role === null;
+  const isSystem = role?.isSystem ?? false;
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -21,10 +35,17 @@ export default function RolePanel({ role, open, onClose, onSaved }: Props) {
   const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadingPerms, setLoadingPerms] = useState(false);
+  const [permsError, setPermsError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    listPermissions().then(r => setPermissions(r.items ?? []));
+    setLoadingPerms(true);
+    setPermsError(null);
+    listPermissions()
+      .then(r => setPermissions(r.items ?? []))
+      .catch(() => setPermsError('Không thể tải danh sách quyền hạn.'))
+      .finally(() => setLoadingPerms(false));
     if (role) {
       setName(role.name);
       setDescription(role.description ?? '');
@@ -36,10 +57,12 @@ export default function RolePanel({ role, open, onClose, onSaved }: Props) {
   }, [open, role]);
 
   function togglePerm(id: string) {
+    if (isSystem) return;
     setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
   function toggleModule(ids: string[]) {
+    if (isSystem) return;
     const allSelected = ids.every(id => selectedIds.includes(id));
     setSelectedIds(prev =>
       allSelected ? prev.filter(x => !ids.includes(x)) : [...new Set([...prev, ...ids])]
@@ -70,19 +93,14 @@ export default function RolePanel({ role, open, onClose, onSaved }: Props) {
     return acc;
   }, {});
 
-  const MODULE_LABELS: Record<string, string> = {
-    dashboard: 'Tổng quan',
-    users: 'Người dùng',
-    roles: 'Vai trò',
-    modules: 'Quy trình tự động',
-  };
-
   const footer = (
     <>
       <button type="button" className={s.btnSecondary} onClick={onClose}>Hủy</button>
-      <button type="submit" form="role-panel-form" className={s.btnPrimary} disabled={saving}>
-        {saving ? 'Đang lưu...' : isNew ? 'Tạo vai trò' : 'Lưu thay đổi'}
-      </button>
+      {!isSystem && (
+        <button type="submit" form="role-panel-form" className={s.btnPrimary} disabled={saving}>
+          {saving ? 'Đang lưu...' : isNew ? 'Tạo vai trò' : 'Lưu thay đổi'}
+        </button>
+      )}
     </>
   );
 
@@ -94,14 +112,33 @@ export default function RolePanel({ role, open, onClose, onSaved }: Props) {
       footer={footer}
     >
       <form id="role-panel-form" onSubmit={submit} className={s.form}>
+
+        {isSystem && (
+          <div className={s.systemNotice}>
+            Vai trò hệ thống — không thể chỉnh sửa quyền hạn.
+          </div>
+        )}
+
         <div className={s.field}>
           <label className={s.label}>Tên vai trò</label>
-          <input className={s.input} value={name} onChange={e => setName(e.target.value)} required autoFocus />
+          <input
+            className={s.input}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            required
+            autoFocus
+            disabled={isSystem}
+          />
         </div>
 
         <div className={s.field}>
           <label className={s.label}>Mô tả <span className={s.optional}>(tuỳ chọn)</span></label>
-          <input className={s.input} value={description} onChange={e => setDescription(e.target.value)} />
+          <input
+            className={s.input}
+            value={description}
+            onChange={e => setDescription(e.target.value)}
+            disabled={isSystem}
+          />
         </div>
 
         <div className={s.divider} />
@@ -112,6 +149,12 @@ export default function RolePanel({ role, open, onClose, onSaved }: Props) {
             <span className={s.permCount}>{selectedIds.length} được chọn</span>
           </div>
 
+          {loadingPerms && <div className={s.permsLoading}><Spinner size={18} /></div>}
+          {permsError && <div className={s.error}>{permsError}</div>}
+          {!loadingPerms && !permsError && permissions.length === 0 && (
+            <div className={s.permsEmpty}>Chưa có quyền hạn nào.</div>
+          )}
+
           {Object.entries(byModule).map(([mod, perms]) => {
             const permIds = perms.map(p => p.id);
             const allChecked = permIds.every(id => selectedIds.includes(id));
@@ -119,28 +162,42 @@ export default function RolePanel({ role, open, onClose, onSaved }: Props) {
 
             return (
               <div key={mod} className={s.moduleBlock}>
-                <label className={s.moduleHeader}>
-                  <input
-                    type="checkbox"
-                    checked={allChecked}
-                    ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
-                    onChange={() => toggleModule(permIds)}
-                    className={s.checkbox}
-                  />
-                  <span className={s.moduleName}>{MODULE_LABELS[mod] ?? mod}</span>
+                <label className={`${s.moduleHeader} ${isSystem ? s.moduleHeaderReadonly : ''}`}>
+                  {!isSystem && (
+                    <input
+                      type="checkbox"
+                      checked={allChecked}
+                      ref={el => { if (el) el.indeterminate = someChecked && !allChecked; }}
+                      onChange={() => toggleModule(permIds)}
+                      className={s.checkbox}
+                    />
+                  )}
+                  <span className={s.moduleName}>{moduleLabel(mod)}</span>
+                  {isSystem && (
+                    <span className={s.moduleCount}>
+                      {permIds.filter(id => selectedIds.includes(id)).length}/{permIds.length}
+                    </span>
+                  )}
                 </label>
                 <div className={s.permList}>
-                  {perms.map(p => (
-                    <label key={p.id} className={s.permRow}>
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(p.id)}
-                        onChange={() => togglePerm(p.id)}
-                        className={s.checkbox}
-                      />
-                      <span className={s.permLabel}>{p.label}</span>
-                    </label>
-                  ))}
+                  {perms.map(p => {
+                    const checked = selectedIds.includes(p.id);
+                    return (
+                      <label key={p.id} className={`${s.permRow} ${isSystem ? s.permRowReadonly : ''}`}>
+                        {isSystem ? (
+                          <span className={checked ? s.permDotOn : s.permDotOff} />
+                        ) : (
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => togglePerm(p.id)}
+                            className={s.checkbox}
+                          />
+                        )}
+                        <span className={s.permLabel}>{p.label}</span>
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
             );

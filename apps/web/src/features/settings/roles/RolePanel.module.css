@@ -13,34 +13,34 @@
 .label {
   font-size: 13px;
   font-weight: 500;
-  color: #3c4257;
+  color: var(--color-secondary);
 }
 
 .optional {
   font-weight: 400;
-  color: #8898aa;
+  color: var(--color-subtle);
 }
 
 .input {
   padding: 9px 12px;
   border-radius: 6px;
-  border: 1.5px solid #e3e8ee;
-  background: #fff;
+  border: 1.5px solid var(--color-border);
+  background: var(--bg-surface);
   font-size: 14px;
-  color: #1a1f36;
+  color: var(--color-ink);
   outline: none;
   transition: border-color 0.15s, box-shadow 0.15s;
   width: 100%;
   box-sizing: border-box;
 }
 .input:focus {
-  border-color: #625afa;
+  border-color: var(--color-accent-active);
   box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
 }
 
 .divider {
   height: 1px;
-  background: #e3e8ee;
+  background: var(--color-border);
   margin: 4px 0;
 }
 
@@ -61,19 +61,19 @@
 .permTitle {
   font-size: 13px;
   font-weight: 600;
-  color: #1a1f36;
+  color: var(--color-ink);
 }
 
 .permCount {
   font-size: 12px;
-  color: #697386;
-  background: #f0f4f8;
+  color: var(--color-muted);
+  background: var(--bg-subtle);
   padding: 2px 8px;
   border-radius: 10px;
 }
 
 .moduleBlock {
-  border: 1px solid #e3e8ee;
+  border: 1px solid var(--color-border);
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 6px;
@@ -84,16 +84,16 @@
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: #f7fafc;
+  background: var(--bg-table-head);
   cursor: pointer;
-  border-bottom: 1px solid #e3e8ee;
+  border-bottom: 1px solid var(--color-border);
 }
-.moduleHeader:hover { background: #f0f4f8; }
+.moduleHeader:hover { background: var(--bg-subtle); }
 
 .moduleName {
   font-size: 12px;
   font-weight: 600;
-  color: #3c4257;
+  color: var(--color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -109,23 +109,81 @@
   gap: 10px;
   padding: 9px 14px;
   cursor: pointer;
-  border-bottom: 1px solid #f5f7fa;
+  border-bottom: 1px solid var(--color-border-light);
   transition: background 0.1s;
 }
 .permRow:last-child { border-bottom: none; }
-.permRow:hover { background: #fafbfd; }
+.permRow:hover { background: var(--bg-hover); }
 
 .permLabel {
   font-size: 13px;
-  color: #3c4257;
+  color: var(--color-secondary);
 }
 
 .checkbox {
   width: 15px;
   height: 15px;
-  accent-color: #625afa;
+  accent-color: var(--color-accent-active);
   cursor: pointer;
   flex-shrink: 0;
+}
+
+/* System role notice */
+.systemNotice {
+  font-size: 12px;
+  color: var(--color-muted);
+  background: var(--bg-subtle);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+/* Readonly module header (system role) */
+.moduleHeaderReadonly {
+  cursor: default;
+  pointer-events: none;
+}
+.moduleHeaderReadonly:hover { background: var(--bg-table-head); }
+
+.moduleCount {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+/* Readonly perm row */
+.permRowReadonly {
+  cursor: default;
+  pointer-events: none;
+}
+.permRowReadonly:hover { background: transparent; }
+
+/* Dot indicators for readonly view */
+.permDotOn {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #059669;
+  flex-shrink: 0;
+}
+.permDotOff {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-border-strong);
+  flex-shrink: 0;
+}
+
+.permsLoading {
+  display: flex;
+  justify-content: center;
+  padding: 24px 0;
+}
+.permsEmpty {
+  font-size: 13px;
+  color: var(--color-subtle);
+  text-align: center;
+  padding: 20px 0;
 }
 
 .error {
@@ -144,12 +202,12 @@
   font-weight: 500;
   border-radius: 6px;
   border: none;
-  background: #635bff;
+  background: var(--color-accent);
   color: #fff;
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnPrimary:hover:not(:disabled) { background: #4f46e5; }
+.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
 .btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .btnSecondary {
@@ -157,10 +215,10 @@
   font-size: 13px;
   font-weight: 500;
   border-radius: 6px;
-  border: 1.5px solid #e3e8ee;
-  background: #fff;
-  color: #3c4257;
+  border: 1.5px solid var(--color-border);
+  background: var(--bg-surface);
+  color: var(--color-secondary);
   cursor: pointer;
   transition: background 0.12s;
 }
-.btnSecondary:hover { background: #f6f9fc; }
+.btnSecondary:hover { background: var(--bg-page); }

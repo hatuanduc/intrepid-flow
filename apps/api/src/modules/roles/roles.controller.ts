@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Put, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Put, Param, UseGuards } from '@nestjs/common';
 import { RolesService } from './roles.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 
@@ -57,9 +57,10 @@ export class RolesController {
     };
   }
 
-  @Get('permissions')
-  async getPermissions() {
-    // moved to PermissionsModule
-    return { items: [] };
+  @Delete('roles/:id')
+  async deleteRole(@Param('id') id: string) {
+    await this.roles.deleteRole(id);
+    return { ok: true };
   }
+
 }

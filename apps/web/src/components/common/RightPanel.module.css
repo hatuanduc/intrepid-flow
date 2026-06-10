@@ -21,7 +21,7 @@
 .panel {
   position: relative;
   z-index: 1;
-  background: #fff;
+  background: var(--bg-surface);
   display: flex;
   flex-direction: column;
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.12);
@@ -38,14 +38,14 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px;
-  border-bottom: 1px solid #e3e8ee;
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
 }
 
 .title {
   font-size: 15px;
   font-weight: 600;
-  color: #1a1f36;
+  color: var(--color-ink);
 }
 
 .closeBtn {
@@ -58,10 +58,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8898aa;
+  color: var(--color-subtle);
   transition: background 0.1s, color 0.1s;
 }
-.closeBtn:hover { background: #f6f9fc; color: #1a1f36; }
+.closeBtn:hover { background: var(--bg-page); color: var(--color-ink); }
 
 .body {
   flex: 1;
@@ -71,10 +71,10 @@
 
 .footer {
   padding: 16px 24px;
-  border-top: 1px solid #e3e8ee;
+  border-top: 1px solid var(--color-border);
   display: flex;
   justify-content: flex-end;
   gap: 8px;
   flex-shrink: 0;
-  background: #fff;
+  background: var(--bg-surface);
 }

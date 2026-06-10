@@ -10,14 +10,14 @@
 .greeting {
   font-size: 20px;
   font-weight: 600;
-  color: #1a1f36;
+  color: var(--color-ink);
   letter-spacing: -0.3px;
   margin: 0 0 4px;
 }
 
 .date {
   font-size: 13px;
-  color: #8898aa;
+  color: var(--color-subtle);
 }
 
 .quickGrid {
@@ -31,15 +31,15 @@
   flex-direction: column;
   gap: 8px;
   padding: 20px 22px;
-  background: #fff;
-  border: 1px solid #e3e8ee;
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
   border-radius: 10px;
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .quickCard:hover {
-  border-color: #625afa;
+  border-color: var(--color-accent-active);
   box-shadow: 0 2px 12px rgba(98, 90, 250, 0.10);
 }
 
@@ -47,8 +47,8 @@
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  background: #f0effe;
-  color: #625afa;
+  background: var(--color-accent-light);
+  color: var(--color-accent-active);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -58,11 +58,11 @@
 .quickTitle {
   font-size: 14px;
   font-weight: 600;
-  color: #1a1f36;
+  color: var(--color-ink);
 }
 
 .quickDesc {
   font-size: 13px;
-  color: #697386;
+  color: var(--color-muted);
   line-height: 1.5;
 }

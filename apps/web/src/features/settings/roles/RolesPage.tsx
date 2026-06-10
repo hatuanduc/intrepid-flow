@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { listRoles, type RoleItem } from '../../../lib/api';
 import RolePanel from './RolePanel';
+import { Spinner } from '../../../components/common/PageLoader';
 import s from './RolesPage.module.css';
 
 export default function RolesPage() {
@@ -35,7 +36,7 @@ export default function RolesPage() {
       </div>
 
       {loading ? (
-        <div className={s.empty}>Đang tải...</div>
+        <div className={s.empty}><Spinner size={20} /></div>
       ) : (
         <div className={s.groups}>
           {systemRoles.length > 0 && (

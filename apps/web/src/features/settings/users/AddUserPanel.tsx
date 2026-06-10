@@ -42,7 +42,12 @@ export default function AddUserPanel({ open, onClose }: Props) {
       await createUser({ email: email.trim(), name: name.trim(), password, roleIds: selectedRoleIds });
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Tạo tài khoản thất bại');
+      const code = err instanceof Error ? err.message : '';
+      const MSG: Record<string, string> = {
+        EMAIL_EXISTS:   'Email này đã được sử dụng.',
+        ROLE_NOT_FOUND: 'Vai trò không hợp lệ.',
+      };
+      setError(MSG[code] ?? 'Tạo tài khoản thất bại. Vui lòng thử lại.');
     } finally {
       setSaving(false);
     }

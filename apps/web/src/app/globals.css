@@ -18,12 +18,25 @@
   --weight-bold:    700;
 
   /* ── Color tokens ── */
-  --color-ink:    #1a1f36;
-  --color-muted:  #697386;
-  --color-subtle: #a3acb9;
-  --color-border: #c4cdd6;
-  --color-accent: #635bff;
-  --color-accent-hover: #4f46e5;
+  --color-ink:       #1a1f36;   /* primary text, headings */
+  --color-secondary: #3c4257;   /* table cells, labels */
+  --color-muted:     #697386;   /* descriptions, timestamps */
+  --color-subtle:    #a3acb9;   /* placeholders, hints */
+
+  --color-border:       #e3e8ee;  /* standard border: cards, inputs, dividers */
+  --color-border-light: #f0f4f8;  /* table row separator */
+  --color-border-strong: #c4cdd6; /* strong border */
+
+  --color-accent:        #635bff; /* primary CTA, buttons */
+  --color-accent-hover:  #4f46e5; /* button hover */
+  --color-accent-active: #625afa; /* tab underline, active text, avatar bg */
+  --color-accent-light:  #f0effe; /* active nav bg, selected state */
+
+  --bg-surface:     #ffffff;  /* cards, panels */
+  --bg-page:        #f6f9fc;  /* page bg, hover states */
+  --bg-table-head:  #f7fafc;  /* table header */
+  --bg-hover:       #fafbfd;  /* row hover */
+  --bg-subtle:      #f0f4f8;  /* disabled, count badges */
 }
 
 @media (prefers-color-scheme: dark) {

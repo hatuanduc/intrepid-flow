@@ -146,7 +146,7 @@
 .input {
   padding: 11px 14px;
   border-radius: 8px;
-  border: 1.5px solid #e2e8f0;
+  border: 1.5px solid var(--color-border);
   background: #f8fafc;
   color: #0f172a;
   font-size: 0.9375rem;
@@ -201,7 +201,7 @@
   width: 100%;
   border-radius: 8px;
   border: none;
-  background: #635bff;
+  background: var(--color-accent);
   color: #fff;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -210,7 +210,7 @@
   transition: background 0.15s, box-shadow 0.15s, transform 0.1s;
 }
 .button:hover:not(:disabled) {
-  background: #4f46e5;
+  background: var(--color-accent-hover);
   box-shadow: 0 4px 16px rgba(99,91,255,0.4);
   transform: translateY(-1px);
 }

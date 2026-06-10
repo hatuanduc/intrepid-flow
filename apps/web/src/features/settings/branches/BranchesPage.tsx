@@ -1,5 +1,6 @@
-"use client";
-import React, { useEffect, useState } from 'react';
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
 import {
   listBranches,
   createBranch,
@@ -7,26 +8,22 @@ import {
   deleteBranch,
   type BranchItem,
 } from '../../../lib/api';
-import { Button, Table } from '../../../components/common';
+import RightPanel from '../../../components/common/RightPanel';
+import PageLoader, { Spinner } from '../../../components/common/PageLoader';
+import s from './BranchesPage.module.css';
 
 export default function BranchesPage() {
   const [branches, setBranches] = useState<BranchItem[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<BranchItem | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [code, setCode] = useState('');
-  const [name, setName] = useState('');
-  const [address, setAddress] = useState('');
-  const [formError, setFormError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [editing, setEditing] = useState<BranchItem | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     try {
       const res = await listBranches();
       setBranches(res.items ?? []);
-    } catch (err) {
-      console.error('load branches', err);
     } finally {
       setLoading(false);
     }
@@ -34,176 +31,234 @@ export default function BranchesPage() {
 
   useEffect(() => { load(); }, []);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setSaving(true);
-    try {
-      await createBranch({
-        code: code.trim().toUpperCase(),
-        name: name.trim(),
-        address: address.trim() || undefined,
-      });
-      setCode('');
-      setName('');
-      setAddress('');
-      setShowForm(false);
-      await load();
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : '';
-      setFormError(
-        msg.includes('BRANCH_CODE_EXISTS')
-          ? `Mã "${code.trim().toUpperCase()}" đã tồn tại.`
-          : 'Tạo chi nhánh thất bại. Vui lòng thử lại.',
-      );
-    } finally {
-      setSaving(false);
-    }
+  function openCreate() {
+    setEditing(null);
+    setPanelOpen(true);
   }
 
-  async function handleUpdate() {
-    if (!editingBranch) return;
-    setSaving(true);
-    try {
-      await updateBranch(editingBranch.id, {
-        name: editingBranch.name,
-        address: editingBranch.address ?? undefined,
-        isActive: editingBranch.isActive,
-      });
-      setEditingBranch(null);
-      await load();
-    } finally {
-      setSaving(false);
-    }
+  function openEdit(branch: BranchItem) {
+    setEditing(branch);
+    setOpenMenuId(null);
+    setPanelOpen(true);
   }
 
   async function handleDelete(branch: BranchItem) {
+    setOpenMenuId(null);
     if (!confirm(`Xóa chi nhánh "${branch.name}"?`)) return;
     await deleteBranch(branch.id);
-    await load();
+    load();
   }
 
+  if (loading) return <PageLoader />;
+
   return (
-    <section>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h3>Quản lý chi nhánh</h3>
-        <Button variant="primary" onClick={() => { setShowForm(true); setFormError(null); }}>
-          + Thêm chi nhánh
-        </Button>
+    <div className={s.page}>
+      <div className={s.pageHeader}>
+        <h1 className={s.pageTitle}>Chi nhánh</h1>
+        <button className={s.btnPrimary} onClick={openCreate}>+ Thêm chi nhánh</button>
       </div>
 
-      {loading ? (
-        <div>Loading...</div>
-      ) : (
-        <Table>
+      <div className={s.tableWrap}>
+        <table className={s.table}>
           <thead>
             <tr>
-              <th style={{ textAlign: 'left', padding: 8 }}>Mã</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Tên</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Địa chỉ</th>
-              <th style={{ textAlign: 'left', padding: 8 }}>Trạng thái</th>
-              <th style={{ padding: 8 }}></th>
+              <th>Mã</th>
+              <th>Tên chi nhánh</th>
+              <th>Địa chỉ</th>
+              <th>Trạng thái</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>
-            {branches.map((b) =>
-              editingBranch?.id === b.id ? (
-                <tr key={b.id}>
-                  <td style={{ padding: 8, color: '#888' }}>{b.code}</td>
-                  <td style={{ padding: 8 }}>
-                    <input
-                      style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4, width: '100%' }}
-                      value={editingBranch.name}
-                      onChange={(e) => setEditingBranch({ ...editingBranch, name: e.target.value })}
-                    />
-                  </td>
-                  <td style={{ padding: 8 }}>
-                    <input
-                      style={{ padding: '4px 8px', border: '1px solid #ccc', borderRadius: 4, width: '100%' }}
-                      value={editingBranch.address ?? ''}
-                      onChange={(e) => setEditingBranch({ ...editingBranch, address: e.target.value })}
-                    />
-                  </td>
-                  <td style={{ padding: 8 }}>
-                    <label style={{ display: 'flex', gap: 6, alignItems: 'center', cursor: 'pointer' }}>
-                      <input
-                        type="checkbox"
-                        checked={editingBranch.isActive}
-                        onChange={(e) => setEditingBranch({ ...editingBranch, isActive: e.target.checked })}
-                      />
-                      Hoạt động
-                    </label>
-                  </td>
-                  <td style={{ padding: 8, display: 'flex', gap: 6 }}>
-                    <Button variant="primary" onClick={handleUpdate} disabled={saving}>
-                      {saving ? '...' : 'Lưu'}
-                    </Button>
-                    <Button variant="secondary" onClick={() => setEditingBranch(null)}>Hủy</Button>
-                  </td>
-                </tr>
-              ) : (
-                <tr key={b.id}>
-                  <td style={{ padding: 8 }}>{b.code}</td>
-                  <td style={{ padding: 8 }}>{b.name}</td>
-                  <td style={{ padding: 8 }}>{b.address || '-'}</td>
-                  <td style={{ padding: 8 }}>{b.isActive ? 'Đang hoạt động' : 'Đã đóng'}</td>
-                  <td style={{ padding: 8, display: 'flex', gap: 6 }}>
-                    <Button variant="secondary" onClick={() => setEditingBranch(b)} style={{ fontSize: 12 }}>
-                      Sửa
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      onClick={() => handleDelete(b)}
-                      style={{ fontSize: 12, color: '#c00' }}
-                    >
-                      Xóa
-                    </Button>
-                  </td>
-                </tr>
-              ),
-            )}
+            {branches.length === 0 ? (
+              <tr>
+                <td colSpan={5}>
+                  <div className={s.empty}>Chưa có chi nhánh nào.</div>
+                </td>
+              </tr>
+            ) : branches.map(b => (
+              <tr key={b.id}>
+                <td><span className={s.code}>{b.code}</span></td>
+                <td className={s.nameCell}>{b.name}</td>
+                <td className={s.address}>{b.address || <span className={s.muted}>—</span>}</td>
+                <td>
+                  {b.isActive
+                    ? <span className={s.badgeActive}>Hoạt động</span>
+                    : <span className={s.badgeInactive}>Đã đóng</span>
+                  }
+                </td>
+                <td>
+                  <MoreMenu
+                    open={openMenuId === b.id}
+                    onToggle={() => setOpenMenuId(openMenuId === b.id ? null : b.id)}
+                    onEdit={() => openEdit(b)}
+                    onDelete={() => handleDelete(b)}
+                    onClose={() => setOpenMenuId(null)}
+                  />
+                </td>
+              </tr>
+            ))}
           </tbody>
-        </Table>
-      )}
+        </table>
+      </div>
 
-      {showForm && (
-        <div style={{ marginTop: 24, padding: 20, border: '1px solid #eee', borderRadius: 8, background: '#fafafa' }}>
-          <h4 style={{ margin: '0 0 16px' }}>Thêm chi nhánh mới</h4>
-          <form onSubmit={handleCreate}>
-            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-              <input
-                style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, flex: '1 1 120px', minWidth: 120 }}
-                value={code}
-                onChange={(e) => { setCode(e.target.value); setFormError(null); }}
-                placeholder="Mã (vd: HN01)"
-                required
-              />
-              <input
-                style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, flex: '2 1 200px', minWidth: 180 }}
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Tên chi nhánh"
-                required
-              />
-              <input
-                style={{ padding: '8px 12px', border: '1px solid #ccc', borderRadius: 4, flex: '3 1 260px', minWidth: 200 }}
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Địa chỉ (tùy chọn)"
-              />
-            </div>
-            {formError && <p style={{ color: '#c00', fontSize: 13, margin: '0 0 8px' }}>{formError}</p>}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <Button type="submit" variant="primary" disabled={saving}>
-                {saving ? 'Đang lưu...' : 'Tạo chi nhánh'}
-              </Button>
-              <Button variant="secondary" onClick={() => { setShowForm(false); setFormError(null); }}>
-                Hủy
-              </Button>
-            </div>
-          </form>
+      <BranchPanel
+        open={panelOpen}
+        branch={editing}
+        onClose={() => setPanelOpen(false)}
+        onSaved={() => { setPanelOpen(false); load(); }}
+      />
+    </div>
+  );
+}
+
+function MoreMenu({ open, onToggle, onEdit, onDelete, onClose }: {
+  open: boolean;
+  onToggle: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handler(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open, onClose]);
+
+  return (
+    <div className={s.moreWrap} ref={ref}>
+      <button className={s.moreBtn} onClick={onToggle}>⋯</button>
+      {open && (
+        <div className={s.moreDropdown}>
+          <button className={s.moreItem} onClick={onEdit}>Chỉnh sửa</button>
+          <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={onDelete}>Xóa</button>
         </div>
       )}
-    </section>
+    </div>
+  );
+}
+
+function BranchPanel({ open, branch, onClose, onSaved }: {
+  open: boolean;
+  branch: BranchItem | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isNew = branch === null;
+  const [code, setCode] = useState('');
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [isActive, setIsActive] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setError(null);
+    if (branch) {
+      setCode(branch.code);
+      setName(branch.name);
+      setAddress(branch.address ?? '');
+      setIsActive(branch.isActive);
+    } else {
+      setCode(''); setName(''); setAddress(''); setIsActive(true);
+    }
+  }, [open, branch]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSaving(true);
+    try {
+      if (isNew) {
+        await createBranch({ code: code.trim().toUpperCase(), name: name.trim(), address: address.trim() || undefined });
+      } else {
+        await updateBranch(branch!.id, { name: name.trim(), address: address.trim() || undefined, isActive });
+      }
+      onSaved();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '';
+      setError(msg.includes('BRANCH_CODE_EXISTS')
+        ? `Mã "${code.trim().toUpperCase()}" đã tồn tại.`
+        : 'Lưu thất bại. Vui lòng thử lại.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const footer = (
+    <>
+      <button type="button" className={s.btnSecondary} onClick={onClose}>Hủy</button>
+      <button type="submit" form="branch-panel-form" className={s.btnPrimary} disabled={saving}>
+        {saving ? 'Đang lưu...' : isNew ? 'Tạo chi nhánh' : 'Lưu thay đổi'}
+      </button>
+    </>
+  );
+
+  return (
+    <RightPanel
+      title={isNew ? 'Thêm chi nhánh' : branch?.name ?? ''}
+      open={open}
+      onClose={onClose}
+      footer={footer}
+    >
+      <form id="branch-panel-form" onSubmit={submit} className={s.form}>
+        <div className={s.field}>
+          <label className={s.label}>Mã chi nhánh</label>
+          <input
+            className={s.input}
+            value={code}
+            onChange={e => setCode(e.target.value)}
+            placeholder="VD: HN01"
+            required
+            disabled={!isNew}
+            style={!isNew ? { background: '#f6f9fc', color: '#8898aa' } : undefined}
+            autoFocus
+          />
+        </div>
+
+        <div className={s.field}>
+          <label className={s.label}>Tên chi nhánh</label>
+          <input
+            className={s.input}
+            value={name}
+            onChange={e => setName(e.target.value)}
+            placeholder="VD: Hà Nội - Hoàn Kiếm"
+            required
+          />
+        </div>
+
+        <div className={s.field}>
+          <label className={s.label}>Địa chỉ <span className={s.optional}>(tùy chọn)</span></label>
+          <input
+            className={s.input}
+            value={address}
+            onChange={e => setAddress(e.target.value)}
+            placeholder="Số nhà, đường, quận/huyện..."
+          />
+        </div>
+
+        {!isNew && (
+          <div className={s.field}>
+            <label className={s.checkboxRow}>
+              <input
+                type="checkbox"
+                checked={isActive}
+                onChange={e => setIsActive(e.target.checked)}
+                className={s.checkbox}
+              />
+              <span className={s.label} style={{ marginBottom: 0 }}>Đang hoạt động</span>
+            </label>
+          </div>
+        )}
+
+        {error && <div className={s.error}>{error}</div>}
+      </form>
+    </RightPanel>
   );
 }

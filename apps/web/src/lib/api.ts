@@ -191,6 +191,20 @@ export async function updateRole(id: string, input: { name?: string; description
   });
 }
 
+export async function deleteUser(id: string) {
+  return request<{ ok: boolean }>(`/management/users/${id}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
+
+export async function deleteRole(id: string) {
+  return request<{ ok: boolean }>(`/management/roles/${id}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
+
 export async function listPermissions() {
   return request<{ items: PermissionItem[] }>('/management/permissions', {
     method: 'GET',

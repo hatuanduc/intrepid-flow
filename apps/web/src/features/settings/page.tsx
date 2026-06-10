@@ -50,18 +50,6 @@ const GROUPS: Group[] = [
           </svg>
         ),
       },
-      {
-        title: 'Quyền hạn',
-        desc: 'Xem toàn bộ danh sách quyền hạn trong hệ thống theo từng module.',
-        href: '/settings/roles',
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-            <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
-            <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
-            <circle cx="8" cy="10.5" r="1" fill="currentColor"/>
-          </svg>
-        ),
-      },
     ],
   },
 ];

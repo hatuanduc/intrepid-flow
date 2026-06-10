@@ -1,3 +1,5 @@
+import s from './PageLoader.module.css';
+
 export function Spinner({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -23,12 +25,7 @@ export function Spinner({ size = 28 }: { size?: number }) {
 
 export default function PageLoader() {
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      height: '100dvh',
-    }}>
+    <div className={s.wrap}>
       <Spinner size={32} />
     </div>
   );

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import bcrypt from 'bcryptjs';
 import { userListArgs } from './types';
@@ -51,14 +51,14 @@ export class UsersService {
       select: { id: true },
     });
     if (existed) {
-      throw new Error('EMAIL_EXISTS');
+      throw new ConflictException('EMAIL_EXISTS');
     }
 
     const roleCount = await this.prisma.role.count({
       where: { id: { in: input.roleIds } },
     });
     if (roleCount !== input.roleIds.length) {
-      throw new Error('ROLE_NOT_FOUND');
+      throw new UnprocessableEntityException('ROLE_NOT_FOUND');
     }
 
     const password = bcrypt.hashSync(input.password, 10);
@@ -85,7 +85,7 @@ export class UsersService {
       select: { id: true },
     });
     if (!existed) {
-      throw new Error('USER_NOT_FOUND');
+      throw new NotFoundException('USER_NOT_FOUND');
     }
 
     if (input.roleIds) {
@@ -116,6 +116,12 @@ export class UsersService {
     });
 
     return toUserItem(updated);
+  }
+
+  async deleteUser(userId: string) {
+    const existed = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
+    if (!existed) throw new NotFoundException('USER_NOT_FOUND');
+    await this.prisma.user.delete({ where: { id: userId } });
   }
 
   async createRole(input: {
