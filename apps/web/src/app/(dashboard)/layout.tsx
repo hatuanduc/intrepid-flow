@@ -23,11 +23,11 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
       try {
         const result = await me();
         setUser(result.user);
+        setLoading(false);
       } catch {
         clearToken();
         router.replace('/login');
-      } finally {
-        setLoading(false);
+        // giữ loading=true trong khi redirect — không flash trắng
       }
     }
     run();
