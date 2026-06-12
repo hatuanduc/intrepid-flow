@@ -129,6 +129,20 @@
   cursor: pointer;
 }
 
+.inputError {
+  border-color: #df1b41 !important;
+}
+.inputError:focus {
+  border-color: #df1b41 !important;
+  box-shadow: 0 0 0 3px rgba(223,27,65,0.10) !important;
+}
+
+.fieldError {
+  font-size: 12px;
+  color: #df1b41;
+  margin-top: -2px;
+}
+
 .error {
   font-size: 13px;
   color: #df1b41;

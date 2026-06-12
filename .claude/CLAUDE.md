@@ -10,6 +10,57 @@ When building UI components:
 - Never use inline styles — always CSS Modules (`.module.css`)
 - Never use `<a href>` for internal navigation — always `<Link>` from `next/link`
 
+## Shared CSS Module
+
+Tất cả design primitives sống tại `apps/web/src/styles/ui.module.css` — **single source of truth**.
+
+Mỗi page/feature module dùng `composes` để kế thừa, không copy CSS:
+
+```css
+/* features/xxx/XxxPage.module.css */
+.page { padding: 28px 32px; }  /* page-specific */
+
+/* shared via composes */
+.pageHeader { composes: pageHeader from '../../../styles/ui.module.css'; }
+.btnPrimary { composes: btnPrimary from '../../../styles/ui.module.css'; }
+.th         { composes: th         from '../../../styles/ui.module.css'; }
+.td         { composes: td         from '../../../styles/ui.module.css'; }
+/* ... */
+
+/* table row behavior (page-level descendant rules) */
+.table { width: 100%; border-collapse: collapse; }
+.table tr:hover .td { background: var(--bg-hover); }
+.table tr:last-child .td { border-bottom: none; }
+.table tbody tr { cursor: pointer; }
+```
+
+```tsx
+/* Phải thêm className={s.th} và className={s.td} vào phần tử HTML */
+<th className={s.th}>Tên</th>
+<td className={s.td}>...</td>
+```
+
+**Quy tắc:** Khi thay đổi chuẩn (font, spacing, màu), chỉ sửa `ui.module.css` — tất cả trang tự cập nhật.
+
+## Typography Rules
+
+Stripe-inspired — 3 sizes, 3 colors, consistent weight. **Do not introduce new sizes.**
+
+| Zone | Size | Weight | Color |
+|---|---|---|---|
+| Page title (h1) | 20px | 600 | `var(--color-ink)` |
+| Table header (th) | 12px | 600 | `var(--color-secondary)` |
+| Table cell / body text | 13px | 500 | `var(--color-secondary)` |
+| Name / primary value | 13px | 500 | `var(--color-ink)` |
+| Meta text (email, timestamp, desc) | 12px | 400 | `var(--color-muted)` |
+| Form label | 13px | 500 | `var(--color-secondary)` |
+| Form input | 14px | 400 | `var(--color-ink)` |
+| Button | 13px | 500 | — |
+| Chip / filter label | 12px | 500 | `var(--color-secondary)` |
+| Badge / count pill | 11px | 600 | — |
+
+**3 font colors only:** `--color-ink` (primary), `--color-secondary` (default), `--color-muted` (meta). Do not use raw hex text colors.
+
 ## CSS Variables (globals.css)
 Common tokens live in `:root` in `globals.css`. **Always use `var()` — never hardcode the raw hex.**
 
@@ -37,15 +88,16 @@ Common tokens live in `:root` in `globals.css`. **Always use `var()` — never h
 Giá trị **không** cần variable: màu badge semantic (green/red/gray cho status) — chúng đi theo cặp bg+text cố định, ít thay đổi.
 
 ## Table structure
-Every list page uses this layout (see ui-reference.md §2, §3.2b, §3.2c, §3.3):
+Open/borderless style (Stripe-inspired) — no outer box, full width. Every list page uses this layout (see ui-reference.md §2, §3.2b, §3.2c, §3.3):
 1. `.chips` — stats chips row (filter + count), `margin-bottom: 12px` (see §3.2b)
-2. `.filterBar` — search input bar, `border-radius: 8px 8px 0 0`, `border-bottom: none`
-3. `.tableWrap` — `border: 1px solid var(--color-border)`, `border-top: none`, `border-radius: 0 0 8px 8px`
-- `thead`: bg `var(--bg-table-head)`, uppercase 11px text `#8898aa`
+2. `.filterBar` — search input, `background: transparent`, `border-bottom: 1px solid var(--color-border)` only
+3. `.tableWrap` — no outer border, no border-radius, `overflow: visible`
+- `thead`: no background, `border-bottom: 1px solid var(--color-border)` only, `12px/600` text `var(--color-secondary)` (no uppercase)
 - `tbody tr`: hover bg `var(--bg-hover)`, row separator `1px solid var(--color-border-light)`
 - Last column: `⋯` more-menu button (see §3.7)
 - Name column: avatar initials (30px circle, **multi-color** via `avatarColor()`) + name (see §3.4)
 - Role column: `<RoleBadge>` component with color per role type (see §3.5b)
+- `.page`: `padding: 28px 32px`, no `max-width`
 
 ## Table row interaction pattern
 Every table row and group row follows this pattern:
@@ -129,6 +181,124 @@ Global exception filter tại `apps/api/src/common/filters/http-exception.filter
 - **Không dùng** `throw new Error(...)` — dùng `throw new HttpException('CODE', HttpStatus.XXX)` để filter bắt được
 - Controllers dùng **DTO** (không dùng `body: any`) — đặt trong `dto/` cạnh controller
 - ValidationPipe global: `whitelist: true, transform: true`
+
+## Form Validation (Frontend)
+
+Validate client-side trước khi gửi API. Pattern chuẩn — inline error dưới field, clear khi user gõ lại:
+
+```tsx
+const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+function clearField(field: string) {
+  setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+}
+
+function validate() {
+  const errs: Record<string, string> = {};
+  if (!name.trim()) errs.name = 'Vui lòng nhập tên.';
+  if (!email.trim()) errs.email = 'Vui lòng nhập email.';
+  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = 'Email không hợp lệ.';
+  if (!password) errs.password = 'Vui lòng nhập mật khẩu.';
+  else if (password.length < 6) errs.password = 'Mật khẩu tối thiểu 6 ký tự.';
+  return errs;
+}
+
+async function submit(e: React.FormEvent) {
+  e.preventDefault();
+  const errs = validate();
+  if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+  setFieldErrors({});
+  // ... gọi API
+}
+```
+
+```tsx
+// Trong JSX
+<input
+  className={`${s.input} ${fieldErrors.name ? s.inputError : ''}`}
+  onChange={e => { setName(e.target.value); clearField('name'); }}
+/>
+{fieldErrors.name && <span className={s.fieldError}>{fieldErrors.name}</span>}
+```
+
+CSS cần có trong module (thêm vào `.module.css` của form):
+```css
+.inputError { border-color: #df1b41 !important; }
+.inputError:focus { border-color: #df1b41 !important; box-shadow: 0 0 0 3px rgba(223,27,65,0.10) !important; }
+.fieldError { font-size: 12px; color: #df1b41; margin-top: -2px; }
+```
+
+**Fields cần validate:**
+- `required`: thông báo "Vui lòng nhập..."
+- `email`: check format với regex
+- `password` (create): min 6 ký tự
+- `password` (edit): chỉ check nếu có nhập
+- `roleIds` / select list: ít nhất 1 item
+
+Không dùng `noValidate` hay HTML5 native validation — dùng custom hoàn toàn để control UI.
+
+## Pagination
+
+Dùng `<Pagination>` từ `components/common/Pagination` cho mọi table có list data.
+
+- Tự **ẩn** khi `total ≤ pageSize` — không cần điều kiện ngoài
+- Đặt **bên trong** `.tableWrap` (sau `</table>`) để border-top tự tách
+- Reset `page` về 1 khi filter/search thay đổi
+
+```tsx
+import Pagination from '../../../components/common/Pagination';
+
+// State
+const [page, setPage] = useState(1);
+const [pageSize, setPageSize] = useState(20);
+
+// Slice sau khi filter
+const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+// Trong JSX — bên trong .tableWrap, sau </table>
+<Pagination
+  page={page}
+  pageSize={pageSize}
+  total={filtered.length}
+  onPageChange={setPage}
+  onPageSizeChange={size => { setPageSize(size); setPage(1); }}
+/>
+```
+
+## Mobile Responsive
+
+Breakpoint duy nhất: **768px** (mobile ≤ 768px, desktop > 768px).
+
+**Layout shell** (DashboardLayout) đã handle:
+- Sidebar ẩn mặc định trên mobile, slide-in qua hamburger menu
+- Hamburger button chỉ hiện trên mobile (`display: none` → `display: flex` tại `@media (max-width: 768px)`)
+- Overlay mờ khi sidebar mở
+
+**Trong page/feature CSS**, cần thêm responsive cho:
+```css
+/* Content padding */
+.page { padding: 28px 32px; }
+@media (max-width: 768px) {
+  .page { padding: 16px; }
+}
+
+/* Table: ẩn cột ít quan trọng trên mobile */
+@media (max-width: 768px) {
+  .table th:nth-child(2),
+  .table td:nth-child(2) { display: none; }  /* ẩn cột email */
+}
+
+/* Cards: 1 cột trên mobile */
+@media (max-width: 768px) {
+  .grid { grid-template-columns: 1fr; }
+}
+```
+
+**Quy tắc:**
+- Không dùng `px` cố định cho width khi có thể dùng `%` hoặc `min()` / `max()`
+- Touch target tối thiểu **44px** height cho button/link trên mobile
+- Nếu table có nhiều cột → ẩn cột ít quan trọng trên mobile (`@media` + `display: none`)
+- Panel/modal: `width: 100%; border-radius: 0` trên mobile (slide từ bottom hoặc fullscreen)
 
 ## Database Naming Convention (Prisma + PostgreSQL)
 

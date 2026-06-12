@@ -16,6 +16,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (open) listRoles().then(r => setRoles(r.items ?? []));
@@ -23,7 +24,22 @@ export default function AddUserPanel({ open, onClose }: Props) {
 
   function reset() {
     setName(''); setEmail(''); setPassword('');
-    setSelectedRoleIds([]); setSearch(''); setError(null);
+    setSelectedRoleIds([]); setSearch(''); setError(null); setFieldErrors({});
+  }
+
+  function clearField(field: string) {
+    setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+  }
+
+  function validate() {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) errs.name = 'Vui lòng nhập tên hiển thị.';
+    if (!email.trim()) errs.email = 'Vui lòng nhập email.';
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = 'Email không hợp lệ.';
+    if (!password) errs.password = 'Vui lòng nhập mật khẩu.';
+    else if (password.length < 6) errs.password = 'Mật khẩu tối thiểu 6 ký tự.';
+    if (selectedRoleIds.length === 0) errs.roleIds = 'Vui lòng chọn ít nhất một vai trò.';
+    return errs;
   }
 
   function handleClose() { reset(); onClose(); }
@@ -37,6 +53,9 @@ export default function AddUserPanel({ open, onClose }: Props) {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const errs = validate();
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+    setFieldErrors({});
     setSaving(true);
     try {
       await createUser({ email: email.trim(), name: name.trim(), password, roleIds: selectedRoleIds });
@@ -73,17 +92,35 @@ export default function AddUserPanel({ open, onClose }: Props) {
       <form id="add-user-form" onSubmit={submit} className={s.form}>
         <div className={s.field}>
           <label className={s.label}>Tên hiển thị</label>
-          <input className={s.input} value={name} onChange={e => setName(e.target.value)} required autoFocus />
+          <input
+            className={`${s.input} ${fieldErrors.name ? s.inputError : ''}`}
+            value={name}
+            onChange={e => { setName(e.target.value); clearField('name'); }}
+            autoFocus
+          />
+          {fieldErrors.name && <span className={s.fieldError}>{fieldErrors.name}</span>}
         </div>
 
         <div className={s.field}>
           <label className={s.label}>Email</label>
-          <input className={s.input} type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+          <input
+            className={`${s.input} ${fieldErrors.email ? s.inputError : ''}`}
+            type="email"
+            value={email}
+            onChange={e => { setEmail(e.target.value); clearField('email'); }}
+          />
+          {fieldErrors.email && <span className={s.fieldError}>{fieldErrors.email}</span>}
         </div>
 
         <div className={s.field}>
           <label className={s.label}>Mật khẩu</label>
-          <input className={s.input} type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+          <input
+            className={`${s.input} ${fieldErrors.password ? s.inputError : ''}`}
+            type="password"
+            value={password}
+            onChange={e => { setPassword(e.target.value); clearField('password'); }}
+          />
+          {fieldErrors.password && <span className={s.fieldError}>{fieldErrors.password}</span>}
         </div>
 
         <div className={s.divider} />
@@ -96,6 +133,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {fieldErrors.roleIds && <span className={s.fieldError}>{fieldErrors.roleIds}</span>}
         </div>
 
         {filteredSystem.length > 0 && (

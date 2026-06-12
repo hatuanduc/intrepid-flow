@@ -115,8 +115,10 @@ apps/web/src/
 
 ### Layout của một trang list (Users, Roles, Modules...)
 
+Open/borderless table style (Stripe-inspired) — no outer box, full-width, row separators only.
+
 ```
-.page (padding: 28px 32px, max-width: 960px)
+.page (padding: 28px 32px, no max-width)
   ├── .pageHeader (flex, space-between, mb: 20-24px)
   │     ├── h1.pageTitle (font: 20px/600/#1a1f36)
   │     └── button.btnPrimary (+ Thêm ...)
@@ -124,13 +126,13 @@ apps/web/src/
   ├── .chips (flex, gap: 8px, mb: 12px)              ← stats chips: filter + count display
   │     └── button.chip / button.chipSelected
   │
-  ├── .filterBar (bg #f7fafc, border, border-radius: 8px 8px 0 0)  ← search input
+  ├── .filterBar (transparent bg, border-bottom only) ← search input
   │     └── .searchWrap → .searchInput
   │
-  └── .tableWrap (border: 1px #e3e8ee, border-top: none, border-radius: 0 0 8px 8px)
+  └── .tableWrap (no outer border, no border-radius)
         └── table.table
-              ├── thead: th uppercase, 11px, #8898aa, bg #f7fafc
-              └── tbody: tr hover bg #fafbfd, td 13px #3c4257
+              ├── thead: th uppercase, 11px, #8898aa, no bg, border-bottom only
+              └── tbody: tr hover bg #fafbfd, td row separator only
 ```
 
 ### Layout của một trang settings-hub (links đến sub-sections)
@@ -205,17 +207,17 @@ const chips = [
 ```
 
 ```css
-.chips        { display: flex; gap: 8px; margin-bottom: 12px; }
-.chip         { display: flex; align-items: center; gap: 7px; padding: 7px 14px;
-                border: 1px solid var(--color-border); border-radius: 8px;
-                background: var(--bg-surface); font-size: 13px; font-weight: 500;
+.chips        { display: flex; gap: 6px; margin-bottom: 12px; }
+.chip         { display: flex; align-items: center; gap: 6px; padding: 5px 10px;
+                border: 1px solid var(--color-border); border-radius: 6px;
+                background: var(--bg-surface); font-size: 12px; font-weight: 500;
                 color: var(--color-secondary); cursor: pointer;
                 transition: border-color 0.15s, background 0.15s; }
 .chip:hover   { background: var(--bg-page); }
 .chipSelected { border-color: var(--color-accent-active); background: var(--color-accent-light);
                 color: var(--color-accent-active); }
 .chipCount    { font-size: 11px; font-weight: 600; background: var(--bg-subtle);
-                color: var(--color-muted); padding: 1px 6px; border-radius: 10px; }
+                color: var(--color-muted); padding: 1px 5px; border-radius: 10px; }
 .chipSelected .chipCount { background: #ebe8ff; color: var(--color-accent-active); }
 ```
 
@@ -234,9 +236,9 @@ Nằm ngay trên `.tableWrap`, dùng `border-radius: 8px 8px 0 0` và `border-bo
 ```
 
 ```css
-.filterBar    { padding: 10px 14px; background: var(--bg-table-head);
-                border: 1px solid var(--color-border); border-bottom: none;
-                border-radius: 8px 8px 0 0; display: flex; align-items: center; gap: 10px; }
+.filterBar    { padding: 10px 0; background: transparent;
+                border: none; border-bottom: 1px solid var(--color-border);
+                display: flex; align-items: center; gap: 10px; }
 .searchWrap   { position: relative; display: flex; align-items: center;
                 flex: 1; max-width: 280px; }
 .searchIcon   { position: absolute; left: 9px; color: var(--color-subtle); pointer-events: none; }
@@ -251,20 +253,19 @@ Nằm ngay trên `.tableWrap`, dùng `border-radius: 8px 8px 0 0` và `border-bo
 
 ### 3.3 Table
 
-- `border: 1px solid #e3e8ee` bao ngoài, `border-top: none` (tabs sát table)
-- `border-radius: 0 0 8px 8px`
-- `thead`: bg `#f7fafc`, text `11px uppercase #8898aa`
-- `tbody tr`: hover `#fafbfd`, `border-bottom: 1px solid #f0f4f8`
+Open/borderless style — no outer box, full width, row separators only (Stripe-inspired).
+
+- `thead`: no background, only `border-bottom: 1px solid #e3e8ee`
+- `tbody tr`: hover `#fafbfd`, row separator `1px solid #f0f4f8`
+- No outer border, no border-radius on `.tableWrap`
 - Column cuối cùng: nút `⋯` ẩn khi không hover, hiện khi hover row
 
 ```css
-.tableWrap  { border: 1px solid #e3e8ee; border-top: none; border-radius: 0 0 8px 8px;
-              background: #fff; overflow: hidden; }
+.tableWrap  { background: #fff; overflow: visible; }
 .table      { width: 100%; border-collapse: collapse; }
-.table th   { font-size: 11px; font-weight: 600; color: #8898aa; text-transform: uppercase;
-              letter-spacing: 0.05em; text-align: left; padding: 10px 16px;
-              background: #f7fafc; border-bottom: 1px solid #e3e8ee; }
-.table td   { padding: 12px 16px; font-size: 13px; color: #3c4257;
+.table th   { font-size: 12px; font-weight: 600; color: #3c4257; text-align: left;
+              padding: 10px 16px; background: transparent; border-bottom: 1px solid #e3e8ee; }
+.table td   { padding: 6px 16px; font-size: 13px; font-weight: 500; color: #3c4257;
               border-bottom: 1px solid #f0f4f8; vertical-align: middle; }
 .table tr:last-child td { border-bottom: none; }
 .table tr:hover td      { background: #fafbfd; }
@@ -293,8 +294,8 @@ function avatarColor(name: string) {
 
 ```css
 .nameCell   { display: flex; align-items: center; gap: 10px; }
-.avatar     { width: 30px; height: 30px; border-radius: 50%; color: #fff;
-              font-size: 11px; font-weight: 600; display: flex; align-items: center;
+.avatar     { width: 26px; height: 26px; border-radius: 50%; color: #fff;
+              font-size: 10px; font-weight: 600; display: flex; align-items: center;
               justify-content: center; flex-shrink: 0; }
               /* background set inline via avatarColor() */
 .userName   { font-weight: 500; color: #1a1f36; }

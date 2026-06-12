@@ -12,7 +12,12 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+
+  function clearField(field: string) {
+    setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+  }
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -23,6 +28,11 @@ export default function LoginPage() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    const errs: Record<string, string> = {};
+    if (!username.trim()) errs.username = 'Vui lòng nhập tên đăng nhập.';
+    if (!password) errs.password = 'Vui lòng nhập mật khẩu.';
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+    setFieldErrors({});
     setLoading(true);
     try {
       const result = await login(username.trim(), password);
@@ -60,27 +70,26 @@ export default function LoginPage() {
             <label className={styles.field}>
               <span className={styles.label}>Tên đăng nhập</span>
               <input
-                className={styles.input}
+                className={`${styles.input} ${fieldErrors.username ? styles.inputError : ''}`}
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={e => { setUsername(e.target.value); clearField('username'); }}
                 type="text"
                 autoComplete="username"
                 autoFocus
-                required
               />
+              {fieldErrors.username && <span className={styles.fieldError}>{fieldErrors.username}</span>}
             </label>
 
             <div className={styles.field}>
               <span className={styles.label}>Mật khẩu</span>
               <div className={styles.passwordWrap}>
                 <input
-                  className={styles.input}
+                  className={`${styles.input} ${fieldErrors.password ? styles.inputError : ''}`}
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={e => { setPassword(e.target.value); clearField('password'); }}
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  required
                 />
                 <button
                   type="button"
@@ -102,7 +111,8 @@ export default function LoginPage() {
                     </svg>
                   )}
                 </button>
-              </div>
+                {fieldErrors.password && <span className={styles.fieldError}>{fieldErrors.password}</span>}
+            </div>
             </div>
 
             {error && (

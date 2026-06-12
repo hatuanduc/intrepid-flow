@@ -21,6 +21,7 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (open && user) {
@@ -34,6 +35,17 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
     }
   }, [open, user?.id]);
 
+  function clearField(field: string) {
+    setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+  }
+
+  function validate() {
+    const errs: Record<string, string> = {};
+    if (password && password.length < 6) errs.password = 'Mật khẩu tối thiểu 6 ký tự.';
+    if (selectedRoleIds.length === 0) errs.roleIds = 'Vui lòng chọn ít nhất một vai trò.';
+    return errs;
+  }
+
   function toggleRole(id: string) {
     setSelectedRoleIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
@@ -44,6 +56,9 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
     e.preventDefault();
     if (!user) return;
     setError(null);
+    const errs = validate();
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+    setFieldErrors({});
     setSaving(true);
     try {
       await updateUser(user.id, {
@@ -104,12 +119,13 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
         <div className={s.field}>
           <label className={s.label}>Mật khẩu mới</label>
           <input
-            className={s.input}
+            className={`${s.input} ${fieldErrors.password ? s.inputError : ''}`}
             type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
+            onChange={e => { setPassword(e.target.value); clearField('password'); }}
             placeholder="Để trống nếu không đổi"
           />
+          {fieldErrors.password && <span className={s.fieldError}>{fieldErrors.password}</span>}
         </div>
 
         <div className={s.field}>
@@ -134,6 +150,7 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
+          {fieldErrors.roleIds && <span className={s.fieldError}>{fieldErrors.roleIds}</span>}
         </div>
 
         {filteredSystem.length > 0 && (

@@ -127,6 +127,35 @@ async function main() {
   });
 
   console.log('Seed user ready:', user.email);
+
+  // Mock users để test pagination
+  const mockUsers = [
+    'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Văn Cường', 'Phạm Thị Dung', 'Hoàng Văn Em',
+    'Đặng Thị Phương', 'Bùi Văn Giang', 'Vũ Thị Hà', 'Đỗ Văn Inh', 'Ngô Thị Kim',
+    'Dương Văn Long', 'Lý Thị Mai', 'Trịnh Văn Nam', 'Phan Thị Oanh', 'Võ Văn Phúc',
+    'Đinh Thị Quỳnh', 'Lưu Văn Sơn', 'Tạ Thị Thủy', 'Hà Văn Ước', 'Mai Thị Vân',
+    'Cao Văn Xuân', 'Tô Thị Yến', 'Chu Văn Zung', 'Nông Thị Ánh', 'Thái Văn Bảo',
+  ];
+
+  for (let i = 0; i < mockUsers.length; i++) {
+    const mockEmail = `user${i + 1}@intrepid.com`;
+    const mockUser = await prisma.user.upsert({
+      where: { email: mockEmail },
+      create: {
+        email: mockEmail,
+        name: mockUsers[i],
+        password: hashed,
+        isActive: i % 5 !== 0, // mỗi 5 user thì 1 bị khóa
+      },
+      update: { name: mockUsers[i] },
+    });
+    await prisma.userRole.upsert({
+      where: { userId_roleId: { userId: mockUser.id, roleId: adminRole.id } },
+      create: { userId: mockUser.id, roleId: adminRole.id },
+      update: {},
+    });
+  }
+  console.log(`Seeded ${mockUsers.length} mock users`);
 }
 
 main()

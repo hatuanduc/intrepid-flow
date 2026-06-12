@@ -1,0 +1,66 @@
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--color-border-light);
+}
+
+.left {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.arrow {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--color-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.arrow:hover:not(:disabled) {
+  background: var(--bg-page);
+  color: var(--color-ink);
+}
+.arrow:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.info {
+  margin-left: 8px;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.label {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.select {
+  padding: 4px 8px;
+  font-size: 13px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  color: var(--color-secondary);
+  cursor: pointer;
+  outline: none;
+}
+.select:focus {
+  border-color: var(--color-accent-active);
+}

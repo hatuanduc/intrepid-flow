@@ -264,6 +264,7 @@
   position: sticky;
   top: 52px;
   height: calc(100dvh - 52px);
+  /* mobile: position overridden in @media */
 }
 
 .navGroup {
@@ -355,11 +356,147 @@
 }
 .chevronUp { transform: rotate(180deg); }
 
+/* ── Nav item with pin button ── */
+.navItemWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.navItemWrap .navItem {
+  flex: 1;
+  padding-right: 28px;
+}
+.navItemWrap:hover .pinBtn { opacity: 1; }
+
+.pinBtn {
+  position: absolute;
+  right: 2px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--color-subtle);
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s, color 0.1s;
+  flex-shrink: 0;
+}
+.pinBtn:hover { background: var(--bg-subtle); color: var(--color-muted); }
+.pinBtnActive {
+  opacity: 1 !important;
+  color: var(--color-accent-active);
+}
+
+/* ── Hamburger button (hidden on desktop) ── */
+.menuBtn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-muted);
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.menuBtn:hover { background: var(--bg-subtle); }
+
+/* Overlay khi sidebar mở trên mobile */
+.sidebarOverlay {
+  display: none;
+}
+
+/* ── More expand button (Xem thêm) ── */
+.moreExpandBtn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+  text-align: left;
+}
+.moreExpandBtn:hover,
+.moreExpandBtnOpen { background: var(--bg-page); color: var(--color-ink); }
+
+.moreChevron {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  color: var(--color-subtle);
+  transition: transform 0.15s;
+  flex-shrink: 0;
+}
+.moreChevronOpen { transform: rotate(90deg); }
+
+.moreExpandItems { padding-top: 2px; }
+
+.moreEmpty {
+  font-size: 12px;
+  color: var(--color-subtle);
+  padding: 4px 8px 6px 32px;
+  line-height: 1.4;
+}
+
 /* ── CONTENT ── */
 .content {
   flex: 1;
   min-width: 0;
-  padding: 24px 32px;
+  padding: 0;
   overflow-y: auto;
   background: var(--bg-surface);
+}
+
+/* ── MOBILE RESPONSIVE ── */
+@media (max-width: 768px) {
+  .menuBtn { display: flex; }
+
+  .accountName { display: none; }
+  .chevron { display: none; }
+
+  .search { width: 120px; }
+
+  .sidebar {
+    position: fixed;
+    top: 52px;
+    left: 0;
+    z-index: 50;
+    height: calc(100dvh - 52px);
+    transform: translateX(-100%);
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: none;
+  }
+  .sidebarOpen {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,0.12);
+  }
+
+  .sidebarOverlay {
+    display: block;
+    position: fixed;
+    inset: 52px 0 0 0;
+    background: rgba(0,0,0,0.28);
+    z-index: 49;
+    animation: fadeIn 0.18s ease;
+  }
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  .content { padding: 0; }
 }

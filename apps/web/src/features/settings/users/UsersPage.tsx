@@ -11,6 +11,7 @@ import AddUserPanel from './AddUserPanel';
 import EditUserPanel from './EditUserPanel';
 import RolePanel from '../roles/RolePanel';
 import { Spinner } from '../../../components/common/PageLoader';
+import Pagination from '../../../components/common/Pagination';
 import s from './UsersPage.module.css';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -343,6 +344,10 @@ export default function UsersPage() {
   const [loadingRoles, setLoadingRoles] = useState(false);
   const [panelRole, setPanelRole] = useState<RoleItem | null | 'new'>(null);
 
+  /* Pagination */
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
   /* Delete */
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -406,6 +411,8 @@ export default function UsersPage() {
 
   const hasAnyFilter = !!(activeFilters.name || activeFilters.email || activeFilters.roleIds?.length);
 
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   const chips: { key: StatusFilter; label: string; count: number }[] = [
     { key: 'all',      label: 'Tất cả',         count: users.length },
     { key: 'active',   label: 'Đang hoạt động', count: active.length },
@@ -460,7 +467,7 @@ export default function UsersPage() {
               <button
                 key={c.key}
                 className={`${s.chip} ${statusFilter === c.key ? s.chipSelected : ''}`}
-                onClick={() => setStatusFilter(c.key)}
+                onClick={() => { setStatusFilter(c.key); setPage(1); }}
               >
                 <span className={s.chipLabel}>{c.label}</span>
                 <span className={s.chipCount}>{c.count}</span>
@@ -546,17 +553,17 @@ export default function UsersPage() {
               <table className={s.table}>
                 <thead>
                   <tr>
-                    <th>Tên</th>
-                    <th>Email</th>
-                    <th>Vai trò</th>
-                    <th>Trạng thái</th>
-                    <th />
+                    <th className={s.th}>Tên</th>
+                    <th className={s.th}>Email</th>
+                    <th className={s.th}>Vai trò</th>
+                    <th className={s.th}>Trạng thái</th>
+                    <th className={s.th} />
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(u => (
+                  {paginated.map(u => (
                     <tr key={u.id} onClick={() => setEditUser(u)}>
-                      <td>
+                      <td className={s.td}>
                         <div className={s.nameCell}>
                           <span className={s.avatar} style={{ background: avatarColor(u.name ?? u.email) }}>
                             {(u.name ?? u.email)[0].toUpperCase()}
@@ -564,8 +571,8 @@ export default function UsersPage() {
                           <span className={s.userName}>{u.name ?? '—'}</span>
                         </div>
                       </td>
-                      <td className={s.emailCell}>{u.email}</td>
-                      <td>
+                      <td className={`${s.td} ${s.emailCell}`}>{u.email}</td>
+                      <td className={s.td}>
                         {u.roles.length > 0 ? (
                           <div className={s.roleList}>
                             <RoleBadge name={u.roles[0].name} />
@@ -575,12 +582,12 @@ export default function UsersPage() {
                           <span className={s.noRole}>—</span>
                         )}
                       </td>
-                      <td>
+                      <td className={s.td}>
                         <span className={u.isActive ? s.badgeActive : s.badgeInactive}>
                           {u.isActive ? 'Hoạt động' : 'Đã khóa'}
                         </span>
                       </td>
-                      <td>
+                      <td className={s.td}>
                         <MoreMenu
                           onEdit={() => setEditUser(u)}
                           onDelete={() => setDeleteTarget({ type: 'user', item: u })}
@@ -591,6 +598,13 @@ export default function UsersPage() {
                 </tbody>
               </table>
             )}
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={filtered.length}
+              onPageChange={setPage}
+              onPageSizeChange={size => { setPageSize(size); setPage(1); }}
+            />
           </div>
         </>
       )}
