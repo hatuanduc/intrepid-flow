@@ -1,5 +1,39 @@
 # Project Guidelines
 
+## Tech Stack & Project Structure
+
+Monorepo (npm workspaces):
+- `apps/api` — **NestJS** backend, port 4000, Prisma + PostgreSQL
+- `apps/web` — **Next.js** (App Router), port 3000, TypeScript, CSS Modules
+
+```
+apps/
+  api/src/
+    modules/[feature]/         ← feature modules (controller + service + dto/)
+    common/
+      filters/                 ← global HTTP exception filter
+      decorators/              ← @HasPermission()
+      guards/                  ← PermissionGuard
+    prisma/                    ← PrismaModule (@Global), PrismaService
+  web/src/
+    app/
+      (dashboard)/             ← protected layout, UserContext, page routes
+      login/                   ← public login page
+    features/settings/         ← Users/Roles/Permissions feature pages
+    components/
+      common/                  ← PageLoader, RightPanel, Pagination, CanAccess, AccessDenied
+      layout/                  ← DashboardLayout (sidebar, topbar)
+      icons/                   ← all SVG icon components
+    hooks/                     ← useHasPermission, useHasAnyPermission
+    lib/
+      api.ts                   ← tất cả API calls (dùng request() helper)
+      auth.ts                  ← getToken / setToken / clearToken (localStorage)
+    styles/
+      ui.module.css            ← shared CSS design primitives (single source of truth)
+```
+
+Dev: `npm run dev` từ root chạy cả api lẫn web đồng thời.
+
 ## UI Design System
 Full reference: @ui-reference.md — **read this before building any new page or component.**
 
@@ -144,17 +178,23 @@ export class XxxResponseDto {
 }
 ```
 
-**Controller** — luôn có đủ Swagger decorators:
+**Controller** — luôn có đủ Swagger decorators + RBAC guards:
 ```typescript
 @ApiTags('Feature')
 @ApiBearerAuth()
 @Controller('management')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)   // thứ tự: Jwt trước, Permission sau
 export class XxxController {
   @Get('items')
+  @HasPermission('xxx:view')
   @ApiOperation({ summary: '...' })
   @ApiResponse({ status: 200, type: XxxResponseDto, isArray: true })
   async list() { ... }
+
+  @Post('items')
+  @HasPermission('xxx:create')
+  @ApiOperation({ summary: '...' })
+  async create(@Body() body: CreateXxxDto) { ... }
 }
 ```
 
@@ -382,37 +422,121 @@ Khi thiếu quyền → API trả về `403 { "statusCode": 403, "code": "FORBID
 ### Frontend — kiểm tra quyền trong component
 
 ```tsx
-// Hook — dùng trong logic
 import { useHasPermission } from '../../../hooks/useHasPermission';
-
-const canCreate = useHasPermission('users:create');
-const canDelete = useHasPermission('users:delete');
-
-// Guard page-level — đầu component, trước return JSX
-if (!useHasPermission('users:view')) return <AccessDenied />;
-
-// Component wrapper — ẩn/hiện UI
+import AccessDenied from '../../../components/common/AccessDenied';
 import CanAccess from '../../../components/common/CanAccess';
 
-<CanAccess permission="users:create">
-  <button onClick={openPanel}>+ Thêm</button>
-</CanAccess>
+export default function UsersPage() {
+  // ⚠️ QUAN TRỌNG: khai báo TẤT CẢ hooks trước bất kỳ early return nào
+  const canView   = useHasPermission('users:view');
+  const canCreate = useHasPermission('users:create');
+  const canEdit   = useHasPermission('users:edit');
+  const canDelete = useHasPermission('users:delete');
+  const [items, setItems] = useState([]);
+  // ... tất cả useState, useEffect khác ở đây
 
-// Conditional callback — ẩn action khi không có quyền
-<MoreMenu
-  onEdit={canEdit ? () => setEdit(item) : undefined}
-  onDelete={canDelete ? () => setDelete(item) : undefined}
-/>
+  // Sau khi khai báo hết hooks, mới được early return
+  if (!canView) return <AccessDenied />;
+
+  return (
+    <>
+      {/* Ẩn/hiện button dựa trên quyền */}
+      {canCreate && <button onClick={openPanel}>+ Thêm</button>}
+
+      {/* Hoặc dùng CanAccess wrapper */}
+      <CanAccess permission="users:create">
+        <button onClick={openPanel}>+ Thêm</button>
+      </CanAccess>
+
+      {/* MoreMenu: pass undefined thay vì callback khi không có quyền */}
+      <MoreMenu
+        onEdit={canEdit ? () => setEdit(item) : undefined}
+        onDelete={canDelete ? () => setDelete(item) : undefined}
+      />
+    </>
+  );
+}
+```
+
+### Lấy thông tin user hiện tại
+
+```tsx
+import { useUser } from '../../../app/(dashboard)/user-context';
+
+const user = useUser(); // { id, email, name, roles: string[], permissions: string[] }
 ```
 
 ### Quy tắc RBAC
 
-- **Backend luôn là lớp bảo vệ thực sự** — frontend chỉ là UX (ẩn nút), không phải security
+- **Backend là lớp bảo vệ thực sự** — frontend chỉ là UX (ẩn nút), không phải security
 - Mọi endpoint management phải có `@HasPermission()` — không exception
-- `MoreMenu` props dạng optional (`onEdit?`, `onDelete?`) — `null` nếu không có cả hai
-- Page-level: `if (!useHasPermission('xxx:view')) return <AccessDenied />` — đặt sau hooks, trước JSX
-- `AccessDenied` component: `components/common/AccessDenied`
-- `CanAccess` component: `components/common/CanAccess` — nhận `permission` + optional `fallback`
+- Khai báo tất cả hooks TRƯỚC `if (!canView) return <AccessDenied />` — React rules of hooks
+- `MoreMenu` props dạng optional (`onEdit?`, `onDelete?`) — `return null` nếu không có cả hai
+- `AccessDenied`: `components/common/AccessDenied`
+- `CanAccess`: `components/common/CanAccess` — props: `permission` + optional `fallback`
+
+## API Client Pattern (Frontend)
+
+Tất cả API calls nằm trong `apps/web/src/lib/api.ts`. Dùng internal `request()` helper:
+
+```typescript
+// Thêm function mới vào lib/api.ts
+export type XxxItem = { id: string; name: string; /* ... */ };
+
+export async function listXxx() {
+  return request<{ items: XxxItem[] }>('/management/xxx', { auth: true });
+}
+
+export async function createXxx(body: { name: string }) {
+  return request<{ item: XxxItem }>('/management/xxx', {
+    method: 'POST',
+    body: JSON.stringify(body),
+    auth: true,
+  });
+}
+
+export async function updateXxx(id: string, body: Partial<{ name: string }>) {
+  return request<{ item: XxxItem }>(`/management/xxx/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+    auth: true,
+  });
+}
+
+export async function deleteXxx(id: string) {
+  return request<{ ok: boolean }>(`/management/xxx/${id}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
+```
+
+- `auth: true` → tự thêm `Authorization: Bearer <token>` header
+- API base URL: `http://localhost:4000` (dev) — configurable qua `NEXT_PUBLIC_API_BASE_URL`
+- Khi API lỗi → `request()` throw `Error(message)` với `message` là error code từ backend (vd: `'EMAIL_EXISTS'`)
+
+## Thêm trang mới vào Sidebar
+
+Sidebar được định nghĩa trong `apps/web/src/components/layout/DashboardLayout.tsx`:
+
+```typescript
+// Luôn hiển thị trong section "Chức năng"
+const FEATURE_NAV: NavItem[] = [
+  { label: 'Quy trình', href: '/modules', icon: WorkflowIcon },
+  { label: 'Cài đặt', href: '/settings', icon: SettingsIcon },
+  // Thêm item mới ở đây
+  { label: 'Báo cáo', href: '/reports', icon: ReportIcon },
+];
+
+// Ẩn dưới "Xem thêm" — dành cho tính năng ít dùng hơn
+const MORE_NAV: NavItem[] = [
+  // Thêm item ít dùng ở đây
+];
+```
+
+Items trong `FEATURE_NAV` và `MORE_NAV` có thể pin vào Shortcuts. `MAIN_NAV` (Tổng quan) không có pin.
+
+Icon: tạo inline SVG `14x14` trong cùng file, theo pattern của `WorkflowIcon` / `SettingsIcon`.
 
 ## Loading / Empty / Error states
 - Full-page loading: `<PageLoader />` from `components/common/PageLoader`
