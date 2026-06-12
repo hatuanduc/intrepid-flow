@@ -62,6 +62,28 @@ Use `RightPanel` component from `components/common/RightPanel` for create/edit f
 Use modal only for destructive confirm (delete, lock).
 See ui-reference.md §4 for full usage pattern.
 
+## Database Naming Convention (Prisma + PostgreSQL)
+
+- **Table names**: snake_case, số nhiều → `users`, `bank_statements`, `user_roles`
+- **Column names**: snake_case → `is_active`, `created_at`, `user_id`
+- **Prisma model**: PascalCase singular → `User`, `BankStatement`
+- **Prisma fields**: camelCase → `isActive`, `createdAt` (TS code dùng bình thường)
+- Luôn thêm `@map("snake_case")` cho mọi camelCase field
+- Luôn thêm `@@map("snake_case_plural")` cho mọi model
+- Relation fields (virtual, không phải column) **không cần** `@map`
+
+```prisma
+model BankStatement {
+  id        String  @id @default(uuid())
+  accountId String  @map("account_id")   // ← scalar field: cần @map
+  isActive  Boolean @map("is_active")
+  createdAt DateTime @map("created_at")
+  account   Account @relation(...)       // ← relation field: KHÔNG @map
+
+  @@map("bank_statements")
+}
+```
+
 ## Loading / Empty / Error states
 - Full-page loading: `<PageLoader />` from `components/common/PageLoader`
 - Inline loading: `<Spinner size={20} />` from same file

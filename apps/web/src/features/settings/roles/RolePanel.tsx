@@ -17,7 +17,6 @@ const MODULE_LABELS: Record<string, string> = {
   dashboard: 'Tổng quan',
   users:     'Người dùng',
   roles:     'Vai trò',
-  branches:  'Chi nhánh',
   modules:   'Trang quy trình',
 };
 

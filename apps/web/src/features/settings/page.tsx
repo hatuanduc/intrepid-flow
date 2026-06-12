@@ -8,28 +8,11 @@ type Group = { label: string; cards: Card[] };
 
 const GROUPS: Group[] = [
   {
-    label: 'Cài đặt tổ chức',
-    cards: [
-      {
-        title: 'Chi nhánh',
-        desc: 'Quản lý các chi nhánh kinh doanh, địa chỉ và trạng thái hoạt động.',
-        href: '/settings/branches',
-        icon: (
-          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
-            <rect x="1.5" y="7" width="4" height="7.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-            <rect x="6" y="4" width="4" height="10.5" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-            <rect x="10.5" y="1.5" width="4" height="13" rx="1" stroke="currentColor" strokeWidth="1.3"/>
-          </svg>
-        ),
-      },
-    ],
-  },
-  {
     label: 'Người dùng & quyền hạn',
     cards: [
       {
         title: 'Tài khoản người dùng',
-        desc: 'Tạo, sửa và quản lý tài khoản nhân viên, gán vai trò theo chi nhánh.',
+        desc: 'Tạo, sửa và quản lý tài khoản nhân viên, gán vai trò trong hệ thống.',
         href: '/settings/users',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">

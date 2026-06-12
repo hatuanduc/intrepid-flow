@@ -10,52 +10,31 @@ datasource db {
 }
 
 model User {
-  id              String            @id @default(uuid())
-  email           String            @unique
-  name            String?
-  password        String
-  isActive        Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  roles           UserRole[]
-  branchRoles     UserBranchRole[]
+  id        String     @id @default(uuid())
+  email     String     @unique
+  name      String?
+  password  String
+  isActive  Boolean    @default(true) @map("is_active")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+  roles     UserRole[]
+
+  @@map("users")
 }
 
-model Branch {
-  id          String           @id @default(uuid())
-  code        String           @unique
-  name        String
-  address     String?
-  isActive    Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  userRoles   UserBranchRole[]
-}
-
-model UserBranchRole {
-  id         String   @id @default(uuid())
-  userId     String
-  branchId   String
-  roleId     String
-  assignedAt DateTime @default(now())
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, branchId, roleId])
-}
 
 model Role {
   id          String           @id @default(uuid())
   key         String           @unique
   name        String
   description String?
-  isSystem    Boolean          @default(false)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  isSystem    Boolean          @default(false) @map("is_system")
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
   users       UserRole[]
-  branchUsers UserBranchRole[]
   permissions RolePermission[]
+
+  @@map("roles")
 }
 
 model Permission {
@@ -65,28 +44,32 @@ model Permission {
   action      String
   label       String
   description String?
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
   roles       RolePermission[]
+
+  @@map("permissions")
 }
 
 model UserRole {
-  userId     String
-  roleId     String
-  assignedAt DateTime @default(now())
+  userId     String   @map("user_id")
+  roleId     String   @map("role_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
   role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+  @@map("user_roles")
 }
 
 model RolePermission {
-  roleId       String
-  permissionId String
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+  @@map("role_permissions")
 }
 
 model WorkflowModule {
@@ -94,8 +77,10 @@ model WorkflowModule {
   key         String   @unique
   name        String
   description String?
-  isEnabled   Boolean  @default(false)
-  sortOrder   Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isEnabled   Boolean  @default(false) @map("is_enabled")
+  sortOrder   Int      @default(0) @map("sort_order")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("workflow_modules")
 }

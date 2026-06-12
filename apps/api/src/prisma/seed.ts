@@ -23,9 +23,6 @@ async function main() {
     { key: 'roles:view',      module: 'roles',     action: 'view',   label: 'Xem vai trò' },
     { key: 'roles:create',    module: 'roles',     action: 'create', label: 'Tạo vai trò' },
     { key: 'roles:update',    module: 'roles',     action: 'update', label: 'Cập nhật vai trò' },
-    { key: 'branches:view',   module: 'branches',  action: 'view',   label: 'Xem chi nhánh' },
-    { key: 'branches:create', module: 'branches',  action: 'create', label: 'Tạo chi nhánh' },
-    { key: 'branches:update', module: 'branches',  action: 'update', label: 'Cập nhật chi nhánh' },
     { key: 'modules:view',    module: 'modules',   action: 'view',   label: 'Xem danh sách quy trình' },
   ];
 
