@@ -1,5 +1,6 @@
 import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { userWithAuthArgs } from './types/user-with-auth.type';
 import jwt from 'jsonwebtoken';
 
 @Injectable()
@@ -13,14 +14,21 @@ export class JwtAuthGuard implements CanActivate {
     if (!token) return false;
     try {
       const payload: any = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');
-      const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        ...userWithAuthArgs,
+      });
       if (!user || !user.isActive) return false;
+      const roleRows = user.roles ?? [];
+      const permissions = Array.from(
+        new Set(roleRows.flatMap(r => r.role.permissions.map(rp => rp.permission.key))),
+      );
       req.authUser = {
         id: user.id,
         email: user.email,
         name: user.name,
-        roles: (user as any).roles ?? [],
-        permissions: [],
+        roles: roleRows.map(r => r.role.key),
+        permissions,
       };
       return true;
     } catch {

@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Post, Put, Param, UseGuards } from '@nes
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { RolesService } from './roles.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { HasPermission } from '../../common/decorators/has-permission.decorator';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleResponseDto } from './dto/role-response.dto';
@@ -9,11 +11,12 @@ import { RoleResponseDto } from './dto/role-response.dto';
 @ApiTags('Roles')
 @ApiBearerAuth()
 @Controller('management')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class RolesController {
   constructor(private roles: RolesService) {}
 
   @Get('roles')
+  @HasPermission('roles:view')
   @ApiOperation({ summary: 'Danh sách vai trò' })
   @ApiResponse({ status: 200, type: RoleResponseDto, isArray: true })
   async getRoles() {
@@ -32,6 +35,7 @@ export class RolesController {
   }
 
   @Post('roles')
+  @HasPermission('roles:create')
   @ApiOperation({ summary: 'Tạo vai trò mới' })
   @ApiResponse({ status: 201, type: RoleResponseDto })
   async postRole(@Body() body: CreateRoleDto) {
@@ -50,6 +54,7 @@ export class RolesController {
   }
 
   @Put('roles/:id')
+  @HasPermission('roles:edit')
   @ApiOperation({ summary: 'Cập nhật vai trò' })
   @ApiResponse({ status: 200, type: RoleResponseDto })
   async putRole(@Param('id') id: string, @Body() body: UpdateRoleDto) {
@@ -68,6 +73,7 @@ export class RolesController {
   }
 
   @Delete('roles/:id')
+  @HasPermission('roles:delete')
   @ApiOperation({ summary: 'Xóa vai trò' })
   @ApiResponse({ status: 200, schema: { example: { ok: true } } })
   async deleteRole(@Param('id') id: string) {

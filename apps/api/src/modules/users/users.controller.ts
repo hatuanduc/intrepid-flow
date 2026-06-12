@@ -2,6 +2,8 @@ import { Body, Controller, Delete, Get, Post, Put, Query, UseGuards, Param } fro
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { HasPermission } from '../../common/decorators/has-permission.decorator';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UserResponseDto } from './dto/user-response.dto';
@@ -9,11 +11,12 @@ import { UserResponseDto } from './dto/user-response.dto';
 @ApiTags('Users')
 @ApiBearerAuth()
 @Controller('management')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermissionGuard)
 export class UsersController {
   constructor(private users: UsersService) {}
 
   @Get('users')
+  @HasPermission('users:view')
   @ApiOperation({ summary: 'Danh sách người dùng' })
   @ApiResponse({ status: 200, type: UserResponseDto, isArray: true })
   async getUsers(@Query('search') search?: string) {
@@ -22,6 +25,7 @@ export class UsersController {
   }
 
   @Post('users')
+  @HasPermission('users:create')
   @ApiOperation({ summary: 'Tạo người dùng mới' })
   @ApiResponse({ status: 201, type: UserResponseDto })
   async postUser(@Body() body: CreateUserDto) {
@@ -29,6 +33,7 @@ export class UsersController {
   }
 
   @Put('users/:id')
+  @HasPermission('users:edit')
   @ApiOperation({ summary: 'Cập nhật người dùng' })
   @ApiResponse({ status: 200, type: UserResponseDto })
   async putUser(@Param('id') id: string, @Body() body: UpdateUserDto) {
@@ -36,6 +41,7 @@ export class UsersController {
   }
 
   @Delete('users/:id')
+  @HasPermission('users:delete')
   @ApiOperation({ summary: 'Xóa người dùng' })
   @ApiResponse({ status: 200, schema: { example: { ok: true } } })
   async deleteUser(@Param('id') id: string) {

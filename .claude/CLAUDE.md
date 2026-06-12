@@ -322,6 +322,98 @@ model BankStatement {
 }
 ```
 
+## RBAC — Phân quyền theo vai trò
+
+Hệ thống phân quyền 3 lớp: DB schema → Backend guard → Frontend check.
+
+### Permission keys (định nghĩa trong permissions.service.ts, sync on startup)
+
+| Key | Mô tả |
+|---|---|
+| `users:view` | Xem danh sách user |
+| `users:create` | Tạo user mới |
+| `users:edit` | Chỉnh sửa user |
+| `users:delete` | Xóa user |
+| `roles:view` | Xem vai trò |
+| `roles:create` | Tạo vai trò |
+| `roles:edit` | Chỉnh sửa vai trò |
+| `roles:delete` | Xóa vai trò |
+| `permissions:view` | Xem danh sách quyền |
+| `modules:view` | Xem workflow modules |
+| `modules:manage` | Bật/tắt workflow module |
+
+Thêm permission mới → thêm vào `permissions.service.ts` (mảng `CORE_PERMISSIONS`), restart để sync.
+
+### Backend — bảo vệ endpoint
+
+```typescript
+// Dùng cả hai guard: JwtAuthGuard (verify token) + PermissionGuard (check permission)
+@Controller('management')
+@UseGuards(JwtAuthGuard, PermissionGuard)  // thứ tự quan trọng
+export class XxxController {
+  @Get('items')
+  @HasPermission('xxx:view')             // decorator trên method
+  async list() { ... }
+
+  @Post('items')
+  @HasPermission('xxx:create')
+  async create() { ... }
+
+  @Put('items/:id')
+  @HasPermission('xxx:edit')
+  async update() { ... }
+
+  @Delete('items/:id')
+  @HasPermission('xxx:delete')
+  async delete() { ... }
+}
+```
+
+Import:
+```typescript
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { HasPermission } from '../../common/decorators/has-permission.decorator';
+```
+
+Khi thiếu quyền → API trả về `403 { "statusCode": 403, "code": "FORBIDDEN" }`.
+
+`JwtAuthGuard` đã load đầy đủ `roles[]` + `permissions[]` vào `req.authUser` — không cần query thêm.
+
+### Frontend — kiểm tra quyền trong component
+
+```tsx
+// Hook — dùng trong logic
+import { useHasPermission } from '../../../hooks/useHasPermission';
+
+const canCreate = useHasPermission('users:create');
+const canDelete = useHasPermission('users:delete');
+
+// Guard page-level — đầu component, trước return JSX
+if (!useHasPermission('users:view')) return <AccessDenied />;
+
+// Component wrapper — ẩn/hiện UI
+import CanAccess from '../../../components/common/CanAccess';
+
+<CanAccess permission="users:create">
+  <button onClick={openPanel}>+ Thêm</button>
+</CanAccess>
+
+// Conditional callback — ẩn action khi không có quyền
+<MoreMenu
+  onEdit={canEdit ? () => setEdit(item) : undefined}
+  onDelete={canDelete ? () => setDelete(item) : undefined}
+/>
+```
+
+### Quy tắc RBAC
+
+- **Backend luôn là lớp bảo vệ thực sự** — frontend chỉ là UX (ẩn nút), không phải security
+- Mọi endpoint management phải có `@HasPermission()` — không exception
+- `MoreMenu` props dạng optional (`onEdit?`, `onDelete?`) — `null` nếu không có cả hai
+- Page-level: `if (!useHasPermission('xxx:view')) return <AccessDenied />` — đặt sau hooks, trước JSX
+- `AccessDenied` component: `components/common/AccessDenied`
+- `CanAccess` component: `components/common/CanAccess` — nhận `permission` + optional `fallback`
+
 ## Loading / Empty / Error states
 - Full-page loading: `<PageLoader />` from `components/common/PageLoader`
 - Inline loading: `<Spinner size={20} />` from same file

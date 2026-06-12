@@ -12,6 +12,8 @@ import EditUserPanel from './EditUserPanel';
 import RolePanel from '../roles/RolePanel';
 import { Spinner } from '../../../components/common/PageLoader';
 import Pagination from '../../../components/common/Pagination';
+import AccessDenied from '../../../components/common/AccessDenied';
+import { useUser } from '../../../app/(dashboard)/user-context';
 import s from './UsersPage.module.css';
 
 type StatusFilter = 'all' | 'active' | 'inactive';
@@ -159,9 +161,10 @@ function MoreMenu({
   onEdit,
   onDelete,
 }: {
-  onEdit: () => void;
-  onDelete: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }) {
+  if (!onEdit && !onDelete) return null;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -186,8 +189,8 @@ function MoreMenu({
       </button>
       {open && (
         <div className={s.moreDropdown}>
-          <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>Chỉnh sửa</button>
-          <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpen(false); onDelete(); }}>Xóa</button>
+          {onEdit && <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>Chỉnh sửa</button>}
+          {onDelete && <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpen(false); onDelete(); }}>Xóa</button>}
         </div>
       )}
     </div>
@@ -329,6 +332,13 @@ function ConfirmModal({
 
 /* ══════════════════════════════════════════════ */
 export default function UsersPage() {
+  const currentUser = useUser();
+  const canViewUsers   = currentUser?.permissions.includes('users:view')   ?? false;
+  const canCreateUser  = currentUser?.permissions.includes('users:create')  ?? false;
+  const canCreateRole  = currentUser?.permissions.includes('roles:create')  ?? false;
+  const canEditUser    = currentUser?.permissions.includes('users:edit')    ?? false;
+  const canDeleteUser  = currentUser?.permissions.includes('users:delete')  ?? false;
+
   const [mainTab, setMainTab] = useState<MainTab>('users');
 
   /* Users */
@@ -428,14 +438,16 @@ export default function UsersPage() {
     return 'Không có tài khoản nào.';
   }
 
+  if (!canViewUsers) return <AccessDenied />;
+
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
         <h1 className={s.pageTitle}>Người dùng & Vai trò</h1>
-        {mainTab === 'users' && (
+        {mainTab === 'users' && canCreateUser && (
           <button className={s.btnPrimary} onClick={() => setShowAdd(true)}>+ Thêm tài khoản</button>
         )}
-        {mainTab === 'roles' && (
+        {mainTab === 'roles' && canCreateRole && (
           <button className={s.btnPrimary} onClick={() => setPanelRole('new')}>+ Tạo vai trò</button>
         )}
       </div>
@@ -589,8 +601,8 @@ export default function UsersPage() {
                       </td>
                       <td className={s.td}>
                         <MoreMenu
-                          onEdit={() => setEditUser(u)}
-                          onDelete={() => setDeleteTarget({ type: 'user', item: u })}
+                          onEdit={canEditUser ? () => setEditUser(u) : undefined}
+                          onDelete={canDeleteUser ? () => setDeleteTarget({ type: 'user', item: u }) : undefined}
                         />
                       </td>
                     </tr>
