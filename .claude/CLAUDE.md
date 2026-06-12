@@ -62,6 +62,74 @@ Use `RightPanel` component from `components/common/RightPanel` for create/edit f
 Use modal only for destructive confirm (delete, lock).
 See ui-reference.md §4 for full usage pattern.
 
+## API Controller & DTO Pattern (NestJS)
+
+Mỗi module có cấu trúc:
+```
+modules/[feature]/
+  dto/
+    create-[feature].dto.ts     ← request body IN (POST)
+    update-[feature].dto.ts     ← request body IN (PUT/PATCH)
+    [feature]-response.dto.ts   ← response OUT (dùng cho Swagger, không expose password/sensitive fields)
+  [feature].controller.ts
+  [feature].service.ts
+```
+
+**DTO request** — dùng class-validator + @ApiProperty:
+```typescript
+export class CreateXxxDto {
+  @ApiProperty({ example: '...' })
+  @IsString() @MinLength(1)
+  name!: string;          // luôn dùng ! (definite assignment)
+}
+```
+
+**DTO response** — chỉ @ApiProperty, không có validator:
+```typescript
+export class XxxResponseDto {
+  @ApiProperty() id!: string;
+  @ApiProperty({ nullable: true }) name!: string | null;
+}
+```
+
+**Controller** — luôn có đủ Swagger decorators:
+```typescript
+@ApiTags('Feature')
+@ApiBearerAuth()
+@Controller('management')
+@UseGuards(JwtAuthGuard)
+export class XxxController {
+  @Get('items')
+  @ApiOperation({ summary: '...' })
+  @ApiResponse({ status: 200, type: XxxResponseDto, isArray: true })
+  async list() { ... }
+}
+```
+
+**Service** — throw NestJS exceptions (không dùng `throw new Error()`):
+```typescript
+throw new NotFoundException('USER_NOT_FOUND');
+throw new ConflictException('EMAIL_EXISTS');
+throw new UnprocessableEntityException('ROLE_NOT_FOUND');
+```
+
+Swagger UI: `http://localhost:4000/docs`
+
+## API Error Handling (NestJS)
+
+Global exception filter tại `apps/api/src/common/filters/http-exception.filter.ts` — mọi lỗi đều trả về format nhất quán:
+
+```json
+{ "statusCode": 409, "code": "EMAIL_EXISTS", "message": "EMAIL_EXISTS" }
+{ "statusCode": 400, "code": "VALIDATION_ERROR", "message": "email must be an email" }
+{ "statusCode": 500, "code": "INTERNAL_ERROR", "message": "Internal server error" }
+```
+
+- Throw lỗi trong service: dùng NestJS exceptions (`NotFoundException`, `ConflictException`, `UnprocessableEntityException`, ...) với error code string làm message
+- **Không dùng** `throw new Error(...)` — dùng `throw new HttpException('CODE', HttpStatus.XXX)` để filter bắt được
+- Controllers dùng **DTO** (không dùng `body: any`) — đặt trong `dto/` cạnh controller
+- ValidationPipe global: `whitelist: true, transform: true`
+
 ## Database Naming Convention (Prisma + PostgreSQL)
 
 - **Table names**: snake_case, số nhiều → `users`, `bank_statements`, `user_roles`
