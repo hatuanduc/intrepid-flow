@@ -538,6 +538,38 @@ Items trong `FEATURE_NAV` và `MORE_NAV` có thể pin vào Shortcuts. `MAIN_NAV
 
 Icon: tạo inline SVG `14x14` trong cùng file, theo pattern của `WorkflowIcon` / `SettingsIcon`.
 
+## Toast Notifications
+
+Dùng `useToast()` từ `components/common/Toast` để hiện feedback sau các action (create/edit/delete).
+
+```tsx
+import { useToast } from '../../../components/common/Toast';
+
+export default function UsersPage() {
+  const toast = useToast();
+
+  async function handleCreate() {
+    try {
+      await createUser(body);
+      toast.success('Tạo tài khoản thành công.');
+      load();
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      toast.error(ERROR_MESSAGES[code] ?? 'Tạo thất bại. Vui lòng thử lại.');
+    }
+  }
+}
+```
+
+**3 loại:** `toast.success()` / `toast.error()` / `toast.info()` — đều nhận 1 string.
+
+**Vị trí:** bottom-left, auto-dismiss sau 4s, có nút × để đóng sớm.
+
+**Quy tắc:**
+- Mọi action create/edit/delete phải có toast success + toast error
+- Translate error code thành tiếng Việt trước khi pass vào `toast.error()`
+- Không dùng `alert()` hay console.log để debug UX
+
 ## Loading / Empty / Error states
 - Full-page loading: `<PageLoader />` from `components/common/PageLoader`
 - Inline loading: `<Spinner size={20} />` from same file

@@ -1,4 +1,4 @@
-import { getToken } from './auth';
+import { clearToken, getToken } from './auth';
 
 function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
@@ -55,6 +55,13 @@ async function request<T>(
 
   const text = await res.text();
   const data = text ? (JSON.parse(text) as unknown) : null;
+
+  if (res.status === 401) {
+    // Token invalid or expired — clear and redirect to login
+    clearToken();
+    if (typeof window !== 'undefined') window.location.replace('/login');
+    throw new Error('UNAUTHORIZED');
+  }
 
   if (!res.ok) {
     const message = errorMessageFromJson(data) ?? `Request failed: ${res.status}`;

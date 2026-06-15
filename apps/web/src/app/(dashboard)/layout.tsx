@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import DashboardLayout from '../../components/layout/DashboardLayout';
 import PageLoader from '../../components/common/PageLoader';
+import { ToastProvider } from '../../components/common/Toast';
 import { me } from '../../lib/api';
 import { clearToken, getToken } from '../../lib/auth';
 import { UserContext, type User } from './user-context';
@@ -40,9 +41,11 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
 
   return (
     <UserContext.Provider value={user}>
-      <DashboardLayout user={user}>
-        {children}
-      </DashboardLayout>
+      <ToastProvider>
+        <DashboardLayout user={user}>
+          {children}
+        </DashboardLayout>
+      </ToastProvider>
     </UserContext.Provider>
   );
 }

@@ -24,7 +24,11 @@ export class AuthService {
     if (!user || !user.isActive) return null;
     const match = await bcrypt.compare(password, user.password);
     if (!match) return null;
-    const token = jwt.sign({ sub: user.id, email: user.email }, process.env.JWT_SECRET || 'dev-secret');
+    const token = jwt.sign(
+      { sub: user.id, email: user.email },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '7d' },
+    );
 
     return {
       token,
