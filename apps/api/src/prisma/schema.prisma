@@ -198,12 +198,15 @@ model BankGsheetConfig {
 }
 
 model BankJobSettings {
-  id               String   @id @default(uuid())
-  scheduleCron     String   @default("30 9 * * *") @map("schedule_cron")
-  isScheduled      Boolean  @default(true) @map("is_scheduled")
-  hsbcnetUsername  String?  @map("hsbcnet_username")
-  updatedAt        DateTime @updatedAt @map("updated_at")
-  createdAt        DateTime @default(now()) @map("created_at")
+  id                    String   @id @default(uuid())
+  scheduleCron          String   @default("30 9 * * *") @map("schedule_cron")
+  isScheduled           Boolean  @default(true) @map("is_scheduled")
+  hsbcnetUsername       String?  @map("hsbcnet_username")
+  googleServiceKeyJson         String?  @map("google_service_key_json")
+  googleTemplateSpreadsheetId  String?  @map("google_template_spreadsheet_id")
+  googleTemplateSheet          String?  @map("google_template_sheet")
+  updatedAt             DateTime @updatedAt @map("updated_at")
+  createdAt             DateTime @default(now()) @map("created_at")
 
   @@map("bank_job_settings")
 }

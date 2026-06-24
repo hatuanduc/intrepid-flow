@@ -12,9 +12,20 @@ export class UpdateSettingsDto {
   isScheduled!: boolean;
 
   @ApiProperty({ required: false, nullable: true })
-  @IsOptional()
-  @IsString()
+  @IsOptional() @IsString()
   hsbcnetUsername?: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional() @IsString()
+  googleServiceKeyJson?: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional() @IsString()
+  googleTemplateSpreadsheetId?: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @IsOptional() @IsString()
+  googleTemplateSheet?: string | null;
 }
 
 export class SettingsResponseDto {
@@ -22,4 +33,7 @@ export class SettingsResponseDto {
   @ApiProperty() scheduleCron!: string;
   @ApiProperty() isScheduled!: boolean;
   @ApiProperty({ nullable: true }) hsbcnetUsername!: string | null;
+  @ApiProperty({ nullable: true }) googleServiceKeyJson!: string | null;
+  @ApiProperty({ nullable: true }) googleTemplateSpreadsheetId!: string | null;
+  @ApiProperty({ nullable: true }) googleTemplateSheet!: string | null;
 }

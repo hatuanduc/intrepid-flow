@@ -87,8 +87,14 @@ export default function BankStatementSettingsPage() {
       {tab === 'countries' && (
         <CountriesTab countries={countries} onChanged={load} toast={toast} />
       )}
-      {tab === 'gsheets' && (
-        <GsheetsTab gsheets={gsheets} countries={countries} onSaved={load} toast={toast} />
+      {tab === 'gsheets' && settings && (
+        <GsheetsTab
+          settings={settings}
+          gsheets={gsheets}
+          countries={countries}
+          onSaved={(s) => { if (s) setSettings(s); else load(); }}
+          toast={toast}
+        />
       )}
     </div>
   );
@@ -420,11 +426,12 @@ function CountriesTab({
 // ─── Tab: Google Sheets ───────────────────────────────────────────────────────
 
 function GsheetsTab({
-  gsheets, countries, onSaved, toast,
+  settings, gsheets, countries, onSaved, toast,
 }: {
+  settings: BankJobSettings;
   gsheets: BankGsheetConfig[];
   countries: BankCountryMapping[];
-  onSaved: () => void;
+  onSaved: (s?: BankJobSettings) => void;
   toast: ReturnType<typeof useToast>;
 }) {
   const countryCodes = [...new Set(countries.map(c => c.countryCode))].sort();
@@ -432,24 +439,116 @@ function GsheetsTab({
 
   return (
     <div className={s.section}>
+      {/* Per-country first */}
       <div>
-        <p className={s.sectionTitle}>Cấu hình Google Sheets theo quốc gia</p>
-        <p className={s.sectionDesc}>Mỗi quốc gia có một spreadsheet riêng. Mỗi tài khoản ngân hàng = một sheet tab.</p>
+        <p className={s.sectionTitle}>Spreadsheet theo quốc gia</p>
+        <p className={s.sectionDesc}>
+          Danh sách lấy từ tab Quốc gia. Bật/tắt để chọn quốc gia nào cần đồng bộ.
+        </p>
       </div>
 
       {countryCodes.length === 0 && (
         <div className={s.empty}>Chưa có quốc gia nào. Thêm ở tab Quốc gia trước.</div>
       )}
 
-      {countryCodes.map(code => (
-        <GsheetCountryCard
-          key={code}
-          countryCode={code}
-          existing={configMap[code] ?? null}
-          onSaved={onSaved}
-          toast={toast}
-        />
-      ))}
+      <div className={s.countryCardList}>
+        {countryCodes.map(code => (
+          <GsheetCountryCard
+            key={code}
+            countryCode={code}
+            existing={configMap[code] ?? null}
+            onSaved={() => onSaved()}
+            toast={toast}
+          />
+        ))}
+      </div>
+
+      {/* Global config at bottom — changes rarely */}
+      <div className={s.globalConfigSection}>
+        <div className={s.globalConfigDivider} />
+        <GlobalGsheetConfig settings={settings} onSaved={onSaved} toast={toast} />
+      </div>
+    </div>
+  );
+}
+
+function GlobalGsheetConfig({
+  settings, onSaved, toast,
+}: {
+  settings: BankJobSettings;
+  onSaved: (s: BankJobSettings) => void;
+  toast: ReturnType<typeof useToast>;
+}) {
+  const [templateSpreadsheetId, setTemplateSpreadsheetId] = useState(settings.googleTemplateSpreadsheetId ?? '');
+  const [templateSheet, setTemplateSheet] = useState(settings.googleTemplateSheet ?? '');
+  const [serviceKeyJson, setServiceKeyJson] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const hasKey = !!settings.googleServiceKeyJson;
+
+  async function save() {
+    setSaving(true);
+    try {
+      const result = await updateBankSettings({
+        scheduleCron: settings.scheduleCron,
+        isScheduled: settings.isScheduled,
+        hsbcnetUsername: settings.hsbcnetUsername,
+        googleTemplateSpreadsheetId: templateSpreadsheetId.trim() || null,
+        googleTemplateSheet: templateSheet.trim() || null,
+        googleServiceKeyJson: serviceKeyJson.trim() || settings.googleServiceKeyJson || null,
+      });
+      setServiceKeyJson('');
+      onSaved(result);
+      toast.success('Đã lưu cấu hình Google Sheets.');
+    } catch {
+      toast.error('Lưu thất bại. Vui lòng thử lại.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className={s.card}>
+      <p className={s.sectionTitle} style={{ marginBottom: 16 }}>Cấu hình chung</p>
+      <div className={s.globalRow}>
+        <div className={s.field} style={{ flex: 1 }}>
+          <label className={s.label}>Template spreadsheet ID</label>
+          <input
+            className={`${s.input} ${s.inputFull}`}
+            value={templateSpreadsheetId}
+            onChange={e => setTemplateSpreadsheetId(e.target.value)}
+            placeholder="1h5gC1vqRfPvZ7DANAnAog-..."
+          />
+          <span className={s.fieldHint}>ID của spreadsheet chứa sheet mẫu.</span>
+        </div>
+        <div className={s.field} style={{ flex: 1 }}>
+          <label className={s.label}>Template sheet name</label>
+          <input
+            className={`${s.input} ${s.inputFull}`}
+            value={templateSheet}
+            onChange={e => setTemplateSheet(e.target.value)}
+            placeholder="template"
+          />
+          <span className={s.fieldHint}>Tên tab sheet dùng làm mẫu.</span>
+        </div>
+        <div className={s.field} style={{ flex: 2 }}>
+          <label className={s.label}>
+            Service Account JSON {hasKey ? <span className={s.hasKeyBadge}>✓ Đã cấu hình</span> : <span className={s.noKeyBadge}>Chưa có key</span>}
+          </label>
+          <textarea
+            className={s.textareaInput}
+            value={serviceKeyJson}
+            onChange={e => setServiceKeyJson(e.target.value)}
+            placeholder={hasKey ? '(Để trống để giữ key hiện tại)' : '{\n  "type": "service_account",\n  ...\n}'}
+            style={{ minHeight: 72 }}
+          />
+        </div>
+      </div>
+      <div className={s.actionRow}>
+        <button className={s.btnPrimary} onClick={save} disabled={saving}>
+          {saving ? 'Đang lưu...' : 'Lưu cấu hình chung'}
+        </button>
+      </div>
     </div>
   );
 }
@@ -463,75 +562,83 @@ function GsheetCountryCard({
   toast: ReturnType<typeof useToast>;
 }) {
   const [spreadsheetId, setSpreadsheetId] = useState(existing?.spreadsheetId ?? '');
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState(existing?.spreadsheetUrl ?? '');
-  const [templateSheetName, setTemplateSheetName] = useState(existing?.templateSheetName ?? '');
-  const [serviceKeyJson, setServiceKeyJson] = useState('');
+  const [isActive, setIsActive] = useState(existing?.isActive ?? false);
   const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(!!(existing?.spreadsheetId));
 
-  async function save() {
+  const countryInfo = COUNTRY_CODES.find(c => c.code === countryCode);
+
+  async function save(overrides?: { isActive?: boolean }) {
+    const activeVal = overrides?.isActive ?? isActive;
     if (!spreadsheetId.trim()) return;
     setSaving(true);
     try {
       await upsertBankGsheet(countryCode, {
         spreadsheetId: spreadsheetId.trim(),
-        spreadsheetUrl: spreadsheetUrl.trim() || undefined,
-        templateSheetName: templateSheetName.trim() || undefined,
-        serviceKeyJson: serviceKeyJson.trim() || undefined,
-        isActive: true,
+        isActive: activeVal,
       });
-      setServiceKeyJson('');
       onSaved();
-      toast.success(`Đã lưu cấu hình ${countryCode}.`);
     } catch {
-      toast.error('Lưu thất bại. Vui lòng thử lại.');
+      toast.error(`Lưu cấu hình ${countryCode} thất bại.`);
     } finally {
       setSaving(false);
     }
   }
 
+  async function toggleActive() {
+    const next = !isActive;
+    setIsActive(next);
+    if (spreadsheetId.trim()) {
+      await save({ isActive: next });
+    }
+  }
+
   return (
-    <div className={s.countryCard}>
+    <div className={`${s.countryCard} ${isActive ? s.countryCardActive : ''}`}>
       <div className={s.countryCardHeader}>
-        <span className={s.countryCode}>{countryCode}</span>
-        {existing?.hasServiceKey
-          ? <span className={s.hasKeyBadge}>✓ Service key</span>
-          : <span className={s.noKeyBadge}>Chưa có key</span>
-        }
+        <button className={s.countryCardExpand} onClick={() => setExpanded(v => !v)}>
+          <svg
+            className={`${s.chevron} ${expanded ? s.chevronOpen : ''}`}
+            width="14" height="14" viewBox="0 0 14 14" fill="none"
+          >
+            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <CountryBadge code={countryCode} />
+          <span className={s.countryCardName}>{countryInfo?.label ?? countryCode}</span>
+          {existing?.spreadsheetId && (
+            <span className={s.countryCardSpreadsheetHint}>
+              {existing.spreadsheetId.slice(0, 20)}…
+            </span>
+          )}
+        </button>
+        <button
+          className={`${s.toggle} ${isActive ? s.toggleOn : ''}`}
+          onClick={e => { e.stopPropagation(); toggleActive(); }}
+          title={isActive ? 'Đang đồng bộ — nhấn để tắt' : 'Đang tắt — nhấn để bật'}
+        />
       </div>
-      <div className={s.countryCardBody}>
-        <div className={s.field}>
-          <label className={s.label}>Spreadsheet ID</label>
-          <input
-            className={`${s.input} ${s.inputFull}`}
-            value={spreadsheetId}
-            onChange={e => setSpreadsheetId(e.target.value)}
-            placeholder="1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0"
-          />
+      {expanded && (
+        <div className={s.countryCardBody}>
+          <div className={s.field}>
+            <label className={s.label}>Spreadsheet ID</label>
+            <div className={s.spreadsheetRow}>
+              <input
+                className={`${s.input} ${s.inputFull}`}
+                value={spreadsheetId}
+                onChange={e => setSpreadsheetId(e.target.value)}
+                placeholder="1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0"
+              />
+              <button
+                className={s.btnSave}
+                onClick={() => save()}
+                disabled={saving || !spreadsheetId.trim()}
+              >
+                {saving ? '...' : 'Lưu'}
+              </button>
+            </div>
+          </div>
         </div>
-        <div className={s.field}>
-          <label className={s.label}>Template sheet name (để copy khi thêm account mới)</label>
-          <input
-            className={`${s.input} ${s.inputFull}`}
-            value={templateSheetName}
-            onChange={e => setTemplateSheetName(e.target.value)}
-            placeholder="template"
-          />
-        </div>
-        <div className={s.field}>
-          <label className={s.label}>Service Account JSON key {existing?.hasServiceKey && '(để trống nếu không đổi)'}</label>
-          <textarea
-            className={s.textareaInput}
-            value={serviceKeyJson}
-            onChange={e => setServiceKeyJson(e.target.value)}
-            placeholder={'{\n  "type": "service_account",\n  ...\n}'}
-          />
-        </div>
-        <div className={s.actionRow}>
-          <button className={s.btnPrimary} onClick={save} disabled={saving || !spreadsheetId.trim()}>
-            {saving ? 'Đang lưu...' : 'Lưu'}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }

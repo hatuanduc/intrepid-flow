@@ -39,14 +39,25 @@ export class SheetsService {
     const config = await this.prisma.bankGsheetConfig.findUnique({
       where: { countryCode: account.countryCode },
     });
-    if (!config || !config.serviceKeyJson) {
+    if (!config || !config.isActive || !config.spreadsheetId) {
       this.logger.warn(
-        `No GSheet config / serviceKeyJson for country ${account.countryCode} — skipping`,
+        `No active GSheet config for country ${account.countryCode} — skipping`,
       );
       return;
     }
 
-    const { spreadsheetId, serviceKeyJson, templateSheetName } = config;
+    // Global service key and template come from BankJobSettings
+    const globalSettings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
+    const serviceKeyJson = globalSettings?.googleServiceKeyJson ?? null;
+    const templateSheetName = globalSettings?.googleTemplateSheet ?? null;
+    const templateSpreadsheetId = globalSettings?.googleTemplateSpreadsheetId ?? null;
+
+    if (!serviceKeyJson) {
+      this.logger.warn(`No Google service account key configured — skipping GSheets sync`);
+      return;
+    }
+
+    const { spreadsheetId } = config;
 
     // ── Auth ───────────────────────────────────────────────────────────────
     const auth = new google.auth.GoogleAuth({
@@ -67,14 +78,29 @@ export class SheetsService {
       sheetId = existingSheet.properties?.sheetId ?? null;
       this.logger.log(`Sheet "${accountNumber}" already exists`);
     } else {
-      const templateSheet = templateSheetName
-        ? sheetList.find(s => s.properties?.title === templateSheetName)
+      // Template may live in a separate master spreadsheet or within this one
+      const templateSourceId = templateSpreadsheetId || spreadsheetId;
+      let templateSheetIdToClone: number | null = null;
+
+      if (templateSheetName) {
+        const templateSource = templateSourceId === spreadsheetId
+          ? spreadsheet
+          : await sheets.spreadsheets.get({ spreadsheetId: templateSourceId });
+        const tSheet = (templateSource.data.sheets ?? [])
+          .find(s => s.properties?.title === templateSheetName);
+        if (tSheet?.properties?.sheetId != null) {
+          templateSheetIdToClone = tSheet.properties.sheetId;
+        }
+      }
+
+      const templateSheet = templateSheetIdToClone != null
+        ? { properties: { sheetId: templateSheetIdToClone } }
         : null;
 
       if (templateSheet && templateSheet.properties?.sheetId != null) {
-        // Copy from template and rename
+        // Copy from template (may be in a different spreadsheet) and rename
         const copyResp = await sheets.spreadsheets.sheets.copyTo({
-          spreadsheetId,
+          spreadsheetId: templateSpreadsheetId || spreadsheetId,
           sheetId: templateSheet.properties.sheetId,
           requestBody: { destinationSpreadsheetId: spreadsheetId },
         });

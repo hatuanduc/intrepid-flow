@@ -255,6 +255,9 @@ export type BankJobSettings = {
   scheduleCron: string;
   isScheduled: boolean;
   hsbcnetUsername: string | null;
+  googleServiceKeyJson: string | null;
+  googleTemplateSpreadsheetId: string | null;
+  googleTemplateSheet: string | null;
 };
 
 export type BankDownloadTemplate = {
@@ -287,7 +290,14 @@ export async function getBankSettings() {
   return request<BankJobSettings>('/management/bank-statement/settings', { auth: true });
 }
 
-export async function updateBankSettings(input: { scheduleCron: string; isScheduled: boolean; hsbcnetUsername?: string | null }) {
+export async function updateBankSettings(input: {
+  scheduleCron: string;
+  isScheduled: boolean;
+  hsbcnetUsername?: string | null;
+  googleServiceKeyJson?: string | null;
+  googleTemplateSpreadsheetId?: string | null;
+  googleTemplateSheet?: string | null;
+}) {
   return request<BankJobSettings>('/management/bank-statement/settings', {
     method: 'PUT', auth: true, body: JSON.stringify(input),
   });
@@ -331,9 +341,6 @@ export async function listBankGsheets() {
 
 export async function upsertBankGsheet(countryCode: string, input: {
   spreadsheetId: string;
-  spreadsheetUrl?: string;
-  templateSheetName?: string;
-  serviceKeyJson?: string;
   isActive?: boolean;
 }) {
   return request<BankGsheetConfig>(`/management/bank-statement/settings/gsheets/${countryCode}`, {

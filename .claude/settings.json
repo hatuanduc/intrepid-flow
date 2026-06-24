@@ -5,7 +5,8 @@
       "Read(//d/d/github-private/intrepid-flow/apps/worker/src/bank-sync/services/**)",
       "Bash(cd /d/github-private/intrepid-flow/apps/worker && cat tsconfig.json)",
       "Read(//d/d/github-private/intrepid-flow/apps/worker/**)",
-      "Bash(pnpm prisma *)"
+      "Bash(pnpm prisma *)",
+      "Bash(npx prisma *)"
     ]
   }
 }

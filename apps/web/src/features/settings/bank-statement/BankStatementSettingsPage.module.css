@@ -191,17 +191,8 @@
 }
 .input:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 
-/* GSheets */
-.countryCard {
-  border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden;
-}
-.countryCardHeader {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 12px 16px; background: var(--bg-table-head);
-  border-bottom: 1px solid var(--color-border);
-}
-.countryCode { font-size: 12px; font-weight: 600; color: var(--color-secondary); letter-spacing: 0.05em; }
-.countryCardBody { padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+/* GSheets — global config */
+.globalRow { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
 .inputFull { width: 100%; box-sizing: border-box; }
 .textareaInput {
   padding: 8px 10px; border: 1.5px solid var(--color-border); border-radius: 6px;
@@ -211,14 +202,49 @@
 .textareaInput:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 .hasKeyBadge {
   display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
-  padding: 2px 8px; border-radius: 10px; background: #d1fae5; color: #0e6245;
+  padding: 2px 6px; border-radius: 10px; background: #d1fae5; color: #0e6245; margin-left: 6px;
 }
 .noKeyBadge {
   display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
-  padding: 2px 8px; border-radius: 10px; background: var(--bg-subtle); color: var(--color-muted);
+  padding: 2px 6px; border-radius: 10px; background: var(--bg-subtle); color: var(--color-muted); margin-left: 6px;
 }
-
 .actionRow { display: flex; gap: 8px; justify-content: flex-end; padding-top: 4px; }
+
+/* GSheets — per-country cards */
+.countryCardList { display: flex; flex-direction: column; gap: 10px; }
+.countryCard {
+  border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden;
+  transition: border-color 0.15s;
+}
+.countryCardActive { border-color: #c7d2fe; }
+.countryCardHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px; background: var(--bg-table-head);
+  border-bottom: 1px solid transparent;
+}
+.countryCard:has(.countryCardBody) .countryCardHeader { border-bottom-color: var(--color-border); }
+.countryCardActive .countryCardHeader { background: #f5f3ff; border-bottom-color: #c7d2fe; }
+.countryCardExpand {
+  display: flex; align-items: center; gap: 8px; flex: 1;
+  border: none; background: none; padding: 0; cursor: pointer; text-align: left; min-width: 0;
+}
+.countryCardExpand:hover .countryCardName { color: var(--color-ink); }
+.chevron { color: var(--color-subtle); transition: transform 0.15s; flex-shrink: 0; }
+.chevronOpen { transform: rotate(180deg); }
+.countryCardTitle { display: flex; align-items: center; gap: 8px; }
+.countryCardName { font-size: 13px; font-weight: 500; color: var(--color-secondary); }
+.countryCardSpreadsheetHint {
+  font-size: 11px; color: var(--color-subtle); font-family: monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.countryCode { font-size: 12px; font-weight: 600; color: var(--color-secondary); letter-spacing: 0.05em; }
+.countryCardBody { padding: 12px 16px; }
+.spreadsheetRow { display: flex; gap: 8px; align-items: center; }
+.spreadsheetRow .inputFull { flex: 1; }
+
+/* GSheets — global config section */
+.globalConfigSection { display: flex; flex-direction: column; gap: 0; }
+.globalConfigDivider { height: 1px; background: var(--color-border); margin: 24px 0 20px; }
 
 .fieldHint { font-size: 12px; color: var(--color-muted); margin-top: 2px; }
 .error { font-size: 13px; color: #df1b41; background: #fff0f3; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px; }
@@ -229,4 +255,6 @@
   .page { padding: 16px; }
   .addRow { flex-direction: column; align-items: stretch; }
   .input { width: 100%; }
+  .globalRow { flex-direction: column; }
+  .spreadsheetRow { flex-direction: column; align-items: stretch; }
 }
