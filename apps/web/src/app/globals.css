@@ -72,6 +72,12 @@ button {
   font: inherit;
 }
 
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-subtle);
+  opacity: 1;
+}
+
 button {
   cursor: pointer;
 }

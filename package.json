@@ -7,7 +7,7 @@
   ],
 
   "scripts": {
-    "dev": "concurrently -k \"pnpm --filter @intrepid/api dev\" \"pnpm --filter @intrepid/web dev\"",
+    "dev": "concurrently -k \"pnpm --filter @intrepid/api dev\" \"pnpm --filter @intrepid/web dev\" \"pnpm --filter @intrepid/worker dev\"",
     "build": "pnpm --filter @intrepid/api build && pnpm --filter @intrepid/web build",
     "lint": "pnpm --filter @intrepid/web lint",
     "start": "pnpm --filter @intrepid/api start"

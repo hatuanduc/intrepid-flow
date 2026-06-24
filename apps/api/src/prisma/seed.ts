@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 
 dotenv.config();
@@ -156,6 +157,48 @@ async function main() {
     });
   }
   console.log(`Seeded ${mockUsers.length} mock users`);
+
+  // ─── Bank Statement defaults ────────────────────────────────────────────────
+  await prisma.bankJobSettings.upsert({
+    where: { id: 'default' },
+    create: { id: 'default', scheduleCron: '30 9 * * *', isScheduled: true },
+    update: {},
+  });
+
+  const HSBC_HEADERS = [
+    'Account name', 'Account number', 'Bank name', 'Currency', 'Location',
+    'BIC', 'IBAN', 'Account status', 'Account type',
+    'Closing ledger balance', 'Closing ledger brought forward from',
+    'Closing available balance', 'Closing available brought forward from',
+    'Current ledger balance', 'Current ledger as at',
+    'Current available balance', 'Current available as at',
+    'Bank reference', 'Narrative', 'Customer reference', 'TRN type',
+    'Credit amount', 'Debit amount', 'Balance', 'Post date',
+  ];
+  const headerHash = crypto.createHash('sha256').update(HSBC_HEADERS.join('|')).digest('hex');
+
+  await prisma.bankDownloadTemplate.upsert({
+    where: { name: 'hsbcnet_transaction' },
+    create: { name: 'hsbcnet_transaction', headers: HSBC_HEADERS, headerHash },
+    update: {},
+  });
+
+  const countryMappings = [
+    { companyName: 'INTREPID VIETNAM LTD',         countryCode: 'VN' },
+    { companyName: 'INTREPID MALAYSIA SDN. BHD',   countryCode: 'MY' },
+    { companyName: 'INTREPID DIGITAL I PT',        countryCode: 'ID' },
+    { companyName: 'INTREPID PHILIPPINES INC.',    countryCode: 'PH' },
+    { companyName: 'DATAMART VIET NAM CO., LTD',   countryCode: 'DM_VN' },
+    { companyName: 'INTREPID DIGITAL COMMERCE PL', countryCode: 'SG' },
+  ];
+  for (const cm of countryMappings) {
+    await prisma.bankCountryMapping.upsert({
+      where: { companyName: cm.companyName },
+      create: cm,
+      update: {},
+    });
+  }
+  console.log('Bank statement defaults seeded');
 }
 
 main()

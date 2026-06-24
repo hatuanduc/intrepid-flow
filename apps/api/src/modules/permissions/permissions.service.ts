@@ -13,6 +13,10 @@ const CORE_PERMISSIONS = [
   { key: 'branches:create', module: 'branches',  action: 'create', label: 'Tạo chi nhánh' },
   { key: 'branches:update', module: 'branches',  action: 'update', label: 'Cập nhật chi nhánh' },
   { key: 'modules:view',    module: 'modules',   action: 'view',   label: 'Xem danh sách quy trình' },
+  { key: 'modules:manage', module: 'modules',   action: 'manage', label: 'Bật/tắt quy trình' },
+  { key: 'bank_statement:view',   module: 'bank_statement', action: 'view',   label: 'Xem sao kê ngân hàng' },
+  { key: 'bank_statement:run',    module: 'bank_statement', action: 'run',    label: 'Chạy đồng bộ sao kê' },
+  { key: 'bank_statement:config', module: 'bank_statement', action: 'config', label: 'Cấu hình sao kê ngân hàng' },
 ];
 
 @Injectable()
@@ -51,6 +55,16 @@ export class PermissionsService implements OnApplicationBootstrap {
     }
 
     this.logger.log(`Permissions synced: ${CORE_PERMISSIONS.length} core + ${workflowModules.length * 2} workflow`);
+
+    // Auto-assign mọi permission mới vào admin role (skipDuplicates = idempotent)
+    const adminRole = await this.prisma.role.findUnique({ where: { key: 'admin' } });
+    if (adminRole) {
+      const allPerms = await this.prisma.permission.findMany({ select: { id: true } });
+      await this.prisma.rolePermission.createMany({
+        data: allPerms.map(p => ({ roleId: adminRole.id, permissionId: p.id })),
+        skipDuplicates: true,
+      });
+    }
   }
 
   async listPermissions() {

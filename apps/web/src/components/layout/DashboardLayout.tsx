@@ -6,8 +6,10 @@ import { useState, useRef, useEffect } from 'react';
 import { clearToken } from '../../lib/auth';
 import s from './DashboardLayout.module.css';
 import { BellIcon, ChevronDownIcon, GearIcon, PinIcon } from '../icons';
-
-type NavItem = { label: string; href: string; icon?: React.ReactNode };
+import {
+  MAIN_NAV, FEATURE_NAV, NAV_GROUPS, MORE_NAV, ALL_PINNABLE, ALL_SEARCH_ITEMS,
+  type NavItem, type NavGroupDef, type SearchEntry,
+} from './nav-items';
 
 type User = {
   id: string;
@@ -17,27 +19,7 @@ type User = {
   permissions: string[];
 };
 
-/* ── Icons ── */
-const HomeIcon = (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M1.5 6.5L7 1.5l5.5 5v6a.5.5 0 01-.5.5H9V9.5H5V13H2a.5.5 0 01-.5-.5v-6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-  </svg>
-);
-const WorkflowIcon = (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <rect x="1" y="1" width="4" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-    <rect x="9" y="5" width="4" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-    <rect x="1" y="10" width="4" height="3" rx="1" stroke="currentColor" strokeWidth="1.2"/>
-    <path d="M5 2.5h2.5a1 1 0 011 1V5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-    <path d="M5 11.5h2.5a1 1 0 001-1V8" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-  </svg>
-);
-const SettingsIcon = (
-  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M5.8 1.5h2.4l.4 1.6a5 5 0 011.1.65l1.55-.55 1.2 2.08-1.2 1.06a5 5 0 010 1.28l1.2 1.06-1.2 2.08-1.55-.55a5 5 0 01-1.1.65l-.4 1.62H5.8l-.4-1.62a5 5 0 01-1.1-.65l-1.55.55L1.55 8.7l1.2-1.06a5 5 0 010-1.28L1.55 5.3l1.2-2.08 1.55.55a5 5 0 011.1-.65L5.8 1.5z" stroke="currentColor" strokeWidth="1.2"/>
-    <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
-  </svg>
-);
+/* ── Icons (layout-only, not in nav-items) ── */
 const MenuIcon = (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
     <path d="M2 4.5h14M2 9h14M2 13.5h14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -55,29 +37,137 @@ const ChevronRightSmIcon = (
     <path d="M3.5 2L6.5 5l-3 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
+const SearchIconSvg = (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+    <circle cx="5.5" cy="5.5" r="4" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M9 9l2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
 
-/* ── Nav definitions ── */
-const MAIN_NAV: NavItem[] = [
-  { label: 'Tổng quan', href: '/', icon: HomeIcon },
-];
+/* ── Inline search bar with dropdown ── */
+function SearchBar() {
+  const router  = useRouter();
+  const [query, setQuery]   = useState('');
+  const [open,  setOpen]    = useState(false);
+  const [active, setActive] = useState(0);
+  const wrapRef  = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
 
-// Always-visible feature items in "Chức năng"
-const FEATURE_NAV: NavItem[] = [
-  { label: 'Quy trình', href: '/modules', icon: WorkflowIcon },
-  { label: 'Cài đặt', href: '/settings', icon: SettingsIcon },
-];
+  const norm = (v: string) => v.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
 
-// Hidden under "Xem thêm" — add future features here
-const MORE_NAV: NavItem[] = [];
+  const filtered: SearchEntry[] = query.trim()
+    ? ALL_SEARCH_ITEMS.filter(item =>
+        norm(item.label).includes(norm(query)) ||
+        (item.breadcrumb && norm(item.breadcrumb).includes(norm(query)))
+      )
+    : ALL_SEARCH_ITEMS;
 
-// Only items from feature sections can be pinned to shortcuts
-const ALL_PINNABLE: NavItem[] = [...FEATURE_NAV, ...MORE_NAV];
+  useEffect(() => { setActive(0); }, [query]);
+
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [active]);
+
+  // Close on outside click
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  // Ctrl+K / Cmd+K focuses the input
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        inputRef.current?.focus();
+        inputRef.current?.select();
+      }
+    }
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
+  function navigate(href: string) {
+    setOpen(false);
+    setQuery('');
+    inputRef.current?.blur();
+    router.push(href);
+  }
+
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Escape') { setOpen(false); setQuery(''); inputRef.current?.blur(); return; }
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, filtered.length - 1)); }
+    if (e.key === 'ArrowUp')   { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
+    if (e.key === 'Enter' && filtered[active]) navigate(filtered[active].href);
+  }
+
+  const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
+
+  return (
+    <div className={s.searchWrap} ref={wrapRef}>
+      <div className={s.searchInputWrap}>
+        <span className={s.searchInputIcon}>{SearchIconSvg}</span>
+        <input
+          ref={inputRef}
+          className={s.search}
+          placeholder="Tìm kiếm..."
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={onKeyDown}
+          autoComplete="off"
+          spellCheck={false}
+        />
+        {!query && <kbd className={s.searchKbd}>{isMac ? '⌘K' : 'Ctrl K'}</kbd>}
+        {query && (
+          <button className={s.searchClear} onMouseDown={e => { e.preventDefault(); setQuery(''); inputRef.current?.focus(); }}>✕</button>
+        )}
+      </div>
+
+      {open && (
+        <div className={s.searchDropdown}>
+          {filtered.length === 0 ? (
+            <div className={s.searchEmpty}>Không tìm thấy &ldquo;{query}&rdquo;</div>
+          ) : (
+            <>
+              <div className={s.searchDropdownLabel}>{query ? 'Kết quả' : 'Điều hướng'}</div>
+              {filtered.map((item, i) => (
+                <button
+                  key={item.href}
+                  ref={i === active ? activeRef : null}
+                  className={`${s.searchResult} ${i === active ? s.searchResultActive : ''}`}
+                  onMouseEnter={() => setActive(i)}
+                  onMouseDown={e => { e.preventDefault(); navigate(item.href); }}
+                >
+                  <span className={s.searchResultIcon}>{item.icon}</span>
+                  <span className={s.searchResultLabel}>
+                    {item.breadcrumb && (
+                      <span className={s.searchResultBreadcrumb}>{item.breadcrumb} &rsaquo;</span>
+                    )}
+                    {item.label}
+                  </span>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const MAX_SHORTCUTS = 5;
 
 /* ── localStorage helpers ── */
 const PINS_KEY   = 'nav-pins-v1';
 const VISITS_KEY = 'nav-visits-v1';
-
 type VisitRecord = { href: string; label: string; count: number; last: number };
 
 function loadPins(): string[] {
@@ -99,7 +189,6 @@ function recordVisit(href: string, label: string) {
   localStorage.setItem(VISITS_KEY, JSON.stringify(visits));
 }
 
-/* ── Derive shortcuts: manual pins first, then most recently visited ── */
 function deriveShortcuts(pinnedHrefs: string[]): NavItem[] {
   const pinned = pinnedHrefs
     .map(href => ALL_PINNABLE.find(n => n.href === href))
@@ -153,7 +242,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
   const [pinnedHrefs, setPinnedHrefs] = useState<string[]>(() => loadPins());
   const [shortcuts, setShortcuts]     = useState<NavItem[]>(() => deriveShortcuts(loadPins()));
 
-  /* Track visits to feature pages → update shortcut suggestions */
+  /* Track visits */
   useEffect(() => {
     const match = ALL_PINNABLE.find(item =>
       item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)
@@ -163,6 +252,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
       setShortcuts(deriveShortcuts(loadPins()));
     }
   }, [pathname]);
+
 
   function handleLogout() { clearToken(); router.replace('/login'); }
   function closeSidebar()  { setSidebarOpen(false); }
@@ -185,7 +275,6 @@ export default function DashboardLayout({ user, children }: { user: User; childr
     setShortcuts(deriveShortcuts(next));
   }
 
-  /* Feature nav item row — with pin/unpin button */
   function FeatureNavItem({ item }: { item: NavItem }) {
     return (
       <div className={s.navItemWrap}>
@@ -200,6 +289,51 @@ export default function DashboardLayout({ user, children }: { user: User; childr
         >
           <PinIcon />
         </button>
+      </div>
+    );
+  }
+
+  function CollapseGroup({ group }: { group: NavGroupDef }) {
+    const isChildActive = group.children.some(c =>
+      c.href === '/' ? pathname === '/' : pathname.startsWith(c.href)
+    );
+    const [open, setOpen] = useState(isChildActive);
+
+    return (
+      <div>
+        <button
+          className={`${s.navGroupParent} ${open || isChildActive ? s.navGroupParentOpen : ''}`}
+          onClick={() => setOpen(v => !v)}
+        >
+          <span className={s.navIcon}>{group.icon}</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
+          <span className={`${s.moreChevron} ${open ? s.moreChevronOpen : ''}`}>
+            {ChevronRightSmIcon}
+          </span>
+        </button>
+        {open && (
+          <div className={s.navGroupKids}>
+            {group.children.map(item => (
+              <div key={item.href} className={s.navItemWrap}>
+                <Link
+                  href={item.href}
+                  className={`${navClass(item.href)} ${s.navItemIndent}`}
+                  onClick={closeSidebar}
+                >
+                  <span className={s.navIcon}>{item.icon}</span>
+                  {item.label}
+                </Link>
+                <button
+                  className={`${s.pinBtn} ${isPinned(item.href) ? s.pinBtnActive : ''}`}
+                  onClick={e => togglePin(item, e)}
+                  title={isPinned(item.href) ? 'Bỏ ghim' : 'Ghim vào phím tắt'}
+                >
+                  <PinIcon />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -237,9 +371,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
           )}
         </div>
 
-        <div className={s.searchWrap}>
-          <input className={s.search} placeholder="Tìm kiếm..." type="search" />
-        </div>
+        <SearchBar />
 
         <div className={s.rightActions}>
           <button className={s.iconBtn} title="Thông báo"><BellIcon /></button>
@@ -253,7 +385,6 @@ export default function DashboardLayout({ user, children }: { user: User; childr
 
         <nav className={`${s.sidebar} ${sidebarOpen ? s.sidebarOpen : ''}`}>
 
-          {/* Main — not pinnable */}
           <div className={s.navGroup}>
             {MAIN_NAV.map(item => (
               <Link key={item.href} href={item.href} className={navClass(item.href)} onClick={closeSidebar}>
@@ -263,7 +394,6 @@ export default function DashboardLayout({ user, children }: { user: User; childr
             ))}
           </div>
 
-          {/* Shortcuts — auto-populated from feature visits, pin/unpin on hover */}
           <div className={s.navGroup}>
             <span className={s.navGroupLabel}>Phím tắt</span>
             {shortcuts.length === 0 ? (
@@ -289,12 +419,15 @@ export default function DashboardLayout({ user, children }: { user: User; childr
 
           <div className={s.sidebarDivider} />
 
-          {/* Chức năng */}
           <div className={s.navGroup}>
             <span className={s.navGroupLabel}>Chức năng</span>
+
             {FEATURE_NAV.map(item => <FeatureNavItem key={item.href} item={item} />)}
 
-            {/* Xem thêm — framework for future feature items */}
+            {NAV_GROUPS.map(group => (
+              <CollapseGroup key={group.label} group={group} />
+            ))}
+
             <button
               className={`${s.moreExpandBtn} ${moreOpen ? s.moreExpandBtnOpen : ''}`}
               onClick={() => setMoreOpen(v => !v)}
@@ -319,6 +452,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
 
         <main className={s.content}>{children}</main>
       </div>
+
     </div>
   );
 }

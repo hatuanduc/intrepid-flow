@@ -109,6 +109,8 @@
   box-shadow: 0 4px 24px rgba(0,0,0,0.10), 0 1px 4px rgba(0,0,0,0.06);
   padding: 40px 44px;
   box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
 }
 
 /* Brand bar with bottom border — remove, no longer needed */
@@ -160,7 +162,6 @@
   background: #fff;
   box-shadow: 0 0 0 3px rgba(99,91,255,0.12);
 }
-.input::placeholder { color: #94a3b8; }
 
 /* Password wrap */
 .passwordWrap {
@@ -205,6 +206,35 @@
   border: 1px solid #fecaca;
   border-radius: 6px;
   padding: 10px 14px;
+}
+
+/* Loading overlay */
+.loadingOverlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.88);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  z-index: 10;
+  font-size: 14px;
+  font-weight: 500;
+  color: #3c4257;
+  backdrop-filter: blur(2px);
+}
+.loadingSpinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #e3e8ee;
+  border-top-color: #635bff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 /* Button — Stripe style */

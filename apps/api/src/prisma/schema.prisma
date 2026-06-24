@@ -84,3 +84,126 @@ model WorkflowModule {
 
   @@map("workflow_modules")
 }
+
+// ─── Bank Statement Module ────────────────────────────────────────────────────
+
+model BankAccount {
+  id            String   @id @default(uuid())
+  accountNumber String   @unique @map("account_number")
+  accountName   String   @map("account_name")
+  bankName      String   @map("bank_name")
+  currency      String
+  countryCode   String   @map("country_code")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  syncJobAccounts BankSyncJobAccount[]
+  transactions    BankTransaction[]
+
+  @@map("bank_accounts")
+}
+
+model BankSyncJob {
+  id           String    @id @default(uuid())
+  status       String    @default("pending")
+  triggeredBy  String?   @map("triggered_by")
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  errorMessage String?   @map("error_message")
+  logs         Json      @default("[]")
+  isDeleted    Boolean   @default(false) @map("is_deleted")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  accountJobs  BankSyncJobAccount[]
+  transactions BankTransaction[]
+
+  @@map("bank_sync_jobs")
+}
+
+model BankSyncJobAccount {
+  id             String   @id @default(uuid())
+  jobId          String   @map("job_id")
+  bankAccountId  String   @map("bank_account_id")
+  status         String   @default("pending")
+  rowsDownloaded Int      @default(0) @map("rows_downloaded")
+  rowsInserted   Int      @default(0) @map("rows_inserted")
+  rowsDuplicate  Int      @default(0) @map("rows_duplicate")
+  rowsSynced     Int      @default(0) @map("rows_synced")
+  errorMessage   String?  @map("error_message")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  job         BankSyncJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+
+  @@map("bank_sync_job_accounts")
+}
+
+model BankTransaction {
+  id                String   @id @default(uuid())
+  bankAccountId     String   @map("bank_account_id")
+  jobId             String   @map("job_id")
+  postDate          DateTime @map("post_date")
+  narrative         String?
+  bankReference     String?  @map("bank_reference")
+  customerReference String?  @map("customer_reference")
+  trnType           String?  @map("trn_type")
+  creditAmount      Decimal? @map("credit_amount") @db.Decimal(18, 2)
+  debitAmount       Decimal? @map("debit_amount") @db.Decimal(18, 2)
+  balance           Decimal? @db.Decimal(18, 2)
+  dataHash          String   @map("data_hash")
+  rawData           Json     @map("raw_data")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  job         BankSyncJob @relation(fields: [jobId], references: [id])
+
+  @@unique([bankAccountId, dataHash])
+  @@map("bank_transactions")
+}
+
+model BankDownloadTemplate {
+  id         String   @id @default(uuid())
+  name       String   @unique
+  headers    Json
+  headerHash String   @map("header_hash")
+  isActive   Boolean  @default(true) @map("is_active")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("bank_download_templates")
+}
+
+model BankCountryMapping {
+  id          String   @id @default(uuid())
+  companyName String   @unique @map("company_name")
+  countryCode String   @map("country_code")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("bank_country_mappings")
+}
+
+model BankGsheetConfig {
+  id                String   @id @default(uuid())
+  countryCode       String   @unique @map("country_code")
+  spreadsheetId     String   @map("spreadsheet_id")
+  spreadsheetUrl    String?  @map("spreadsheet_url")
+  templateSheetName String?  @map("template_sheet_name")
+  serviceKeyJson    String?  @map("service_key_json")
+  isActive          Boolean  @default(true) @map("is_active")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  @@map("bank_gsheet_configs")
+}
+
+model BankJobSettings {
+  id               String   @id @default(uuid())
+  scheduleCron     String   @default("30 9 * * *") @map("schedule_cron")
+  isScheduled      Boolean  @default(true) @map("is_scheduled")
+  hsbcnetUsername  String?  @map("hsbcnet_username")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("bank_job_settings")
+}

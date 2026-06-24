@@ -14,40 +14,42 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   function clearField(field: string) {
     setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
   }
-  const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
     const token = getToken();
     if (token) router.replace('/');
-  }, [router]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
+  async function doLogin() {
     const errs: Record<string, string> = {};
     if (!username.trim()) errs.username = 'Vui lòng nhập tên đăng nhập.';
     if (!password) errs.password = 'Vui lòng nhập mật khẩu.';
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
     setFieldErrors({});
+    setError(null);
     setLoading(true);
     try {
       const result = await login(username.trim(), password);
       setToken(result.token);
       router.replace('/');
-      // keep loading=true — component sẽ unmount khi navigate
-    } catch (err) {
+    } catch {
       setError('Tên đăng nhập hoặc mật khẩu không đúng.');
       setLoading(false);
     }
   }
 
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter') void doLogin();
+  }
+
   return (
     <main className={styles.page}>
-      {/* Background ribbons */}
       <div className={styles.bg}>
         <div className={styles.r5} />
         <div className={styles.r1} />
@@ -56,29 +58,38 @@ export default function LoginPage() {
         <div className={styles.r4} />
       </div>
 
-      {/* Logo floats top-left */}
       <header className={styles.header}>
         <BrandLogo height={36} />
       </header>
 
-      {/* Card centered on the page */}
       <div className={styles.cardWrap}>
         <div className={styles.card}>
           <h1 className={styles.title}>Đăng nhập</h1>
 
-          <form className={styles.form} onSubmit={onSubmit}>
-            <label className={styles.field}>
+          {/* Loading overlay */}
+          {loading && (
+            <div className={styles.loadingOverlay}>
+              <div className={styles.loadingSpinner} />
+              <span>Đang đăng nhập...</span>
+            </div>
+          )}
+
+          {/* Dùng div thay form để tránh native form submission */}
+          <div className={styles.form}>
+            <div className={styles.field}>
               <span className={styles.label}>Tên đăng nhập</span>
               <input
                 className={`${styles.input} ${fieldErrors.username ? styles.inputError : ''}`}
                 value={username}
-                onChange={e => { setUsername(e.target.value); clearField('username'); }}
+                onChange={e => { setUsername(e.target.value); clearField('username'); setError(null); }}
+                onKeyDown={handleKeyDown}
                 type="text"
                 autoComplete="username"
                 autoFocus
+                disabled={loading}
               />
               {fieldErrors.username && <span className={styles.fieldError}>{fieldErrors.username}</span>}
-            </label>
+            </div>
 
             <div className={styles.field}>
               <span className={styles.label}>Mật khẩu</span>
@@ -86,10 +97,12 @@ export default function LoginPage() {
                 <input
                   className={`${styles.input} ${fieldErrors.password ? styles.inputError : ''}`}
                   value={password}
-                  onChange={e => { setPassword(e.target.value); clearField('password'); }}
+                  onChange={e => { setPassword(e.target.value); clearField('password'); setError(null); }}
+                  onKeyDown={handleKeyDown}
                   type={showPassword ? 'text' : 'password'}
                   autoComplete="current-password"
                   placeholder="••••••••"
+                  disabled={loading}
                 />
                 <button
                   type="button"
@@ -111,8 +124,8 @@ export default function LoginPage() {
                     </svg>
                   )}
                 </button>
-                {fieldErrors.password && <span className={styles.fieldError}>{fieldErrors.password}</span>}
-            </div>
+              </div>
+              {fieldErrors.password && <span className={styles.fieldError}>{fieldErrors.password}</span>}
             </div>
 
             {error && (
@@ -121,13 +134,17 @@ export default function LoginPage() {
               </div>
             )}
 
-            <button className={styles.button} type="submit" disabled={loading}>
-              {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+            <button
+              className={styles.button}
+              type="button"
+              disabled={loading}
+              onClick={() => void doLogin()}
+            >
+              Đăng nhập
             </button>
-          </form>
+          </div>
         </div>
       </div>
     </main>
   );
 }
-

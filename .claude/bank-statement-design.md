@@ -1,115 +1,421 @@
 # Bank Statement Sync — Architecture Design
 
 ## Overview
-Tự động lấy sao kê ngân hàng từ HSBCnet và đồng bộ vào Google Sheets tracker.
+Tự động lấy sao kê ngân hàng từ HSBCnet, lưu vào DB, đồng bộ lên Google Sheets tracker theo từng quốc gia / tài khoản.
 
-## Source
-- **Portal**: HSBCnet (https://www1.secure.hsbcnet.com)
-- **Login**: username "INTREPID1" + 2FA mobile approval
-- **Accounts**:
-  - HSBC 001 — current account, receipt only
-  - HSBC 002 — current account, payment only
+---
 
-## Destination
-- Google Sheets tracker: `VN_GBA1BB_2026_Bank Book_Tracker_v1.0`
-- Local copy: `C:\Users\PC025-1\Downloads\VN_GBA1BB_2026_Bank Book _Tracker_v1.0.xlsx`
-- Sheets quan tâm: `HSBC 001`, `HSBC 002`
-- Logic: chỉ sync khi ending balance thay đổi
+## 1. Login Flow (HSBCnet Playwright)
 
-## 2FA Handling
-- HSBCnet tự push notification đến điện thoại sau khi nhập username
-- Worker (Playwright) chờ trang chuyển sau khi user approve trên phone
-- UI hiển thị trạng thái "Đang chờ xác thực..." trong lúc chờ
-- Timeout: nếu quá X phút không approve → job failed với lý do "2FA timeout"
+URL: `https://www1.secure.hsbcnet.com`
 
-## Architecture
+### Steps
+```
+1. Check session còn dùng được không
+   → Nếu còn (cookies + URL check) → skip login, đi thẳng vào
+   → Nếu hết → tiến hành login
+
+2. Điền username "INTREPID1" → Continue
+
+3. Màn hình 2FA: chọn "Send a notification to my mobile" (đã chọn sẵn) → Continue
+   → DB log: status = waiting_2fa
+
+4. Chờ trang chuyển sang màn hình tài khoản (Playwright waitForURL / waitForSelector)
+   → Timeout: 90 giây
+
+5. Nếu 60 giây không thấy thay đổi → màn hình hiện "Didn't receive notification?"
+   → Click "Resend notification" 1 lần
+   → Chờ thêm 60 giây
+
+6. Nếu vẫn không vào được → job failed, reason: timeout_2fa
+
+7. Đã vào được → URL chứa "/accounts" hoặc Landing page
+   → Lưu session cookies vào file để dùng lại lần sau
+   → DB log: status = authenticated
+```
+
+### Session Persistence
+- Cookies được serialize lưu vào file: `apps/worker/sessions/hsbcnet.json`
+- Mỗi lần khởi động worker → load cookies vào context trước
+- Xác nhận session còn dùng: navigate đến `/accounts` → check URL không redirect về login
+- Nếu session hết hạn → xóa file, chạy lại login flow
+
+---
+
+## 2. Data Download Flow
+
+### Account Discovery
+Sau khi login → navigate đến trang Account Information → lấy danh sách accounts hiển thị.
+
+Trang accounts URL: `...hsbcnet.com/uims/portal/HSBCnet/Landing...#/accounts`
+
+Từ danh sách, lấy các account thuộc INTREPID VIETNAM LTD (hoặc theo country filter đang chạy):
+- `001-797281-001` — VN VND
+- `001-797281-002` — VN VND
+- `001-797281-003` — VN VND
+- (và các account khác khi mở rộng)
+
+### Per-Account Download (tuần tự)
+Với mỗi account:
+```
+1. Click vào row account đó
+2. Trang chi tiết account hiển thị (transactions list)
+3. Click "Filter / search" → mở filter panel
+4. Date range → chọn "Previous day" (shortcut button)
+5. Click "Apply"
+6. Sau khi filter xong → Click "Export" dropdown
+7. Chọn "Transactions" (không phải Balance details)
+8. Chọn "Excel"
+9. File Excel được tải về → Playwright intercept download
+10. DB log: status = downloading_{account_number}
+```
+
+### Excel Column Layout (từ template row 1)
+```
+Account name | Account number | Bank name | Currency | Location | BIC | IBAN |
+Account status | Account type | Closing ledger balance | Closing ledger brought forward from |
+Closing available balance | Closing available brought forward from |
+Current ledger balance | Current ledger as at | Current available balance | Current available as at |
+Bank reference | Narrative | Customer reference | TRN type |
+Credit amount | Debit amount | Balance | Post date
+```
+
+---
+
+## 3. Data Storage (DB)
+
+### Hash Strategy
+- **Row hash**: SHA256 của `accountNumber + postDate + narrative + bankReference + debitAmount + creditAmount` — dùng để dedup
+- **Header hash**: SHA256 của tên tất cả column headers (join bằng `|`) — dùng để detect thay đổi template
+
+### DB Tables (Prisma)
+
+```prisma
+// Tài khoản ngân hàng (auto-discovered hoặc manual add)
+model BankAccount {
+  id            String @id @default(uuid())
+  accountNumber String @unique @map("account_number")
+  accountName   String @map("account_name")
+  bankName      String @map("bank_name")
+  currency      String
+  countryCode   String @map("country_code")  // VN, MY, ID, PH, SG
+  isActive      Boolean @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  syncJobAccounts BankSyncJobAccount[]
+  transactions    BankTransaction[]
+  @@map("bank_accounts")
+}
+
+// Một lần chạy sync (bao gồm tất cả countries/accounts trong scope)
+model BankSyncJob {
+  id           String    @id @default(uuid())
+  status       String    // pending | checking_session | logging_in | waiting_2fa | authenticated | downloading | storing | syncing_sheets | completed | failed
+  triggeredBy  String?   @map("triggered_by")  // user_id hoặc "cron"
+  startedAt    DateTime? @map("started_at")
+  completedAt  DateTime? @map("completed_at")
+  errorMessage String?   @map("error_message")
+  logs         Json      @default("[]")  // [{time, status, message}]
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  accountJobs BankSyncJobAccount[]
+  @@map("bank_sync_jobs")
+}
+
+// Tiến trình download/sync của từng account trong 1 job
+model BankSyncJobAccount {
+  id             String    @id @default(uuid())
+  jobId          String    @map("job_id")
+  bankAccountId  String    @map("bank_account_id")
+  status         String    // pending | downloading | parsing | storing | syncing | completed | failed | skipped
+  rowsDownloaded Int       @default(0) @map("rows_downloaded")
+  rowsInserted   Int       @default(0) @map("rows_inserted")
+  rowsDuplicate  Int       @default(0) @map("rows_duplicate")
+  rowsSynced     Int       @default(0) @map("rows_synced")
+  errorMessage   String?   @map("error_message")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  job         BankSyncJob @relation(fields: [jobId], references: [id])
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  @@map("bank_sync_job_accounts")
+}
+
+// Giao dịch đã download
+model BankTransaction {
+  id                String   @id @default(uuid())
+  bankAccountId     String   @map("bank_account_id")
+  jobId             String   @map("job_id")
+  postDate          DateTime @map("post_date")
+  narrative         String?
+  bankReference     String?  @map("bank_reference")
+  customerReference String?  @map("customer_reference")
+  trnType           String?  @map("trn_type")
+  creditAmount      Decimal? @map("credit_amount") @db.Decimal(18,2)
+  debitAmount       Decimal? @map("debit_amount") @db.Decimal(18,2)
+  balance           Decimal? @db.Decimal(18,2)
+  dataHash          String   @map("data_hash")
+  rawData           Json     @map("raw_data")
+  createdAt         DateTime @default(now()) @map("created_at")
+
+  bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
+  @@unique([bankAccountId, dataHash])
+  @@map("bank_transactions")
+}
+
+// Template header config (lưu để detect thay đổi)
+model BankDownloadTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique  // "hsbcnet_transaction"
+  headers     Json     // string[] — danh sách header column
+  headerHash  String   @map("header_hash")  // SHA256 để compare
+  isActive    Boolean  @default(true) @map("is_active")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@map("bank_download_templates")
+}
+
+// Mapping công ty → quốc gia
+model BankCountryMapping {
+  id          String   @id @default(uuid())
+  companyName String   @unique @map("company_name")
+  countryCode String   @map("country_code")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  @@map("bank_country_mappings")
+}
+
+// Cấu hình chung cho bank sync jobs
+model BankJobSettings {
+  id           String   @id @default(uuid())
+  scheduleCron String   @default("30 9 * * *") @map("schedule_cron")  // default 9:30 sáng hàng ngày
+  isScheduled  Boolean  @default(true) @map("is_scheduled")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+  @@map("bank_job_settings")
+}
+
+// Cấu hình Google Sheet theo quốc gia
+model BankGsheetConfig {
+  id               String   @id @default(uuid())
+  countryCode      String   @unique @map("country_code")
+  spreadsheetId    String   @map("spreadsheet_id")
+  spreadsheetUrl   String?  @map("spreadsheet_url")
+  templateSheetName String? @map("template_sheet_name")  // tên sheet dùng để copy
+  serviceKeyJson   String?  @map("service_key_json")  // service account JSON (encrypt trước khi lưu)
+  isActive         Boolean  @default(true) @map("is_active")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  @@map("bank_gsheet_configs")
+}
+```
+
+---
+
+## 4. Job State Machine
+
+```
+pending
+  → checking_session      kiểm tra session HSBCnet còn dùng được không
+  → logging_in            nhập username, submit
+  → waiting_2fa           đang chờ approve trên điện thoại (UI hiện countdown)
+  → authenticated         đã vào được, lưu session
+  → downloading           đang lấy từng account lần lượt
+  → storing               đang parse Excel + lưu vào DB (dedup)
+  → syncing_sheets        đang push lên Google Sheets
+  → completed ✓
+  → failed                lý do: timeout_2fa | session_error | download_error | parse_error | sheet_error
+```
+
+Log được ghi liên tục vào `bank_sync_jobs.logs` JSON array: `[{ time, status, message }]`
+
+---
+
+## 5. Google Sheets Sync
+
+### Layout Sheet
+Mỗi account = 1 sheet, sheet name = account_number (vd: `001-797281-001`)
+
+```
+C6:  Account name  (ví dụ: INTREPID VIETNAM LTD)
+C7:  Account number (ví dụ: 001-797281-001)
+C8:  Bank name (ví dụ: HK and Shanghai Banking Corp Ltd)
+```
+
+Data rows bắt đầu từ **row 11** (append thêm vào blank row cuối):
+```
+Col B: Post date   (dd-MMM-yy, ví dụ: 2-Jan-26)
+Col C: Narrative
+Col D: Bank reference
+Col E: Credit amount
+Col F: Debit amount
+```
+
+### Logic Sync
+1. Với mỗi account trong job:
+   - Tìm sheet tên `account_number` trong spreadsheet
+   - Nếu chưa có → copy từ `template_sheet_name` → rename
+   - Ghi thông tin account vào C6, C7, C8 (chỉ khi mới tạo sheet)
+   - Tìm row cuối có data (last non-empty row từ row 11)
+   - Append các transactions mới (chỉ những row chưa có — so sánh theo post_date + bank_reference)
+
+### Cấu hình Settings
+Setting > Job > Bank Statement > Sync Google Spreadsheet:
+- Mỗi quốc gia: URL spreadsheet, Template sheet name
+- Service account JSON key (upload hoặc paste)
+
+---
+
+## 6. Country / Company Mapping (default)
+
+| Company Name | Country Code |
+|---|---|
+| INTREPID VIETNAM LTD | VN |
+| INTREPID MALAYSIA SDN. BHD | MY |
+| INTREPID DIGITAL I PT | ID |
+| INTREPID PHILIPPINES INC. | PH |
+| DATAMART VIET NAM CO., LTD | DM_VN |
+| INTREPID DIGITAL COMMERCE PL | SG |
+
+---
+
+## 7. Architecture
 
 ### Services
 ```
-apps/api     — NestJS API + WebSocket Gateway
-apps/worker  — NestJS Worker, BullMQ processor + Playwright
+apps/api     — NestJS API, job endpoints, SSE endpoint
+apps/worker  — NestJS Worker, BullMQ processor, Playwright, Google Sheets API
 apps/web     — Next.js UI
 ```
 
-### Infrastructure (Docker)
-```
-PostgreSQL   — port 5433
-Redis        — port 6379 (BullMQ queue)
+### Infrastructure (docker-compose.dev.yml)
+```yaml
+db:    postgres:16-alpine, port 5433
+redis: redis:7-alpine, port 6379    ← cần thêm
 ```
 
 ### Tech Stack
-| Component        | Choice     | Reason                              |
-|------------------|------------|-------------------------------------|
-| Queue            | BullMQ     | TypeScript native, better than Bull |
-| Redis            | redis:7-alpine | Lightweight, standard           |
-| Browser automation | Playwright | Better than Puppeteer, stable    |
-| Realtime status  | Socket.io  | Built-in NestJS support             |
-| GSheets          | TBD        | API online or local xlsx update     |
+| Component | Choice | Lý do |
+|---|---|---|
+| Queue | BullMQ | TypeScript native, reliable |
+| Redis | redis:7-alpine | required by BullMQ |
+| Browser automation | Playwright | stable, supports download intercept |
+| Realtime status | SSE (Server-Sent Events) | đơn giản hơn WebSocket, phù hợp read-only stream |
+| GSheets | googleapis (service account) | online, không cần local Excel |
 
-## Job State Machine
+### SSE Flow
 ```
-pending
-  → launching_browser    (Playwright starting)
-  → navigating           (Opening HSBCnet)
-  → waiting_2fa          (Chờ approve trên điện thoại)
-  → authenticated        (2FA passed)
-  → downloading          (Lấy statement từ ngân hàng)
-  → parsing              (Parse data)
-  → comparing            (So sánh ending balance)
-  → syncing              (Update GSheets/DB)
-  → completed ✓
-  → failed (reason: timeout_2fa | download_error | parse_error | ...)
+Frontend → GET /bank-statement/jobs/:id/stream (EventSource)
+API → pipe SSE events từ BullMQ job progress events
+Worker → cập nhật job.logs + emit progress qua BullMQ
 ```
 
-## DB Tables (to add)
+---
 
-### bank_accounts
+## 8. Settings UI Structure
+
 ```
-id, bank_name, account_number, account_title, currency,
-type (receipt|payment), is_active, created_at
-```
-
-### bank_sync_jobs
-```
-id, bank_account_id, status, triggered_by (user_id),
-started_at, completed_at, error_message,
-rows_downloaded, rows_synced, created_at
-```
-
-### bank_transactions (optional — if storing in DB too)
-```
-id, job_id, bank_account_id, date, description,
-debit, credit, balance, reference, created_at
-```
-
-## UI
-
-### Dashboard card
-- Animated intro card trong /modules page
-- Hiện thị: bank logo → arrow animation → system icon
-- Badge: "Đang bật" / "Tắt"
-
-### Job management page (/bank-statement)
-- Header: tên module + nút "Chạy đồng bộ"
-- Tabs: HSBC 001 | HSBC 002
-- Job list table: status, started, duration, rows synced, error
-- Real-time status via WebSocket (no polling)
-- Status badge animate khi đang chạy
-
-### Workflow menu (sidebar)
-- Click "Quy trình" → dropdown các module đang bật
-- Mỗi item link đến trang riêng của module
-
-## Permissions
-```
-bank_statement:view   — Xem danh sách job
-bank_statement:run    — Chạy job đồng bộ
+Settings > Job                        ← section mới trong /settings
+  └── Bank Statement
+        ├── Schedule                   /settings/job/bank-statement (trang chính)
+        │     - Toggle bật/tắt cron
+        │     - Giờ chạy (time picker → convert sang cron)
+        │     - Preview: "Chạy lúc 09:30 hàng ngày"
+        │
+        ├── Download Template          /settings/job/bank-statement/template
+        │     - Xem/edit header columns
+        │     - Hiện header hash
+        │     - Cảnh báo khi header thay đổi so với template lưu
+        │
+        ├── Country Mappings           /settings/job/bank-statement/countries
+        │     - Table: company name ↔ country code
+        │     - Add/edit/delete mapping
+        │
+        └── Google Sheets Config       /settings/job/bank-statement/gsheets
+              - Per country: spreadsheet URL, template sheet name
+              - Upload/paste service account JSON
 ```
 
-## Decisions
-- [x] Trigger: **scheduled** (cron) + **manual** override
-- [x] GSheets: **online API** — service account JSON key, sheet link provided
+---
+
+## 9. Permissions
+
+```
+bank_statement:view    — Xem danh sách job, transactions
+bank_statement:run     — Chạy job đồng bộ
+bank_statement:config  — Chỉnh cấu hình (settings)
+```
+
+---
+
+## 10. UI Pages
+
+### /bank-statement — Job Management
+```
+Header: "Sao kê ngân hàng" + nút "Chạy đồng bộ"
+Chips: Tất cả / Thành công / Thất bại
+Table:
+  - Thời gian bắt đầu
+  - Trạng thái (badge animate khi đang chạy)
+  - Tài khoản xử lý (count)
+  - Giao dịch (rows downloaded / synced)
+  - Thời gian chạy
+  - Lỗi (nếu có)
+  - ⋯ menu: Xem log | Chạy lại
+
+Click row → mở panel xem chi tiết log từng bước
+SSE live update khi job đang chạy
+```
+
+### Dashboard card trong /modules
+- Animated card: icon HSBC → arrow animation → GSheets icon
+- Badge: "Đang bật"
+- Footer: nút "Xem jobs" link đến /bank-statement
+
+---
+
+## 11. Decisions
+- [x] Trigger: **scheduled** (cron) + **manual** từ UI
+- [x] GSheets: **online API** — service account JSON key
   - Sheet: https://docs.google.com/spreadsheets/d/1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0
-- [ ] Schedule: mấy giờ / ngày? (ví dụ: 8:00 sáng mỗi ngày)
-- [ ] Timeout 2FA: bao nhiêu phút chờ approve?
-- [ ] Browser: headless (server) hay visible (local test)?
+- [x] 2FA: chờ 60s → resend 1 lần → chờ thêm 60s → fail nếu không vào được
+- [x] Realtime: **SSE** (không dùng WebSocket)
+- [x] Session: persist cookies vào file `apps/worker/sessions/hsbcnet.json`
+- [x] Download: "Previous day" date range, Export > Transactions > Excel
+- [x] Dedup: hash per row (accountNumber + postDate + narrative + bankRef + amounts)
+- [x] GSheet layout: row 11+, col B=date, C=narrative, D=bankRef, E=credit, F=debit
+- [x] Schedule: **09:30 sáng ICT** (`30 9 * * *`), cấu hình được trong Settings > Job > Bank Statement
+  - Lưu vào `bank_job_settings.schedule_cron` — worker đọc từ DB khi start, không hardcode
+  - User có thể bật/tắt schedule và đổi giờ từ UI
+- [x] Browser: **headless** mặc định, override qua env `PLAYWRIGHT_HEADLESS=false` (local debug)
+
+---
+
+## 12. Implementation Order
+
+### Phase 1 — Infrastructure
+1. Add `redis` service vào `docker-compose.dev.yml`
+2. Tạo `apps/worker` NestJS app (BullMQ + Playwright)
+
+### Phase 2 — DB
+3. Thêm tất cả Prisma models trên vào schema
+4. Migration + seed default data (country mappings, download template)
+
+### Phase 3 — Settings API + UI
+5. API endpoints cho template, country mappings, gsheet config
+6. Settings UI pages (3 sub-pages)
+
+### Phase 4 — Worker
+7. Playwright: login flow + session persistence
+8. Playwright: 2FA wait + retry logic
+9. Playwright: per-account download (filter → export Excel)
+10. Excel parser (exceljs): extract transactions
+11. DB storage với dedup
+12. Google Sheets service: append rows
+
+### Phase 5 — Job Management
+13. API: trigger job, list jobs, job detail, SSE stream
+14. BullMQ job processor wiring
+15. UI: /bank-statement page với SSE live status
+
+### Phase 6 — Dashboard card
+16. Animated card trong /modules

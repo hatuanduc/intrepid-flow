@@ -10,7 +10,9 @@ export class JwtAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext) {
     const req = context.switchToHttp().getRequest();
     const auth = req.headers?.authorization as string | undefined;
-    const token = auth?.startsWith('Bearer ') ? auth.slice('Bearer '.length) : null;
+    const token = auth?.startsWith('Bearer ')
+      ? auth.slice('Bearer '.length)
+      : (req.query?.token as string | undefined) ?? null;
     if (!token) return false;
     try {
       const payload: any = jwt.verify(token, process.env.JWT_SECRET || 'dev-secret');

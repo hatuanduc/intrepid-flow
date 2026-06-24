@@ -1,6 +1,6 @@
 import { clearToken, getToken } from './auth';
 
-function getApiBaseUrl(): string {
+export function getApiBaseUrl(): string {
   if (typeof window !== 'undefined') {
     const runtime = window.__INTREPID__?.apiBaseUrl;
     if (typeof runtime === 'string' && runtime.trim()) return runtime.trim();
@@ -23,7 +23,7 @@ function errorMessageFromJson(data: unknown): string | null {
 
 async function request<T>(
   path: string,
-  init?: RequestInit & { auth?: boolean },
+  init?: RequestInit & { auth?: boolean; skipAuthRedirect?: boolean },
 ): Promise<T> {
   let baseUrl = getApiBaseUrl();
   if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
@@ -57,9 +57,11 @@ async function request<T>(
   const data = text ? (JSON.parse(text) as unknown) : null;
 
   if (res.status === 401) {
-    // Token invalid or expired — clear and redirect to login
-    clearToken();
-    if (typeof window !== 'undefined') window.location.replace('/login');
+    if (!init?.skipAuthRedirect) {
+      // Token invalid or expired — clear and redirect to login
+      clearToken();
+      if (typeof window !== 'undefined') window.location.replace('/login');
+    }
     throw new Error('UNAUTHORIZED');
   }
 
@@ -86,6 +88,7 @@ export async function login(email: string, password: string) {
   return request<LoginResponse>('/auth/login', {
     method: 'POST',
     body: JSON.stringify({ email, password }),
+    skipAuthRedirect: true,
   });
 }
 
@@ -242,5 +245,132 @@ export async function updateWorkflowModule(key: string, input: { isEnabled?: boo
     method: 'PUT',
     auth: true,
     body: JSON.stringify(input),
+  });
+}
+
+// --- Bank Statement Settings ---
+
+export type BankJobSettings = {
+  id: string;
+  scheduleCron: string;
+  isScheduled: boolean;
+  hsbcnetUsername: string | null;
+};
+
+export type BankDownloadTemplate = {
+  id: string;
+  headers: string[];
+  headerHash: string;
+  updatedAt: string;
+};
+
+export type BankCountryMapping = {
+  id: string;
+  companyName: string;
+  countryCode: string;
+  isActive: boolean;
+  createdAt: string;
+};
+
+export type BankGsheetConfig = {
+  id: string;
+  countryCode: string;
+  spreadsheetId: string;
+  spreadsheetUrl: string | null;
+  templateSheetName: string | null;
+  hasServiceKey: boolean;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export async function getBankSettings() {
+  return request<BankJobSettings>('/management/bank-statement/settings', { auth: true });
+}
+
+export async function updateBankSettings(input: { scheduleCron: string; isScheduled: boolean; hsbcnetUsername?: string | null }) {
+  return request<BankJobSettings>('/management/bank-statement/settings', {
+    method: 'PUT', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function getBankTemplate() {
+  return request<BankDownloadTemplate | null>('/management/bank-statement/settings/template', { auth: true });
+}
+
+export async function updateBankTemplate(headers: string[]) {
+  return request<BankDownloadTemplate>('/management/bank-statement/settings/template', {
+    method: 'PUT', auth: true, body: JSON.stringify({ headers }),
+  });
+}
+
+export async function listBankCountries() {
+  return request<BankCountryMapping[]>('/management/bank-statement/settings/countries', { auth: true });
+}
+
+export async function createBankCountry(input: { companyName: string; countryCode: string }) {
+  return request<BankCountryMapping>('/management/bank-statement/settings/countries', {
+    method: 'POST', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function updateBankCountry(id: string, input: { companyName?: string; countryCode?: string; isActive?: boolean }) {
+  return request<BankCountryMapping>(`/management/bank-statement/settings/countries/${id}`, {
+    method: 'PUT', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function deleteBankCountry(id: string) {
+  return request<{ ok: boolean }>(`/management/bank-statement/settings/countries/${id}`, {
+    method: 'DELETE', auth: true,
+  });
+}
+
+export async function listBankGsheets() {
+  return request<BankGsheetConfig[]>('/management/bank-statement/settings/gsheets', { auth: true });
+}
+
+export async function upsertBankGsheet(countryCode: string, input: {
+  spreadsheetId: string;
+  spreadsheetUrl?: string;
+  templateSheetName?: string;
+  serviceKeyJson?: string;
+  isActive?: boolean;
+}) {
+  return request<BankGsheetConfig>(`/management/bank-statement/settings/gsheets/${countryCode}`, {
+    method: 'PUT', auth: true, body: JSON.stringify(input),
+  });
+}
+
+// --- Bank Sync Jobs ---
+
+export type BankSyncJob = {
+  id: string;
+  status: string;
+  triggeredBy: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+  logs: Array<{ time: string; message: string }>;
+  createdAt: string;
+  durationMs: number | null;
+};
+
+export async function triggerBankSync() {
+  return request<BankSyncJob>('/management/bank-statement/jobs', {
+    method: 'POST', auth: true,
+  });
+}
+
+export async function listBankJobs() {
+  return request<BankSyncJob[]>('/management/bank-statement/jobs', { auth: true });
+}
+
+export async function getBankJob(id: string) {
+  return request<BankSyncJob>(`/management/bank-statement/jobs/${id}`, { auth: true });
+}
+
+export async function deleteBankJob(id: string) {
+  return request<{ ok: boolean }>(`/management/bank-statement/jobs/${id}`, {
+    method: 'DELETE', auth: true,
   });
 }

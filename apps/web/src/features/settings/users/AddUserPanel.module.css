@@ -32,7 +32,6 @@
   border-color: var(--color-accent-active);
   box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
 }
-.input::placeholder { color: var(--color-subtle); }
 
 .divider {
   height: 1px;

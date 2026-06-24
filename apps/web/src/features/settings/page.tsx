@@ -35,6 +35,23 @@ const GROUPS: Group[] = [
       },
     ],
   },
+  {
+    label: 'Quy trình tự động',
+    cards: [
+      {
+        title: 'Sao kê ngân hàng',
+        desc: 'Cài đặt lịch chạy, cột dữ liệu, mapping quốc gia và Google Sheets cho module sao kê.',
+        href: '/settings/job/bank-statement',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <rect x="2" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M5 7h6M5 9.5h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <path d="M5 1v2M11 1v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+        ),
+      },
+    ],
+  },
 ];
 
 export default function SettingsRoot() {

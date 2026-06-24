@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd /d/github-private/intrepid-flow/apps/worker && grep -n \"import\" src/bank-sync/services/sheets.service.ts src/bank-sync/services/excel.service.ts src/bank-sync/services/playwright.service.ts src/bank-sync/bank-sync.service.ts)",
+      "Read(//d/d/github-private/intrepid-flow/apps/worker/src/bank-sync/services/**)",
+      "Bash(cd /d/github-private/intrepid-flow/apps/worker && cat tsconfig.json)",
+      "Read(//d/d/github-private/intrepid-flow/apps/worker/**)",
+      "Bash(pnpm prisma *)"
+    ]
+  }
+}

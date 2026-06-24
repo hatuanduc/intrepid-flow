@@ -65,29 +65,163 @@
   white-space: nowrap;
 }
 
-/* Search */
+/* Inline search with dropdown */
 .searchWrap {
   flex: 1;
   display: flex;
   justify-content: center;
+  position: relative;
+}
+
+.searchInputWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: min(440px, 100%);
+}
+
+.searchInputIcon {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  color: var(--color-subtle);
+  pointer-events: none;
+  z-index: 1;
 }
 
 .search {
-  width: min(480px, 100%);
+  width: 100%;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 70px 0 30px;
   border-radius: 6px;
   border: 1px solid var(--color-border);
   background: var(--bg-page);
   font-size: 13px;
   color: var(--color-ink);
   outline: none;
+  font-family: inherit;
   transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
 }
 .search:focus {
   background: var(--bg-surface);
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(99,91,255,0.10);
+}
+.search::placeholder { color: var(--color-subtle); }
+
+.searchKbd {
+  position: absolute;
+  right: 8px;
+  font-size: 11px;
+  color: var(--color-subtle);
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: inherit;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.searchClear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: var(--color-subtle);
+  cursor: pointer;
+  font-size: 10px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  line-height: 1;
+}
+.searchClear:hover { color: var(--color-muted); background: var(--bg-subtle); }
+
+/* Dropdown */
+.searchDropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(440px, 100%);
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06);
+  padding: 6px;
+  z-index: 300;
+  animation: dropIn 0.14s ease;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-4px); }
+  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.searchDropdownLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 6px 10px 4px;
+}
+
+.searchResult {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.08s;
+}
+.searchResult:hover,
+.searchResultActive { background: var(--color-accent-light); }
+
+.searchResultIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--bg-page);
+  border: 1px solid var(--color-border-light);
+  color: var(--color-secondary);
+  flex-shrink: 0;
+}
+.searchResultActive .searchResultIcon { color: var(--color-accent); background: var(--color-accent-light); border-color: transparent; }
+
+.searchResultLabel {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-secondary);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.searchResultActive .searchResultLabel { color: var(--color-ink); }
+
+.searchResultBreadcrumb {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-muted);
+}
+
+.searchEmpty {
+  padding: 20px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-muted);
 }
 
 /* Right actions */
@@ -452,6 +586,27 @@
   line-height: 1.4;
 }
 
+/* ── Collapsible nav group ── */
+.navGroupParent {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  color: var(--color-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: background 0.1s, color 0.1s;
+}
+.navGroupParent:hover { background: var(--bg-page); color: var(--color-ink); }
+.navGroupParentOpen   { color: var(--color-ink); }
+
+.navGroupKids { padding-top: 1px; }
+
 /* ── CONTENT ── */
 .content {
   flex: 1;
@@ -468,7 +623,8 @@
   .accountName { display: none; }
   .chevron { display: none; }
 
-  .search { width: 120px; }
+  .search { font-size: 13px; }
+  .searchKbd { display: none; }
 
   .sidebar {
     position: fixed;
