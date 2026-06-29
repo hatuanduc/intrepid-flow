@@ -510,41 +510,68 @@ function GlobalGsheetConfig({
   return (
     <div className={s.card}>
       <p className={s.sectionTitle} style={{ marginBottom: 16 }}>Cấu hình chung</p>
+
+      {/* Row 1: Template source — spreadsheet ID + sheet name are a pair */}
       <div className={s.globalRow}>
-        <div className={s.field} style={{ flex: 1 }}>
-          <label className={s.label}>Template spreadsheet ID</label>
+        <div className={s.field} style={{ flex: 3 }}>
+          <label className={s.label}>
+            Template spreadsheet ID
+            <Tooltip>
+              Sheet mẫu dùng để copy khi tạo tab mới cho tài khoản ngân hàng.{'\n\n'}
+              Lấy ID từ URL của Google Sheet:{'\n'}
+              docs.google.com/spreadsheets/d/<strong>ID_Ở_ĐÂY</strong>/edit
+            </Tooltip>
+          </label>
           <input
             className={`${s.input} ${s.inputFull}`}
             value={templateSpreadsheetId}
             onChange={e => setTemplateSpreadsheetId(e.target.value)}
-            placeholder="1h5gC1vqRfPvZ7DANAnAog-..."
+            placeholder="1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0"
           />
-          <span className={s.fieldHint}>ID của spreadsheet chứa sheet mẫu.</span>
         </div>
         <div className={s.field} style={{ flex: 1 }}>
-          <label className={s.label}>Template sheet name</label>
+          <label className={s.label}>
+            Sheet name
+            <Tooltip>Tên tab trong spreadsheet trên dùng làm mẫu, vd: <code>template</code></Tooltip>
+          </label>
           <input
             className={`${s.input} ${s.inputFull}`}
             value={templateSheet}
             onChange={e => setTemplateSheet(e.target.value)}
             placeholder="template"
           />
-          <span className={s.fieldHint}>Tên tab sheet dùng làm mẫu.</span>
-        </div>
-        <div className={s.field} style={{ flex: 2 }}>
-          <label className={s.label}>
-            Service Account JSON {hasKey ? <span className={s.hasKeyBadge}>✓ Đã cấu hình</span> : <span className={s.noKeyBadge}>Chưa có key</span>}
-          </label>
-          <textarea
-            className={s.textareaInput}
-            value={serviceKeyJson}
-            onChange={e => setServiceKeyJson(e.target.value)}
-            placeholder={hasKey ? '(Để trống để giữ key hiện tại)' : '{\n  "type": "service_account",\n  ...\n}'}
-            style={{ minHeight: 72 }}
-          />
         </div>
       </div>
-      <div className={s.actionRow}>
+
+      {/* Row 2: Service account key — full width */}
+      <div className={s.field} style={{ marginTop: 14 }}>
+        <label className={s.label}>
+          Service Account JSON
+          {hasKey
+            ? <span className={s.hasKeyBadge}>✓ Đã cấu hình</span>
+            : <span className={s.noKeyBadge}>Chưa có key</span>
+          }
+          <Tooltip wide>
+            <strong>Cách thiết lập:</strong>{'\n\n'}
+            1. Vào Google Cloud Console → IAM &amp; Admin → Service Accounts{'\n'}
+            2. Tạo service account mới, tải JSON key về{'\n'}
+            3. Copy toàn bộ nội dung file JSON vào đây{'\n\n'}
+            <strong>Share spreadsheet:</strong>{'\n'}
+            Mỗi spreadsheet (template + từng quốc gia) phải được share cho email của service account với quyền <strong>Editor</strong>.{'\n\n'}
+            Email của account có dạng:{'\n'}
+            <code>name@project-id.iam.gserviceaccount.com</code>
+          </Tooltip>
+        </label>
+        <textarea
+          className={s.textareaInput}
+          value={serviceKeyJson}
+          onChange={e => setServiceKeyJson(e.target.value)}
+          placeholder={hasKey ? '(Để trống để giữ key hiện tại)' : '{\n  "type": "service_account",\n  ...\n}'}
+          style={{ minHeight: 72 }}
+        />
+      </div>
+
+      <div className={s.actionRow} style={{ marginTop: 12 }}>
         <button className={s.btnPrimary} onClick={save} disabled={saving}>
           {saving ? 'Đang lưu...' : 'Lưu cấu hình chung'}
         </button>
@@ -644,6 +671,32 @@ function GsheetCountryCard({
 }
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
+
+function Tooltip({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <span className={s.tooltipWrap}>
+      <button
+        type="button"
+        className={s.tooltipTrigger}
+        onMouseEnter={() => setVisible(true)}
+        onMouseLeave={() => setVisible(false)}
+        onFocus={() => setVisible(true)}
+        onBlur={() => setVisible(false)}
+      >
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+          <circle cx="6.5" cy="6.5" r="5.75" stroke="currentColor" strokeWidth="1.25"/>
+          <text x="6.5" y="10" textAnchor="middle" fontSize="8" fontWeight="600" fill="currentColor">i</text>
+        </svg>
+      </button>
+      {visible && (
+        <div className={`${s.tooltipBox} ${wide ? s.tooltipBoxWide : ''}`}>
+          {children}
+        </div>
+      )}
+    </span>
+  );
+}
 
 const COUNTRY_CODES: Array<{ code: string; label: string }> = [
   { code: 'VN', label: 'Việt Nam' },
