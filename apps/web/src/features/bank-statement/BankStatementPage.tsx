@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  listBankJobs, triggerBankSync, deleteBankJob, getApiBaseUrl,
-  type BankSyncJob,
+  listBankJobs, triggerBankSync, retryBankJob, deleteBankJob, getApiBaseUrl,
+  type BankSyncJob, type JobStep,
 } from '../../lib/api';
 import { getToken } from '../../lib/auth';
 import { useHasPermission } from '../../hooks/useHasPermission';
@@ -75,6 +75,7 @@ export default function BankStatementPage() {
   const [jobs, setJobs] = useState<BankSyncJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [triggering, setTriggering] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const [selectedJob, setSelectedJob] = useState<BankSyncJob | null>(null);
@@ -141,6 +142,20 @@ export default function BankStatementPage() {
     setPanelOpen(false);
     setSelectedJob(null);
     load();
+  }
+
+  async function handleRetry(id: string, stepKey?: 'bank_sync' | 'sheets_sync') {
+    setRetryingId(id);
+    setOpenMenu(null);
+    try {
+      const updated = await retryBankJob(id, stepKey);
+      setJobs(prev => prev.map(j => j.id === id ? updated : j));
+      openDetail(updated);
+    } catch {
+      toast.error('Chạy lại thất bại. Vui lòng thử lại.');
+    } finally {
+      setRetryingId(null);
+    }
   }
 
   async function handleDelete(id: string) {
@@ -213,6 +228,15 @@ export default function BankStatementPage() {
                             >⋯</button>
                             {openMenu === job.id && (
                               <div className={s.moreDropdown}>
+                                {job.status === 'failed' && (
+                                  <button
+                                    className={s.moreItem}
+                                    disabled={retryingId === job.id}
+                                    onClick={() => handleRetry(job.id)}
+                                  >
+                                    {retryingId === job.id ? 'Đang chạy...' : '↺ Chạy lại'}
+                                  </button>
+                                )}
                                 <button
                                   className={`${s.moreItem} ${s.moreItemDanger}`}
                                   disabled={deletingId === job.id}
@@ -239,8 +263,8 @@ export default function BankStatementPage() {
         job={selectedJob}
         open={panelOpen}
         onClose={closePanel}
-        onRetry={canRun ? trigger : undefined}
-        retrying={triggering}
+        onRetry={canRun ? handleRetry : undefined}
+        retryingId={retryingId ?? undefined}
       />
     </div>
   );
@@ -268,96 +292,94 @@ function friendlyError(raw: string | null): string {
   return 'Đồng bộ thất bại. Vui lòng kiểm tra log chi tiết và thử lại.';
 }
 
-function TimelineIcon({ msg, isError }: { msg: string; isError?: boolean }) {
-  if (isError) {
-    return (
-      <span className={`${s.timelineIcon} ${s.timelineIconError}`}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
-        </svg>
-      </span>
-    );
-  }
-  const lower = msg.toLowerCase();
-  if (/hoàn thành|thành công|completed/.test(lower)) {
-    return (
-      <span className={`${s.timelineIcon} ${s.timelineIconOk}`}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </span>
-    );
-  }
-  if (/chờ|pending|waiting/.test(lower)) {
-    return (
-      <span className={`${s.timelineIcon} ${s.timelineIconPending}`}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <circle cx="6" cy="6" r="4" stroke="currentColor" strokeWidth="1.5"/>
-          <path d="M6 4v2.5l1.5 1" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
-        </svg>
-      </span>
-    );
-  }
-  return (
-    <span className={`${s.timelineIcon} ${s.timelineIconStep}`}>
-      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-        <circle cx="6" cy="6" r="2.5" fill="currentColor"/>
-      </svg>
-    </span>
-  );
-}
+const LOG_LIMIT = 8;
+type LogItem = { time: string; message: string; isError: boolean };
 
 function JobDetailPanel({
-  job, open, onClose, onRetry, retrying,
+  job, open, onClose, onRetry, retryingId,
 }: {
   job: BankSyncJob | null;
   open: boolean;
   onClose: () => void;
-  onRetry?: () => void;
-  retrying?: boolean;
+  onRetry?: (id: string, stepKey?: 'bank_sync' | 'sheets_sync') => void;
+  retryingId?: string;
 }) {
   const [showRaw, setShowRaw] = useState(false);
-  const timelineEndRef = useRef<HTMLDivElement>(null);
+  const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    timelineEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [job?.logs?.length]);
-
-  // Reset raw toggle when a new job opens
-  useEffect(() => { setShowRaw(false); }, [job?.id]);
+  useEffect(() => { setShowRaw(false); setExpandedSteps(new Set()); }, [job?.id]);
 
   if (!job) return null;
 
-  const footer = job.status === 'failed' && onRetry ? (
-    <div className={s.retryFooter}>
-      <span className={s.retryHint}>Job thất bại — tạo lần chạy mới để thử lại.</span>
-      <button className={s.btnPrimary} onClick={onRetry} disabled={retrying}>
-        {retrying ? 'Đang kích hoạt...' : '↺ Chạy lại'}
-      </button>
-    </div>
-  ) : undefined;
+  const isRetrying = retryingId === job.id;
+  const isDone = ['completed', 'failed'].includes(job.status);
+  const hasSteps = (job.steps?.length ?? 0) > 0;
 
-  // Build timeline: log entries + optional error entry at end
-  const timelineItems = [
-    ...job.logs.map(entry => ({ time: entry.time, message: entry.message, isError: false })),
-    ...(job.errorMessage ? [{ time: job.completedAt ?? job.startedAt ?? '', message: friendlyError(job.errorMessage), isError: true }] : []),
-  ];
+  // Group logs by step key; __RETRY__ sentinel kept with isError=false
+  const logsByStep: Record<string, LogItem[]> = { bank_sync: [], sheets_sync: [], _general: [] };
+  for (const entry of job.logs) {
+    const bucket = entry.step && entry.step in logsByStep ? entry.step : '_general';
+    logsByStep[bucket].push({ time: entry.time, message: entry.message, isError: false });
+  }
+
+  // Append friendly error entry at end of failed step's list (shows at top when reversed)
+  const failedStep = job.steps?.find(st => st.status === 'failed');
+  if (failedStep?.errorMessage) {
+    logsByStep[failedStep.key].push({
+      time: failedStep.completedAt ?? '',
+      message: friendlyError(failedStep.errorMessage),
+      isError: true,
+    });
+  }
+
+  function expand(key: string) {
+    setExpandedSteps(prev => new Set([...prev, key]));
+  }
+
+  function renderLogNodes(logs: LogItem[], stepKey: string) {
+    const reversed = [...logs].reverse(); // newest first
+    const isExpanded = expandedSteps.has(stepKey);
+    const visible = isExpanded ? reversed : reversed.slice(0, LOG_LIMIT);
+    const hiddenCount = reversed.length - LOG_LIMIT;
+
+    return (
+      <>
+        {visible.map((item, i) => {
+          if (item.message === '__RETRY__') {
+            return (
+              <div key={i} className={s.timelineRetryDivider}>
+                <span className={s.timelineRetryDividerLine} />
+                <span className={s.timelineRetryDividerLabel}>↺ Chạy lại · {item.time ? formatLogTime(item.time) : ''}</span>
+                <span className={s.timelineRetryDividerLine} />
+              </div>
+            );
+          }
+          return (
+            <div key={i} className={s.logNode}>
+              <span className={`${s.logNodeDot} ${item.isError ? s.logNodeDotErr : ''}`} />
+              <div className={s.logNodeBody}>
+                <span className={`${s.logNodeMsg} ${item.isError ? s.logNodeMsgErr : ''}`}>{item.message}</span>
+                <span className={s.logNodeTime}>{item.time ? formatLogTime(item.time) : '—'}</span>
+              </div>
+            </div>
+          );
+        })}
+        {!isExpanded && hiddenCount > 0 && (
+          <button className={s.showMoreBtn} onClick={() => expand(stepKey)}>
+            ↑ Xem thêm {hiddenCount} mục cũ hơn
+          </button>
+        )}
+      </>
+    );
+  }
 
   return (
-    <RightPanel
-      title="Chi tiết job"
-      open={open}
-      onClose={onClose}
-      width={520}
-      footer={footer}
-    >
+    <RightPanel title="Chi tiết job" open={open} onClose={onClose} width={540}>
       <div className={s.detailContent}>
-        {/* Status + duration row */}
+        {/* Status + duration */}
         <div className={s.detailMeta}>
           <StatusBadge status={job.status} />
-          {job.durationMs != null && (
-            <span className={s.detailDuration}>{formatDuration(job.durationMs)}</span>
-          )}
+          {job.durationMs != null && <span className={s.detailDuration}>{formatDuration(job.durationMs)}</span>}
           {isRunning(job.status) && <span className={s.liveIndicator}>● LIVE</span>}
           {job.status === 'pending' && <span className={s.queueIndicator}>● Đang chờ worker</span>}
         </div>
@@ -374,36 +396,90 @@ function JobDetailPanel({
           </span>
         </div>
 
-        {/* Friendly error with raw toggle */}
-        {job.errorMessage && (
-          <div className={s.errorFriendly}>
-            <span className={s.errorFriendlyMsg}>{friendlyError(job.errorMessage)}</span>
-            <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
-              {showRaw ? '▴ Ẩn chi tiết kỹ thuật' : '▾ Xem chi tiết kỹ thuật'}
-            </button>
-            {showRaw && <pre className={s.rawErrorCode}>{job.errorMessage}</pre>}
-          </div>
-        )}
+        {/* ── Unified vertical timeline ── */}
+        <div className={s.jobTimeline}>
+          {hasSteps ? (
+            // New-format job: step nodes (large) + log sub-nodes (small)
+            job.steps.map((step, si) => {
+              const stepLogs = logsByStep[step.key] ?? [];
+              const isLast = si === job.steps.length - 1;
+              const canRetryStep = isDone && onRetry && step.status === 'failed';
+              const stepDotCls = step.status === 'completed' ? s.stepDotOk
+                : step.status === 'failed'    ? s.stepDotErr
+                : step.status === 'running'   ? s.stepDotRunning
+                : s.stepDotPending;
 
-        {/* Activity timeline */}
-        <div className={s.logsSection}>
-          <span className={s.logsLabel}>Nhật ký hoạt động</span>
-          {timelineItems.length === 0 ? (
-            <span className={s.timelineEmpty}>Chưa có hoạt động nào...</span>
-          ) : (
-            <div className={s.timeline}>
-              {timelineItems.map((item, i) => (
-                <div key={i} className={s.timelineItem}>
-                  <TimelineIcon msg={item.message} isError={item.isError} />
-                  <div className={s.timelineBody}>
-                    <span className={`${s.timelineMsg} ${item.isError ? s.timelineMsgError : ''}`}>
-                      {item.message}
-                    </span>
-                    <span className={s.timelineTime}>{item.time ? formatLogTime(item.time) : '—'}</span>
+              return (
+                <div key={step.key} className={s.stepRow}>
+                  {/* Left track: dot + line */}
+                  <div className={s.stepTrack}>
+                    <span className={`${s.stepDot} ${stepDotCls}`} />
+                    {!isLast && <span className={s.stepLine} />}
+                  </div>
+
+                  {/* Right content */}
+                  <div className={s.stepContent}>
+                    {/* Step header */}
+                    <div className={s.stepHeader}>
+                      <span className={s.stepLabel}>{step.label}</span>
+                      {step.completedAt && step.startedAt && (
+                        <span className={s.stepDuration}>
+                          {formatDuration(new Date(step.completedAt).getTime() - new Date(step.startedAt).getTime())}
+                        </span>
+                      )}
+                      {canRetryStep && (
+                        <button className={s.stepRetryBtn} disabled={isRetrying} onClick={() => onRetry!(job.id, step.key)}>
+                          {isRetrying ? '...' : '↺ Chạy lại'}
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Log sub-nodes */}
+                    {stepLogs.length > 0 && (
+                      <div className={s.stepLogs}>
+                        {renderLogNodes(stepLogs, step.key)}
+                      </div>
+                    )}
+
+                    {/* Raw error toggle */}
+                    {step.status === 'failed' && step.errorMessage && (
+                      <div className={s.stepErrorToggle}>
+                        <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
+                          {showRaw ? '▴ Ẩn chi tiết kỹ thuật' : '▾ Xem chi tiết kỹ thuật'}
+                        </button>
+                        {showRaw && <pre className={s.rawErrorCode}>{step.errorMessage}</pre>}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
-              <div ref={timelineEndRef} />
+              );
+            })
+          ) : (
+            // Old-format job: flat log timeline (newest first, limited)
+            <div className={s.stepRow}>
+              <div className={s.stepTrack}>
+                <span className={`${s.stepDot} ${job.status === 'failed' ? s.stepDotErr : job.status === 'completed' ? s.stepDotOk : s.stepDotRunning}`} />
+                <span className={s.stepLine} />
+              </div>
+              <div className={s.stepContent}>
+                <div className={s.stepHeader}>
+                  <span className={s.stepLabel}>Nhật ký hoạt động</span>
+                </div>
+                <div className={s.stepLogs}>
+                  {renderLogNodes([
+                    ...logsByStep._general,
+                    ...(job.errorMessage ? [{ time: job.completedAt ?? '', message: friendlyError(job.errorMessage), isError: true }] : []),
+                  ], '_general')}
+                </div>
+                {job.errorMessage && (
+                  <div className={s.stepErrorToggle}>
+                    <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
+                      {showRaw ? '▴ Ẩn chi tiết kỹ thuật' : '▾ Xem chi tiết kỹ thuật'}
+                    </button>
+                    {showRaw && <pre className={s.rawErrorCode}>{job.errorMessage}</pre>}
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

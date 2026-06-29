@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import * as crypto from 'crypto';
@@ -10,6 +10,28 @@ import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 
 const SETTINGS_ID = 'default';
 
+export type StepKey = 'bank_sync' | 'sheets_sync';
+export type StepStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+export type JobStep = {
+  key: StepKey;
+  label: string;
+  status: StepStatus;
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+};
+
+const INITIAL_STEPS: JobStep[] = [
+  { key: 'bank_sync',    label: 'Lấy sao kê',        status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'sheets_sync',  label: 'Đồng bộ GSheets',   status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+];
+
+function parseSteps(raw: unknown): JobStep[] {
+  if (!Array.isArray(raw) || raw.length === 0) return INITIAL_STEPS.map(s => ({ ...s }));
+  return raw as JobStep[];
+}
+
 export type BankSyncJobDto = {
   id: string;
   status: string;
@@ -17,7 +39,8 @@ export type BankSyncJobDto = {
   startedAt: Date | null;
   completedAt: Date | null;
   errorMessage: string | null;
-  logs: Array<{ time: string; message: string }>;
+  logs: Array<{ time: string; message: string; step?: string }>;
+  steps: JobStep[];
   createdAt: Date;
   durationMs: number | null;
 };
@@ -30,6 +53,7 @@ function toDto(job: {
   completedAt: Date | null;
   errorMessage: string | null;
   logs: unknown;
+  steps: unknown;
   createdAt: Date;
 }): BankSyncJobDto {
   const durationMs =
@@ -44,7 +68,8 @@ function toDto(job: {
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     errorMessage: job.errorMessage,
-    logs: Array.isArray(job.logs) ? (job.logs as Array<{ time: string; message: string }>) : [],
+    logs: Array.isArray(job.logs) ? (job.logs as Array<{ time: string; message: string; step?: string }>) : [],
+    steps: parseSteps(job.steps),
     createdAt: job.createdAt,
     durationMs,
   };
@@ -139,6 +164,7 @@ export class BankStatementService {
         status: 'pending',
         triggeredBy,
         startedAt: new Date(),
+        steps: INITIAL_STEPS,
       },
     });
 
@@ -160,6 +186,49 @@ export class BankStatementService {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { id } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
     return toDto(job);
+  }
+
+  async retryJob(id: string, retriedBy: string, stepKey?: StepKey): Promise<BankSyncJobDto> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+    if (!['failed', 'completed'].includes(job.status)) throw new ConflictException('JOB_STILL_ACTIVE');
+
+    const steps = parseSteps(job.steps);
+
+    // Find index to reset from — default to first non-completed step
+    let startIdx = 0;
+    if (stepKey) {
+      startIdx = steps.findIndex(s => s.key === stepKey);
+      if (startIdx < 0) throw new NotFoundException('STEP_NOT_FOUND');
+    } else {
+      const firstIncomplete = steps.findIndex(s => s.status !== 'completed');
+      startIdx = firstIncomplete >= 0 ? firstIncomplete : 0;
+    }
+
+    // Reset target step and all subsequent ones
+    for (let i = startIdx; i < steps.length; i++) {
+      steps[i] = { ...steps[i], status: 'pending', startedAt: null, completedAt: null, errorMessage: null };
+    }
+
+    const prevLogs = Array.isArray(job.logs) ? job.logs : [];
+    const separator = { time: new Date().toISOString(), message: '__RETRY__' };
+
+    const updated = await this.prisma.bankSyncJob.update({
+      where: { id },
+      data: {
+        status: 'pending',
+        errorMessage: null,
+        startedAt: new Date(),
+        completedAt: null,
+        logs: [...prevLogs, separator],
+        steps,
+        triggeredBy: retriedBy,
+      },
+    });
+
+    await this.queue.add('run', { jobId: id, triggeredBy: retriedBy });
+
+    return toDto(updated);
   }
 
   async softDeleteJob(id: string): Promise<{ ok: boolean }> {

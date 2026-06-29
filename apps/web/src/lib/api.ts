@@ -350,6 +350,15 @@ export async function upsertBankGsheet(countryCode: string, input: {
 
 // --- Bank Sync Jobs ---
 
+export type JobStep = {
+  key: 'bank_sync' | 'sheets_sync';
+  label: string;
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  startedAt: string | null;
+  completedAt: string | null;
+  errorMessage: string | null;
+};
+
 export type BankSyncJob = {
   id: string;
   status: string;
@@ -357,7 +366,8 @@ export type BankSyncJob = {
   startedAt: string | null;
   completedAt: string | null;
   errorMessage: string | null;
-  logs: Array<{ time: string; message: string }>;
+  logs: Array<{ time: string; message: string; step?: string }>;
+  steps: JobStep[];
   createdAt: string;
   durationMs: number | null;
 };
@@ -374,6 +384,13 @@ export async function listBankJobs() {
 
 export async function getBankJob(id: string) {
   return request<BankSyncJob>(`/management/bank-statement/jobs/${id}`, { auth: true });
+}
+
+export async function retryBankJob(id: string, stepKey?: 'bank_sync' | 'sheets_sync') {
+  return request<BankSyncJob>(`/management/bank-statement/jobs/${id}/retry`, {
+    method: 'POST', auth: true,
+    body: JSON.stringify({ stepKey }),
+  });
 }
 
 export async function deleteBankJob(id: string) {

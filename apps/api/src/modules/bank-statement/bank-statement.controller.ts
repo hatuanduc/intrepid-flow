@@ -13,6 +13,7 @@ import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
 import { CreateCountryMappingDto, UpdateCountryMappingDto } from './dto/country-mapping.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
+import { RetryJobDto } from './dto/retry-job.dto';
 
 @ApiTags('Bank Statement')
 @ApiBearerAuth()
@@ -120,6 +121,13 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Chi tiết một job' })
   getJob(@Param('id') id: string): Promise<BankSyncJobDto> {
     return this.service.getJobDetail(id);
+  }
+
+  @Post('jobs/:id/retry')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Retry một job — reset từ stepKey (hoặc step đầu tiên chưa done) rồi re-queue' })
+  retryJob(@Param('id') id: string, @Body() body: RetryJobDto, @Req() req: any): Promise<BankSyncJobDto> {
+    return this.service.retryJob(id, req.authUser.id as string, body.stepKey);
   }
 
   @Delete('jobs/:id')

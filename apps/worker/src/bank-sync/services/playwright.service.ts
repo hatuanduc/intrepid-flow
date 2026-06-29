@@ -41,9 +41,23 @@ export class PlaywrightService {
 
   /**
    * Launch the browser and load saved cookies if the session file exists.
-   * Must be called before any other method.
+   * If a browser is already running and responsive, reuses it (no relaunch).
    */
   async init(): Promise<void> {
+    // Reuse existing browser if it's still alive
+    if (this.browser !== null && this.page !== null) {
+      try {
+        await this.page.evaluate(() => true);
+        this.logger.log('Reusing existing browser session');
+        return;
+      } catch {
+        this.logger.warn('Existing browser became unresponsive — relaunching');
+        this.browser = null;
+        this.context = null;
+        this.page = null;
+      }
+    }
+
     const { chromium } = await import('playwright');
 
     const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false';
@@ -55,7 +69,6 @@ export class PlaywrightService {
       try {
         const raw = fs.readFileSync(this.sessionPath, 'utf-8');
         const parsed = JSON.parse(raw) as { cookies: import('playwright').Cookie[] };
-        // Build a minimal storage state from saved cookies
         storageState = { cookies: parsed.cookies, origins: [] };
         this.logger.log(`Loaded saved session from ${this.sessionPath}`);
       } catch {
@@ -69,7 +82,7 @@ export class PlaywrightService {
     this.page = await this.context.newPage();
   }
 
-  /** Close the browser (call after all work is done). */
+  /** Close the browser. Only call on error or explicit shutdown. */
   async close(): Promise<void> {
     await this.browser?.close();
     this.browser = null;
@@ -87,8 +100,10 @@ export class PlaywrightService {
   async isLoggedIn(): Promise<boolean> {
     const page = this.requirePage();
     try {
-      await page.goto(HSBCNET_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
-      const el = await page.$(SELECTORS.dashboardEl);
+      await page.goto(HSBCNET_URL, { waitUntil: 'load', timeout: 30_000 });
+      // Wait for any client-side redirects to settle before querying
+      await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
+      const el = await page.waitForSelector(SELECTORS.dashboardEl, { timeout: 3_000 }).catch(() => null);
       return el !== null;
     } catch {
       return false;
@@ -128,24 +143,18 @@ export class PlaywrightService {
   }
 
   /**
-   * Poll every 3 seconds until the dashboard element appears (2FA approved on phone)
-   * or TWO_FA_TIMEOUT_MS is exceeded.
+   * Wait until the dashboard element appears (2FA approved on phone).
+   * Uses waitForSelector which is safe across page navigations.
    */
   async wait2FA(): Promise<void> {
     const page = this.requirePage();
-    const deadline = Date.now() + TWO_FA_TIMEOUT_MS;
-    const intervalMs = 3_000;
-
     this.logger.log(`Waiting for 2FA (timeout ${TWO_FA_TIMEOUT_MS}ms)…`);
-    while (Date.now() < deadline) {
-      const el = await page.$(SELECTORS.dashboardEl);
-      if (el !== null) {
-        this.logger.log('2FA confirmed — dashboard element detected');
-        return;
-      }
-      await new Promise(resolve => setTimeout(resolve, intervalMs));
+    try {
+      await page.waitForSelector(SELECTORS.dashboardEl, { timeout: TWO_FA_TIMEOUT_MS });
+      this.logger.log('2FA confirmed — dashboard element detected');
+    } catch {
+      throw new Error('TIMEOUT_2FA');
     }
-    throw new Error('TIMEOUT_2FA');
   }
 
   /** Persist current browser cookies to the session JSON file. */

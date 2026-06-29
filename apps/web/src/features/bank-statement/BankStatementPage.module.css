@@ -67,12 +67,6 @@
 .detailTimeItem { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--color-secondary); }
 .detailTimeLabel { font-size: 11px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 
-.logsSection { display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.logsLabel {
-  font-size: 11px; font-weight: 600; color: var(--color-secondary);
-  text-transform: uppercase; letter-spacing: 0.05em;
-}
-
 /* More menu */
 .moreWrap { position: relative; display: flex; align-items: center; justify-content: center; }
 .moreBtn {
@@ -99,52 +93,80 @@
 .moreItemDanger:hover { background: #fff0f3; }
 .moreItem:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Retry footer */
-.retryFooter {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
+/* ── Unified vertical job timeline ── */
+.jobTimeline { display: flex; flex-direction: column; margin-top: 8px; }
+
+/* Step row: left track (dot + line) + right content */
+.stepRow { display: flex; gap: 14px; }
+
+.stepTrack {
+  display: flex; flex-direction: column; align-items: center;
+  flex-shrink: 0; padding-top: 2px;
 }
-.retryHint {
-  font-size: 12px;
-  color: var(--color-muted);
-  flex: 1;
+.stepDot {
+  width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+  background: var(--bg-subtle); border: 2px solid var(--color-border);
+  z-index: 1;
+}
+.stepDotPending { background: var(--bg-subtle); border-color: var(--color-border); }
+.stepDotRunning { background: #7c3aed; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
+.stepDotOk      { background: #059669; border-color: #059669; }
+.stepDotErr     { background: #df1b41; border-color: #df1b41; }
+
+.stepLine {
+  width: 2px; flex: 1; min-height: 20px; margin-top: 4px;
+  background: var(--color-border-light);
 }
 
-/* Activity timeline — Stripe style */
-.timeline { display: flex; flex-direction: column; }
-.timelineItem {
-  display: flex; align-items: flex-start; gap: 12px;
-  padding: 10px 0; position: relative;
-}
-.timelineItem:not(:last-child)::after {
-  content: '';
-  position: absolute; left: 13px; top: 32px; bottom: -10px;
-  width: 1px; background: var(--color-border-light);
-}
-.timelineIcon {
-  width: 28px; height: 28px; border-radius: 50%; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-}
-.timelineIconStep    { background: #dbeafe; color: #1e40af; }
-.timelineIconOk      { background: #d1fae5; color: #065f46; }
-.timelineIconError   { background: #fff0f3; color: #df1b41; }
-.timelineIconPending { background: var(--bg-subtle); color: var(--color-muted); }
-.timelineBody  { flex: 1; display: flex; flex-direction: column; gap: 2px; padding-top: 4px; }
-.timelineMsg   { font-size: 13px; color: var(--color-secondary); line-height: 1.45; }
-.timelineMsgError { color: #9b1c1c; font-weight: 500; }
-.timelineTime  { font-size: 11px; color: var(--color-muted); }
-.timelineEmpty { font-size: 13px; color: var(--color-muted); padding: 12px 0; font-style: italic; }
+/* Right content area */
+.stepContent { flex: 1; padding-bottom: 24px; min-width: 0; }
 
-/* Friendly error box */
-.errorFriendly {
-  font-size: 13px; color: #9b1c1c; background: #fff0f3;
-  border: 1px solid #fecaca; border-radius: 6px; padding: 10px 14px;
-  display: flex; flex-direction: column; gap: 6px;
+.stepHeader { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.stepLabel { font-size: 14px; font-weight: 600; color: var(--color-ink); flex: 1; }
+.stepDuration { font-size: 11px; color: var(--color-muted); }
+
+.stepRetryBtn {
+  padding: 3px 10px; font-size: 12px; font-weight: 500; border-radius: 5px;
+  border: 1px solid #c7d2fe; background: #f0effe; color: var(--color-accent-active);
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
 }
-.errorFriendlyMsg { line-height: 1.5; }
+.stepRetryBtn:hover:not(:disabled) { background: #e0e7ff; }
+.stepRetryBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Log sub-nodes (small, child of each step) */
+.stepLogs { display: flex; flex-direction: column; gap: 0; }
+
+.logNode { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; }
+.logNodeDot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-border); flex-shrink: 0; margin-top: 5px;
+}
+.logNodeDotErr { background: #df1b41; }
+.logNodeBody { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.logNodeMsg { font-size: 12px; color: var(--color-secondary); line-height: 1.45; word-break: break-word; }
+.logNodeMsgErr { color: #9b1c1c; font-weight: 500; }
+.logNodeTime { font-size: 11px; color: var(--color-muted); }
+
+.showMoreBtn {
+  font-size: 12px; font-weight: 500; color: var(--color-accent-active);
+  background: none; border: none; padding: 6px 0 2px 17px; cursor: pointer;
+  text-align: left; opacity: 0.8;
+}
+.showMoreBtn:hover { opacity: 1; text-decoration: underline; }
+
+.stepErrorToggle { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+
+/* Retry divider inside step logs */
+.timelineRetryDivider {
+  display: flex; align-items: center; gap: 8px; padding: 8px 0 4px;
+}
+.timelineRetryDividerLine { flex: 1; height: 1px; background: var(--color-border); }
+.timelineRetryDividerLabel {
+  font-size: 11px; font-weight: 600; color: var(--color-accent-active);
+  white-space: nowrap; letter-spacing: 0.02em;
+}
+
+/* Raw error toggle */
 .rawErrorToggle {
   font-size: 11px; color: #df1b41; background: none; border: none; padding: 0;
   cursor: pointer; text-align: left; text-decoration: underline; opacity: 0.7;
