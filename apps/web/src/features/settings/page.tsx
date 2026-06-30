@@ -68,6 +68,22 @@ const GROUPS: Group[] = [
       },
     ],
   },
+  {
+    label: 'Hệ thống',
+    cards: [
+      {
+        title: 'Thông báo',
+        desc: 'Bật thông báo trên màn hình khi tài khoản đăng nhập thành công.',
+        href: '/settings/notifications',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <path d="M8 2a5 5 0 0 0-5 5v3l-1 1.5h12L13 10V7a5 5 0 0 0-5-5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+            <path d="M6.5 13.5a1.5 1.5 0 0 0 3 0" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+          </svg>
+        ),
+      },
+    ],
+  },
 ];
 
 export default function SettingsRoot() {

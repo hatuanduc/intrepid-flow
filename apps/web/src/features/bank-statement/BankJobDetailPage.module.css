@@ -1,0 +1,182 @@
+.page { padding: 28px 32px; }
+
+/* Back button */
+.backBtn {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 13px; font-weight: 500; color: var(--color-muted);
+  text-decoration: none; border: none; background: none; padding: 0;
+  cursor: pointer; transition: color 0.15s;
+}
+.backBtn:hover { color: var(--color-ink); }
+
+/* Page header */
+.pageHeader {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin: 16px 0 24px;
+}
+.pageTitle { font-size: 20px; font-weight: 600; color: var(--color-ink); letter-spacing: -0.3px; margin: 0 0 4px; }
+.pageMeta { font-size: 12px; color: var(--color-muted); margin: 0; }
+
+.headerActions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* Buttons */
+.btnPrimary {
+  padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: none; background: var(--color-accent); color: #fff; cursor: pointer;
+  white-space: nowrap;
+}
+.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnSecondary {
+  padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: 1.5px solid var(--color-border); background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer; white-space: nowrap;
+}
+.btnSecondary:hover:not(:disabled) { background: var(--bg-page); }
+.btnSecondary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnDanger {
+  padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: 1.5px solid #fecaca; background: #fff0f3; color: #df1b41;
+  cursor: pointer; white-space: nowrap;
+}
+.btnDanger:hover:not(:disabled) { background: #ffe4e6; }
+.btnDanger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Status badges */
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px;
+  white-space: nowrap;
+}
+.badgeSuccess  { background: #d1fae5; color: #0e6245; }
+.badgeSuccess::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #059669; flex-shrink: 0; }
+.badgeError    { background: #fff0f3; color: #df1b41; }
+.badgeWarn     { background: #fef3c7; color: #92400e; }
+.badgeRunning  { background: #dbeafe; color: #1e40af; }
+.badgeDefault  { background: var(--bg-subtle); color: var(--color-muted); }
+
+/* Detail meta row */
+.detailMeta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.detailDuration { font-size: 12px; color: var(--color-muted); }
+.liveIndicator {
+  font-size: 11px; font-weight: 600; color: #059669;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+.queueIndicator {
+  font-size: 11px; font-weight: 600; color: var(--color-muted);
+  animation: pulse 2s ease-in-out infinite;
+}
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+/* Timestamps */
+.detailTimes { display: flex; gap: 24px; margin-bottom: 24px; }
+.detailTimeItem { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--color-secondary); }
+.detailTimeLabel { font-size: 11px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* Error state */
+.error {
+  font-size: 13px; color: #df1b41; background: #fff0f3;
+  border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px;
+  margin-bottom: 16px;
+}
+
+/* Loading / empty */
+.loadingWrap { display: flex; justify-content: center; padding: 80px 0; }
+.empty { font-size: 13px; color: var(--color-subtle); padding: 60px 0; text-align: center; }
+
+/* ── Unified vertical job timeline ── */
+.jobTimeline { display: flex; flex-direction: column; }
+
+.stepRow { display: flex; gap: 14px; }
+
+.stepTrack {
+  display: flex; flex-direction: column; align-items: center;
+  flex-shrink: 0; padding-top: 2px;
+}
+.stepDot {
+  width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0;
+  background: var(--bg-subtle); border: 2px solid var(--color-border);
+  z-index: 1;
+}
+.stepDotPending { background: var(--bg-subtle); border-color: var(--color-border); }
+.stepDotRunning { background: #7c3aed; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
+.stepDotOk      { background: #059669; border-color: #059669; }
+.stepDotErr     { background: #df1b41; border-color: #df1b41; }
+
+.stepLine {
+  width: 2px; flex: 1; min-height: 20px; margin-top: 4px;
+  background: var(--color-border-light);
+}
+
+.stepContent { flex: 1; padding-bottom: 24px; min-width: 0; }
+
+.stepHeader { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.stepLabel { font-size: 14px; font-weight: 600; color: var(--color-ink); flex: 1; }
+.stepDuration { font-size: 11px; color: var(--color-muted); }
+
+.stepRetryBtn {
+  padding: 3px 10px; font-size: 12px; font-weight: 500; border-radius: 5px;
+  border: 1px solid #c7d2fe; background: #f0effe; color: var(--color-accent-active);
+  cursor: pointer; white-space: nowrap; flex-shrink: 0;
+}
+.stepRetryBtn:hover:not(:disabled) { background: #e0e7ff; }
+.stepRetryBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Log sub-nodes */
+.stepLogs { display: flex; flex-direction: column; gap: 0; }
+
+.logNode { display: flex; align-items: flex-start; gap: 10px; padding: 4px 0; }
+.logNodeDot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--color-border); flex-shrink: 0; margin-top: 5px;
+}
+.logNodeDotErr  { background: #df1b41; }
+.logNodeDotOk   { background: #059669; }
+.logNodeDotWarn { background: #d97706; }
+.logNodeBody { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.logNodeMsg { font-size: 12px; color: var(--color-secondary); line-height: 1.45; word-break: break-word; }
+.logNodeMsgErr  { color: #9b1c1c; font-weight: 500; }
+.logNodeMsgWarn { color: #92400e; font-weight: 500; }
+.logNodeTime { font-size: 11px; color: var(--color-muted); }
+
+.showMoreBtn {
+  font-size: 12px; font-weight: 500; color: var(--color-accent-active);
+  background: none; border: none; padding: 6px 0 2px 17px; cursor: pointer;
+  text-align: left; opacity: 0.8;
+}
+.showMoreBtn:hover { opacity: 1; text-decoration: underline; }
+
+.stepErrorToggle { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
+
+/* Retry divider inside step logs */
+.timelineRetryDivider {
+  display: flex; align-items: center; gap: 8px; padding: 8px 0 4px;
+}
+.timelineRetryDividerLine { flex: 1; height: 1px; background: var(--color-border); }
+.timelineRetryDividerLabel {
+  font-size: 11px; font-weight: 600; color: var(--color-accent-active);
+  white-space: nowrap; letter-spacing: 0.02em;
+}
+
+/* Raw error toggle */
+.rawErrorToggle {
+  font-size: 11px; color: #df1b41; background: none; border: none; padding: 0;
+  cursor: pointer; text-align: left; text-decoration: underline; opacity: 0.7;
+  width: fit-content;
+}
+.rawErrorToggle:hover { opacity: 1; }
+.rawErrorCode {
+  font-size: 11px; font-family: monospace; color: #9b1c1c; background: #fef2f2;
+  border: 1px solid #fecaca; border-radius: 4px; padding: 8px 10px;
+  word-break: break-all; white-space: pre-wrap; margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+  .page { padding: 16px; }
+  .pageHeader { flex-direction: column; align-items: stretch; }
+  .headerActions { flex-direction: column; }
+  .btnPrimary, .btnSecondary, .btnDanger { width: 100%; text-align: center; justify-content: center; }
+  .detailTimes { flex-direction: column; gap: 12px; }
+}

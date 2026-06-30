@@ -55,10 +55,7 @@ export const MAIN_NAV: NavItem[] = [
   { label: 'Tổng quan', href: '/', icon: HomeIcon },
 ];
 
-export const FEATURE_NAV: NavItem[] = [
-  { label: 'Quy trình', href: '/modules', icon: WorkflowIcon },
-  { label: 'Cài đặt', href: '/settings', icon: SettingsIcon },
-];
+export const FEATURE_NAV: NavItem[] = [];
 
 export const NAV_GROUPS: NavGroupDef[] = [
   {
@@ -77,7 +74,10 @@ export const NAV_GROUPS: NavGroupDef[] = [
   },
 ];
 
-export const MORE_NAV: NavItem[] = [];
+export const MORE_NAV: NavItem[] = [
+  { label: 'Quy trình', href: '/modules', icon: WorkflowIcon },
+  { label: 'Cài đặt', href: '/settings', icon: SettingsIcon },
+];
 
 export const ALL_PINNABLE: NavItem[] = [
   ...FEATURE_NAV,

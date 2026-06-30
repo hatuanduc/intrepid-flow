@@ -314,23 +314,15 @@ export default function DashboardLayout({ user, children }: { user: User; childr
         {open && (
           <div className={s.navGroupKids}>
             {group.children.map(item => (
-              <div key={item.href} className={s.navItemWrap}>
-                <Link
-                  href={item.href}
-                  className={`${navClass(item.href)} ${s.navItemIndent}`}
-                  onClick={closeSidebar}
-                >
-                  <span className={s.navIcon}>{item.icon}</span>
-                  {item.label}
-                </Link>
-                <button
-                  className={`${s.pinBtn} ${isPinned(item.href) ? s.pinBtnActive : ''}`}
-                  onClick={e => togglePin(item, e)}
-                  title={isPinned(item.href) ? 'Bỏ ghim' : 'Ghim vào phím tắt'}
-                >
-                  <PinIcon />
-                </button>
-              </div>
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`${navClass(item.href)} ${s.navItemIndent}`}
+                onClick={closeSidebar}
+              >
+                <span className={s.navIcon}>{item.icon}</span>
+                {item.label}
+              </Link>
             ))}
           </div>
         )}
@@ -401,14 +393,14 @@ export default function DashboardLayout({ user, children }: { user: User; childr
             ) : (
               shortcuts.map(item => (
                 <div key={item.href} className={s.navItemWrap}>
-                  <Link href={item.href} className={navClass(item.href)} onClick={closeSidebar}>
+                  <Link href={item.href} className={s.navItem} onClick={closeSidebar}>
                     <span className={s.navIcon}>{item.icon}</span>
                     {item.label}
                   </Link>
                   <button
                     className={`${s.pinBtn} ${isPinned(item.href) ? s.pinBtnActive : ''}`}
                     onClick={e => togglePin(item, e)}
-                    title={isPinned(item.href) ? 'Bỏ ghim' : 'Ghim trang này'}
+                    title={isPinned(item.href) ? 'Bỏ ghim' : 'Ghim vào phím tắt'}
                   >
                     <PinIcon />
                   </button>
@@ -422,7 +414,12 @@ export default function DashboardLayout({ user, children }: { user: User; childr
           <div className={s.navGroup}>
             <span className={s.navGroupLabel}>Chức năng</span>
 
-            {FEATURE_NAV.map(item => <FeatureNavItem key={item.href} item={item} />)}
+            {FEATURE_NAV.map(item => (
+              <Link key={item.href} href={item.href} className={navClass(item.href)} onClick={closeSidebar}>
+                <span className={s.navIcon}>{item.icon}</span>
+                {item.label}
+              </Link>
+            ))}
 
             {NAV_GROUPS.map(group => (
               <CollapseGroup key={group.label} group={group} />

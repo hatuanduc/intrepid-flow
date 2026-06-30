@@ -92,11 +92,8 @@ export class PlaywrightService {
   }
 
   async close(): Promise<void> {
-    // Logout trước khi đóng — tránh orphaned server-side session
-    if (this.page) {
-      await this.page.click(SELECTORS.dashboardEl).catch(() => {});
-      await this.page.waitForTimeout(800).catch(() => {});
-    }
+    // Không logout — để server session còn sống, lần sau load cookies không cần 2FA lại.
+    // Nếu "already logged on" xảy ra → isLoggedIn() tự detect và clearSession().
     await this.browser?.close();
     this.browser = null;
     this.context = null;
@@ -209,28 +206,31 @@ export class PlaywrightService {
   async discoverAccounts(): Promise<DiscoveredAccount[]> {
     const page = this.requirePage();
 
-    // Step 1: Navigate to Account Information page
-    const currentUrl = page.url();
-    const baseUrl = currentUrl.split('#')[0];
-    const targetUrl = `${baseUrl}#/accounts`;
-    this.logger.log(`[discover] Navigating to ${targetUrl}`);
-    await page.goto(targetUrl, { waitUntil: 'load', timeout: 20_000 });
-    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
-    this.logger.log(`[discover] Page loaded — current URL: ${page.url()}`);
+    // Step 1: Navigate to Account Information page via top nav link
+    this.logger.log(`[discover] Current URL before nav: ${page.url()}`);
+    const accountInfoLink = page.locator('a, button').filter({ hasText: /account information/i }).first();
+    if (await accountInfoLink.count() > 0) {
+      this.logger.log('[discover] Clicking "Account information" nav link');
+      await accountInfoLink.click();
+      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+    } else {
+      this.logger.warn('[discover] "Account information" nav link not found on current page');
+    }
+    this.logger.log(`[discover] After nav — URL: ${page.url()}, title: "${await page.title()}"`);
 
-    // Step 2: Click first account row
+    // Step 2: Click first clickable account row (`:first-child` was wrong — title row is first)
     const firstRow = await page.waitForSelector(
-      'table tbody tr:first-child td:first-child, .table__row--clickable:first-child',
+      '.table__row--clickable',
       { timeout: 10_000 },
     ).catch(() => null);
     if (!firstRow) {
-      this.logger.warn(`[discover] No account rows found — page title: "${await page.title()}"`);
-      throw new Error('No account rows found on Account Information page');
+      this.logger.warn(`[discover] No clickable account rows found — page title: "${await page.title()}"`);
+      return [];
     }
-    this.logger.log('[discover] Found first account row — clicking');
+    this.logger.log('[discover] Found first clickable account row — clicking');
     await firstRow.click();
     await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-    this.logger.log(`[discover] After click — URL: ${page.url()}`);
+    this.logger.log(`[discover] After row click — URL: ${page.url()}`);
 
     // Step 3: Find "Change account" search input
     this.logger.log(`[discover] Waiting for changeAccountInput: ${SELECTORS.changeAccountInput}`);
