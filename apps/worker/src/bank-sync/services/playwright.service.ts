@@ -8,7 +8,7 @@ const SELECTORS = {
   // Login page
   usernameInput:  '#userid',
   nextBtn:        'button#nextBtn, button[type="submit"]',
-  authMethodBtn:  'button[data-testid="Button"]',
+  authMethodBtn:  'button[data-testid="Button"], button[data-test-id="autoTestCDLButton"]',
   usernameError:  '#userid-error',
 
   // Post-login: Log off button — chỉ có khi đã authenticated
@@ -146,8 +146,17 @@ export class PlaywrightService {
 
     this.logger.log(`Navigating to ${HSBCNET_URL}`);
     await page.goto(HSBCNET_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+
+    // Step 1: fill username
+    const usernameInput = await page.waitForSelector(SELECTORS.usernameInput, { timeout: 10_000 }).catch(() => null);
+    if (!usernameInput) {
+      const url = page.url();
+      const title = await page.title().catch(() => '');
+      throw new Error(`LOGIN_FORM_NOT_FOUND — URL: ${url}, title: "${title}" — selector: "${SELECTORS.usernameInput}"`);
+    }
     await page.fill(SELECTORS.usernameInput, username);
     await page.click(SELECTORS.nextBtn);
+    this.logger.log(`Đã nhập tên đăng nhập (${username}) — chờ xác thực 2FA trên điện thoại...`);
 
     const errorEl = await page.waitForSelector(SELECTORS.usernameError, { timeout: 4_000 }).catch(() => null);
     if (errorEl) {
@@ -156,13 +165,18 @@ export class PlaywrightService {
       throw new Error('INVALID_USERNAME');
     }
 
-    this.logger.log('Username accepted — selecting authentication method');
+    // Step 2: auth method confirmation page (optional — some flows skip directly to 2FA)
+    this.logger.log('Tìm nút xác nhận phương thức đăng nhập…');
     const authBtn = await page.waitForSelector(SELECTORS.authMethodBtn, { timeout: 15_000 }).catch(() => null);
     if (authBtn) {
       await authBtn.click();
-      this.logger.log('Auth method confirmed — waiting for 2FA on mobile');
+      this.logger.log('Đã xác nhận phương thức — chờ 2FA trên thiết bị di động');
     } else {
-      this.logger.log('No auth-method page — waiting for 2FA directly');
+      const url = page.url();
+      const title = await page.title().catch(() => '');
+      this.logger.warn(
+        `Auth method button không tìm thấy sau 15s — selector: "${SELECTORS.authMethodBtn}", URL: ${url}, title: "${title}" — tiếp tục chờ 2FA`,
+      );
     }
   }
 
@@ -172,8 +186,14 @@ export class PlaywrightService {
 
     // Log khi màn hình chờ 2FA xuất hiện (không block)
     page.waitForSelector(SELECTORS.twoFaPending, { timeout: 10_000 })
-      .then(() => this.logger.log('2FA screen detected — waiting for mobile approval'))
-      .catch(() => {});
+      .then(() => this.logger.log('Màn hình 2FA xuất hiện — đang chờ phê duyệt trên thiết bị di động'))
+      .catch(async () => {
+        const url = page.url();
+        const title = await page.title().catch(() => '');
+        this.logger.warn(
+          `Màn hình 2FA không xuất hiện sau 10s — selector: "${SELECTORS.twoFaPending}", URL: ${url}, title: "${title}"`,
+        );
+      });
 
     const result = await Promise.race([
       page.waitForSelector(SELECTORS.dashboardEl, { timeout: 0 }).then(() => 'ok' as const),

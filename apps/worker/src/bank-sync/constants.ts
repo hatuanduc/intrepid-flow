@@ -24,7 +24,7 @@ export const FAIL_REASON = {
   SHEET_ERROR: 'sheet_error',
 } as const;
 
-export const HSBCNET_URL = 'https://www1.secure.hsbcnet.com';
+export const HSBCNET_URL = process.env.HSBCNET_URL ?? 'https://www1.secure.hsbcnet.com';
 export const SESSION_FILE = 'sessions/hsbcnet.json';
 
 // Safety net — nếu cả dashboard lẫn error selector đều không xuất hiện
