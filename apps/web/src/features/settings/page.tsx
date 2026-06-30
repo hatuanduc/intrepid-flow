@@ -52,6 +52,22 @@ const GROUPS: Group[] = [
       },
     ],
   },
+  {
+    label: 'Báo cáo',
+    cards: [
+      {
+        title: 'Báo cáo AR',
+        desc: 'Cấu hình Google Sheets và service account cho module báo cáo công nợ phải thu.',
+        href: '/settings/job/report-ar',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <path d="M2 12L6 8l3 3 5-6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+            <rect x="1.5" y="1.5" width="13" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+          </svg>
+        ),
+      },
+    ],
+  },
 ];
 
 export default function SettingsRoot() {

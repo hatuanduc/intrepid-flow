@@ -1,11 +1,11 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../../../../node_modules/.prisma/client"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
 }
 
@@ -21,7 +21,6 @@ model User {
 
   @@map("users")
 }
-
 
 model Role {
   id          String           @id @default(uuid())
@@ -199,15 +198,39 @@ model BankGsheetConfig {
 }
 
 model BankJobSettings {
-  id                    String   @id @default(uuid())
-  scheduleCron          String   @default("30 9 * * *") @map("schedule_cron")
-  isScheduled           Boolean  @default(true) @map("is_scheduled")
-  hsbcnetUsername       String?  @map("hsbcnet_username")
-  googleServiceKeyJson         String?  @map("google_service_key_json")
-  googleTemplateSpreadsheetId  String?  @map("google_template_spreadsheet_id")
-  googleTemplateSheet          String?  @map("google_template_sheet")
-  updatedAt             DateTime @updatedAt @map("updated_at")
-  createdAt             DateTime @default(now()) @map("created_at")
+  id                          String   @id @default(uuid())
+  scheduleCron                String   @default("30 9 * * *") @map("schedule_cron")
+  isScheduled                 Boolean  @default(true) @map("is_scheduled")
+  hsbcnetUsername             String?  @map("hsbcnet_username")
+  googleServiceKeyJson        String?  @map("google_service_key_json")
+  googleTemplateSpreadsheetId String?  @map("google_template_spreadsheet_id")
+  googleTemplateSheet         String?  @map("google_template_sheet")
+  syncDateMode                String   @default("yesterday") @map("sync_date_mode")
+  syncCustomDays              Int      @default(1) @map("sync_custom_days")
+  updatedAt                   DateTime @updatedAt @map("updated_at")
+  createdAt                   DateTime @default(now()) @map("created_at")
 
   @@map("bank_job_settings")
+}
+
+model ArGsheetConfig {
+  id             String   @id @default(uuid())
+  countryCode    String   @unique @map("country_code")
+  spreadsheetId  String   @map("spreadsheet_id")
+  sheetName      String   @default("TH") @map("sheet_name")
+  spreadsheetUrl String?  @map("spreadsheet_url")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("ar_gsheet_configs")
+}
+
+model ArReportSettings {
+  id                   String   @id @default(uuid())
+  googleServiceKeyJson String?  @map("google_service_key_json")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+  createdAt            DateTime @default(now()) @map("created_at")
+
+  @@map("ar_report_settings")
 }

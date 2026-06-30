@@ -37,6 +37,18 @@ export const JobsIcon = (
     <path d="M4.5 5h5M4.5 7h5M4.5 9h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
   </svg>
 );
+export const ReportsIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <rect x="1.5" y="1.5" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M4 9.5V7M7 9.5V5M10 9.5V3.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
+export const ReportArIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M2 12L5 8l3 2 4-6" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="12" cy="4" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+  </svg>
+);
 
 /* ── Nav definitions ── */
 export const MAIN_NAV: NavItem[] = [
@@ -54,6 +66,13 @@ export const NAV_GROUPS: NavGroupDef[] = [
     icon: JobsIcon,
     children: [
       { label: 'Sao kê NH', href: '/bank-statement', icon: BankIcon },
+    ],
+  },
+  {
+    label: 'Báo cáo',
+    icon: ReportsIcon,
+    children: [
+      { label: 'AR', href: '/report-ar', icon: ReportArIcon },
     ],
   },
 ];
@@ -84,7 +103,8 @@ const RolesIcon = (
 const SETTINGS_SEARCH: SearchEntry[] = [
   { label: 'Tài khoản người dùng', href: '/settings/users',              icon: UsersIcon, breadcrumb: 'Cài đặt' },
   { label: 'Vai trò',              href: '/settings/roles',              icon: RolesIcon, breadcrumb: 'Cài đặt' },
-  { label: 'Sao kê NH',            href: '/settings/job/bank-statement', icon: BankIcon,  breadcrumb: 'Cài đặt' },
+  { label: 'Sao kê NH',            href: '/settings/job/bank-statement', icon: BankIcon,     breadcrumb: 'Cài đặt' },
+  { label: 'AR Report',            href: '/settings/job/report-ar',      icon: ReportArIcon, breadcrumb: 'Cài đặt' },
 ];
 
 // Flat list for search

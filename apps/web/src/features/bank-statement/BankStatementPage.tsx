@@ -293,7 +293,21 @@ function friendlyError(raw: string | null): string {
 }
 
 const LOG_LIMIT = 8;
-type LogItem = { time: string; message: string; isError: boolean };
+type LogLevel = 'info' | 'success' | 'warn' | 'error';
+type LogItem = { time: string; message: string; level: LogLevel };
+
+const LOG_LEVEL_DOT: Record<LogLevel, string> = {
+  info:    '',           // default gray from CSS
+  success: 'logNodeDotOk',
+  warn:    'logNodeDotWarn',
+  error:   'logNodeDotErr',
+};
+const LOG_LEVEL_MSG: Record<LogLevel, string> = {
+  info:    '',
+  success: '',
+  warn:    'logNodeMsgWarn',
+  error:   'logNodeMsgErr',
+};
 
 function JobDetailPanel({
   job, open, onClose, onRetry, retryingId,
@@ -315,11 +329,12 @@ function JobDetailPanel({
   const isDone = ['completed', 'failed'].includes(job.status);
   const hasSteps = (job.steps?.length ?? 0) > 0;
 
-  // Group logs by step key; __RETRY__ sentinel kept with isError=false
+  // Group logs by step key; read level from DB entry (backward-compat default: 'info')
   const logsByStep: Record<string, LogItem[]> = { bank_sync: [], sheets_sync: [], _general: [] };
   for (const entry of job.logs) {
     const bucket = entry.step && entry.step in logsByStep ? entry.step : '_general';
-    logsByStep[bucket].push({ time: entry.time, message: entry.message, isError: false });
+    const level: LogLevel = (entry.level != null && ['info', 'success', 'warn', 'error'].includes(entry.level) ? entry.level : 'info') as LogLevel;
+    logsByStep[bucket].push({ time: entry.time, message: entry.message, level });
   }
 
   // Append friendly error entry at end of failed step's list (shows at top when reversed)
@@ -328,7 +343,7 @@ function JobDetailPanel({
     logsByStep[failedStep.key].push({
       time: failedStep.completedAt ?? '',
       message: friendlyError(failedStep.errorMessage),
-      isError: true,
+      level: 'error',
     });
   }
 
@@ -356,9 +371,9 @@ function JobDetailPanel({
           }
           return (
             <div key={i} className={s.logNode}>
-              <span className={`${s.logNodeDot} ${item.isError ? s.logNodeDotErr : ''}`} />
+              <span className={`${s.logNodeDot} ${s[LOG_LEVEL_DOT[item.level]] ?? ''}`} />
               <div className={s.logNodeBody}>
-                <span className={`${s.logNodeMsg} ${item.isError ? s.logNodeMsgErr : ''}`}>{item.message}</span>
+                <span className={`${s.logNodeMsg} ${s[LOG_LEVEL_MSG[item.level]] ?? ''}`}>{item.message}</span>
                 <span className={s.logNodeTime}>{item.time ? formatLogTime(item.time) : '—'}</span>
               </div>
             </div>
@@ -468,7 +483,7 @@ function JobDetailPanel({
                 <div className={s.stepLogs}>
                   {renderLogNodes([
                     ...logsByStep._general,
-                    ...(job.errorMessage ? [{ time: job.completedAt ?? '', message: friendlyError(job.errorMessage), isError: true }] : []),
+                    ...(job.errorMessage ? [{ time: job.completedAt ?? '', message: friendlyError(job.errorMessage), level: 'error' as LogLevel }] : []),
                   ], '_general')}
                 </div>
                 {job.errorMessage && (

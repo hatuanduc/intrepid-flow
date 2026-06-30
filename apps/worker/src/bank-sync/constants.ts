@@ -27,8 +27,8 @@ export const FAIL_REASON = {
 export const HSBCNET_URL = 'https://www1.secure.hsbcnet.com';
 export const SESSION_FILE = 'sessions/hsbcnet.json';
 
-// 60s chờ 2FA lần đầu, 60s thêm sau resend
-export const TWO_FA_TIMEOUT_MS = 60_000;
+// Safety net — nếu cả dashboard lẫn error selector đều không xuất hiện
+export const TWO_FA_TIMEOUT_MS = 5 * 60_000; // 5 phút
 
 // ─── HSBCnet Excel column definitions ────────────────────────────────────────
 

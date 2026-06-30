@@ -6,7 +6,7 @@ import {
   getBankSettings, updateBankSettings,
   listBankCountries, createBankCountry, updateBankCountry, deleteBankCountry,
   listBankGsheets, upsertBankGsheet,
-  type BankJobSettings,
+  type BankJobSettings, type SyncDateMode,
   type BankCountryMapping, type BankGsheetConfig,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
@@ -117,10 +117,19 @@ function getNextRuns(cronHour: number, cronMinute: number, count: number): Date[
   return results;
 }
 
+const SYNC_DATE_MODE_LABELS: Record<SyncDateMode, string> = {
+  today:      'Hôm nay',
+  yesterday:  'Hôm qua',
+  last_7_days: '7 ngày gần nhất',
+  custom:     'Tùy chỉnh (N ngày gần nhất)',
+};
+
 function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved: (s: BankJobSettings) => void }) {
   const [isScheduled, setIsScheduled] = useState(settings.isScheduled);
   const [hour, setHour] = useState(() => parseInt(settings.scheduleCron.split(' ')[1]));
   const [minute, setMinute] = useState(() => parseInt(settings.scheduleCron.split(' ')[0]));
+  const [syncDateMode, setSyncDateMode] = useState<SyncDateMode>(settings.syncDateMode ?? 'yesterday');
+  const [syncCustomDays, setSyncCustomDays] = useState(settings.syncCustomDays ?? 1);
   const [saving, setSaving] = useState(false);
 
   const cron = `${minute} ${hour} * * *`;
@@ -129,7 +138,12 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
   async function save() {
     setSaving(true);
     try {
-      const result = await updateBankSettings({ scheduleCron: cron, isScheduled });
+      const result = await updateBankSettings({
+        scheduleCron: cron,
+        isScheduled,
+        syncDateMode,
+        syncCustomDays: syncCustomDays > 0 ? syncCustomDays : 1,
+      });
       onSaved(result);
     } finally {
       setSaving(false);
@@ -206,6 +220,41 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
         )}
       </div>
 
+      <div className={s.card}>
+        <div className={s.scheduleRow}>
+          <div className={s.scheduleLabel}>
+            <span className={s.scheduleName}>Khoảng ngày đồng bộ</span>
+            <span className={s.scheduleDesc}>Phạm vi ngày HSBCnet sẽ tải sao kê mỗi lần chạy</span>
+          </div>
+        </div>
+        <div className={s.scheduleDivider} />
+        <div className={s.dateRangeRow}>
+          <select
+            className={s.timeSelect}
+            value={syncDateMode}
+            onChange={e => setSyncDateMode(e.target.value as SyncDateMode)}
+          >
+            {(Object.entries(SYNC_DATE_MODE_LABELS) as [SyncDateMode, string][]).map(([v, label]) => (
+              <option key={v} value={v}>{label}</option>
+            ))}
+          </select>
+          {syncDateMode === 'custom' && (
+            <>
+              <span className={s.timeSep}>N =</span>
+              <input
+                type="number"
+                min={1}
+                max={365}
+                className={s.customDaysInput}
+                value={syncCustomDays}
+                onChange={e => setSyncCustomDays(Math.max(1, parseInt(e.target.value) || 1))}
+              />
+              <span className={s.scheduleDesc}>ngày</span>
+            </>
+          )}
+        </div>
+      </div>
+
       <div>
         <button className={s.btnPrimary} onClick={save} disabled={saving}>
           {saving ? 'Đang lưu...' : 'Lưu cài đặt'}
@@ -228,6 +277,8 @@ function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved:
         scheduleCron: settings.scheduleCron,
         isScheduled: settings.isScheduled,
         hsbcnetUsername: username.trim() || null,
+        syncDateMode: settings.syncDateMode ?? 'yesterday',
+        syncCustomDays: settings.syncCustomDays ?? 1,
       });
       onSaved(result);
     } finally {
@@ -496,6 +547,8 @@ function GlobalGsheetConfig({
         googleTemplateSpreadsheetId: templateSpreadsheetId.trim() || null,
         googleTemplateSheet: templateSheet.trim() || null,
         googleServiceKeyJson: serviceKeyJson.trim() || settings.googleServiceKeyJson || null,
+        syncDateMode: settings.syncDateMode ?? 'yesterday',
+        syncCustomDays: settings.syncCustomDays ?? 1,
       });
       setServiceKeyJson('');
       onSaved(result);

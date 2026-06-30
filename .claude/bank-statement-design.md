@@ -42,43 +42,161 @@ URL: `https://www1.secure.hsbcnet.com`
 
 ---
 
-## 2. Data Download Flow
+## 2. Data Download Flow (Actual HSBCnet UI — verified via DevTools)
 
-### Account Discovery
-Sau khi login → navigate đến trang Account Information → lấy danh sách accounts hiển thị.
+### 2.1 Post-Login Landing
 
-Trang accounts URL: `...hsbcnet.com/uims/portal/HSBCnet/Landing...#/accounts`
-
-Từ danh sách, lấy các account thuộc INTREPID VIETNAM LTD (hoặc theo country filter đang chạy):
-- `001-797281-001` — VN VND
-- `001-797281-002` — VN VND
-- `001-797281-003` — VN VND
-- (và các account khác khi mở rộng)
-
-### Per-Account Download (tuần tự)
-Với mỗi account:
+Sau khi 2FA thành công, URL có dạng:
 ```
-1. Click vào row account đó
-2. Trang chi tiết account hiển thị (transactions list)
-3. Click "Filter / search" → mở filter panel
-4. Date range → chọn "Previous day" (shortcut button)
-5. Click "Apply"
-6. Sau khi filter xong → Click "Export" dropdown
-7. Chọn "Transactions" (không phải Balance details)
-8. Chọn "Excel"
-9. File Excel được tải về → Playwright intercept download
-10. DB log: status = downloading_{account_number}
+https://www1.secure.hsbcnet.com/uims/portal/HSBCnet/Landing;jsessionid=...#/landing
+```
+Check session bằng cách detect URL chứa `/Landing` hoặc `/accounts` (KHÔNG redirect về login).
+
+---
+
+### 2.2 Account Discovery (từ "Change account" switcher)
+
+**Flow:**
+```
+1. Navigate đến account detail bất kỳ (click row đầu tiên trong bảng tài khoản)
+   Selector: table.accounts-table tr.table__row--clickable:first-child td.table__cell--at span[role="button"]
+
+2. Click vào ô "Change account" (search box)
+   Selector: input[aria-label*="account number or title"]
+   Placeholder: "Change account"
+
+3. Dropdown hiện ra với tất cả accounts (role="listbox")
+   Selector: ul.switcher-option[role="listbox"]
+
+4. Scrape toàn bộ li items:
+   Selector: li.switcher-option--item[role="option"]
+   Structure của mỗi item:
+     <li class="switcher-option--item" role="option">
+       <p class="switcher-option--number">INTREPID VIETNAM LTD</p>   ← companyName
+       <p class="switcher-option--account">
+         001-797281-003        ← accountNumber (text node trực tiếp)
+         <i>VN</i>             ← countryCode
+         <span>VND</span>      ← currency
+       </p>
+     </li>
 ```
 
-### Excel Column Layout (từ template row 1)
+**Kết quả trả về:** `Array<{ companyName, accountNumber, countryCode, currency }>`
+
+**Sync vào DB:**
+- Account đã tồn tại (theo `accountNumber`) → skip
+- Account mới → insert vào `bank_accounts` + tạo notification ("X tài khoản mới được phát hiện")
+
+---
+
+### 2.3 Per-Account Statement Download (tuần tự)
+
+Với mỗi account trong danh sách active:
+
+```
+1. Nhập accountNumber vào ô "Change account" search
+   Selector: input[aria-label*="account number or title"]
+   Action: fill(accountNumber)
+
+2. Chờ dropdown xuất hiện, click vào result đầu tiên
+   Selector: li.switcher-option--item[role="option"]:first-child
+   If không tìm thấy → log error, skip account
+
+3. Trang chi tiết account load xong
+   Waitfor: span#showing_actual_range_quick_link  (vùng "Showing X transactions from...")
+
+4. Click "Specify date range"
+   Selector: span#showing_actual_range_quick_link
+
+5. Filter panel hiện ra. Click vào Date range combobox
+   Selector: div[id*="rangeDate"]
+
+6. Picker mở ra — điền ngày bắt đầu và ngày kết thúc
+   Format: dd/mm/yyyy
+   (Playwright: tìm input trong picker và fill, hoặc tương tác với calendar)
+
+7. Click "Apply"
+   Selector: input.form__control-button[type="submit"]
+
+8. Check kết quả:
+   - Nếu "No transactions found":
+     Selector: p.table__error-message
+     Action: log warning, skip export, tiếp tục account tiếp theo
+   - Nếu có data: tiếp tục step 9
+
+9. Click Export dropdown
+   Selector: button#export-dropdown-trigger
+
+10. Trong dropdown: chọn "Transactions" radio (nếu chưa chọn)
+    Selector: radio/option "Transactions" trong ul#export-dropdown
+
+11. Click "Excel"
+    Selector: li/span có class user-action__drop-option--clickable chứa text "Excel"
+
+12. File download trong tab mới (Playwright waitForEvent('download'))
+    Filename pattern: AISTMTPRINT*.xlsx (~8-10 KB mỗi file)
+
+13. Đọc buffer, đóng tab download, tiếp tục account tiếp theo
+```
+
+---
+
+### 2.4 Date Range Setting (configurable trong Settings)
+
+Setting lưu trong `BankJobSettings`:
+```
+syncDateMode: 'today' | 'yesterday' | 'last_7_days' | 'custom'
+syncCustomDays: Int  // chỉ dùng khi mode='custom': D-N đến D
+```
+
+Tính toán khi chạy:
+```typescript
+function computeDateRange(mode: string, customDays: number): { from: Date; to: Date } {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  switch (mode) {
+    case 'today':     return { from: today,     to: today };
+    case 'yesterday': return { from: yesterday, to: yesterday };
+    case 'last_7_days': {
+      const from = new Date(today); from.setDate(today.getDate() - 6);
+      return { from, to: today };
+    }
+    case 'custom': {
+      const from = new Date(today); from.setDate(today.getDate() - customDays);
+      return { from, to: today };
+    }
+    default: return { from: yesterday, to: yesterday };
+  }
+}
+```
+
+---
+
+### 2.5 Excel Column Layout (verified từ actual file)
+
 ```
 Account name | Account number | Bank name | Currency | Location | BIC | IBAN |
-Account status | Account type | Closing ledger balance | Closing ledger brought forward from |
+Account status | Account type |
+Closing ledger balance | Closing ledger brought forward from |
 Closing available balance | Closing available brought forward from |
-Current ledger balance | Current ledger as at | Current available balance | Current available as at |
+Current ledger balance | Current ledger as at |
+Current available balance | Current available as at |
 Bank reference | Narrative | Customer reference | TRN type |
 Credit amount | Debit amount | Balance | Post date
 ```
+
+Row dedup hash: SHA256 của `accountNumber + postDate + narrative + bankReference + debitAmount + creditAmount`
+(Không hash Balance — có thể thay đổi theo thời gian)
+
+---
+
+### 2.6 Notification khi phát hiện account mới
+
+Khi `discoverAccounts()` tìm thấy account chưa có trong DB:
+- Insert vào `bank_accounts`
+- Insert notification vào bảng `notifications` (nếu có) hoặc log trong job
+- UI: hiện badge trên chuông + message "X tài khoản mới được phát hiện trong HSBCnet — click để xem"
+- Click → navigate đến `/settings/bank-statement/countries`
 
 ---
 

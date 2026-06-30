@@ -64,6 +64,16 @@
 }
 .cronPreview { font-size: 11px; color: var(--color-subtle); font-family: monospace; margin-top: 6px; }
 
+/* Date range mode */
+.dateRangeRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.dateRangeRow .timeSelect { width: auto; min-width: 180px; text-align: left; }
+.customDaysInput {
+  width: 64px; padding: 6px 8px; border: 1.5px solid var(--color-border); border-radius: 6px;
+  font-size: 14px; font-weight: 500; color: var(--color-ink); background: var(--bg-surface);
+  outline: none; text-align: center;
+}
+.customDaysInput:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
+
 /* Upcoming runs */
 .nextRuns { margin-top: 16px; }
 .nextRunsLabel {

@@ -250,6 +250,8 @@ export async function updateWorkflowModule(key: string, input: { isEnabled?: boo
 
 // --- Bank Statement Settings ---
 
+export type SyncDateMode = 'today' | 'yesterday' | 'last_7_days' | 'custom';
+
 export type BankJobSettings = {
   id: string;
   scheduleCron: string;
@@ -258,6 +260,8 @@ export type BankJobSettings = {
   googleServiceKeyJson: string | null;
   googleTemplateSpreadsheetId: string | null;
   googleTemplateSheet: string | null;
+  syncDateMode: SyncDateMode;
+  syncCustomDays: number;
 };
 
 export type BankDownloadTemplate = {
@@ -297,6 +301,8 @@ export async function updateBankSettings(input: {
   googleServiceKeyJson?: string | null;
   googleTemplateSpreadsheetId?: string | null;
   googleTemplateSheet?: string | null;
+  syncDateMode: SyncDateMode;
+  syncCustomDays: number;
 }) {
   return request<BankJobSettings>('/management/bank-statement/settings', {
     method: 'PUT', auth: true, body: JSON.stringify(input),
@@ -366,7 +372,7 @@ export type BankSyncJob = {
   startedAt: string | null;
   completedAt: string | null;
   errorMessage: string | null;
-  logs: Array<{ time: string; message: string; step?: string }>;
+  logs: Array<{ time: string; message: string; step?: string; level?: string }>;
   steps: JobStep[];
   createdAt: string;
   durationMs: number | null;
@@ -397,4 +403,85 @@ export async function deleteBankJob(id: string) {
   return request<{ ok: boolean }>(`/management/bank-statement/jobs/${id}`, {
     method: 'DELETE', auth: true,
   });
+}
+
+// --- Report AR ---
+
+export type ArSettings = {
+  id: string;
+  hasServiceKey: boolean;
+  updatedAt: string;
+};
+
+export type ArGsheetConfig = {
+  id: string;
+  countryCode: string;
+  spreadsheetId: string;
+  sheetName: string;
+  spreadsheetUrl: string | null;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export type ArSummary = {
+  totalAR: number;
+  unbilled: number;
+  underTerm: number;
+  overdue: number;
+};
+
+export type ArBrandRow = {
+  brand: string;
+  totalLeadtime: number;
+  unbilledDays: number;
+  overdueDays: number;
+  underTermDays: number;
+};
+
+
+export type ArDetailRow = {
+  period: string;
+  brand: string;
+  bizClass: string;
+  amount: number;
+  status: string;
+};
+
+export type ArData = {
+  summary: ArSummary;
+  byBrand: ArBrandRow[];
+  unbilledRows: ArDetailRow[];
+  overdueRows: ArDetailRow[];
+  bizClasses: string[];
+};
+
+export async function getArSettings() {
+  return request<ArSettings>('/management/report-ar/settings', { auth: true });
+}
+
+export async function updateArSettings(input: { googleServiceKeyJson?: string | null }) {
+  return request<ArSettings>('/management/report-ar/settings', {
+    method: 'PUT', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function listArGsheets() {
+  return request<ArGsheetConfig[]>('/management/report-ar/settings/gsheets', { auth: true });
+}
+
+export async function upsertArGsheet(countryCode: string, input: {
+  spreadsheetId: string;
+  sheetName: string;
+  spreadsheetUrl?: string;
+  isActive?: boolean;
+}) {
+  return request<ArGsheetConfig>(`/management/report-ar/settings/gsheets/${countryCode}`, {
+    method: 'PUT', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function getArData(country: string = 'TH', bizClass?: string) {
+  const params = new URLSearchParams({ country });
+  if (bizClass) params.set('bizClass', bizClass);
+  return request<ArData>(`/management/report-ar/data?${params}`, { auth: true });
 }
