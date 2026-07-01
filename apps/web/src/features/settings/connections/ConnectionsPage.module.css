@@ -1,0 +1,95 @@
+.page { padding: 28px 32px; }
+@media (max-width: 768px) { .page { padding: 16px; } }
+
+.pageHeader { margin-bottom: 28px; }
+.pageTitle  { font-size: 20px; font-weight: 600; color: var(--color-ink); letter-spacing: -0.3px; margin: 0; }
+
+/* ── Section ── */
+.section { margin-bottom: 32px; }
+.sectionTitle {
+  font-size: 11px; font-weight: 600; color: var(--color-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; margin: 0 0 12px;
+}
+
+/* ── Cards ── */
+.cards { display: flex; flex-direction: column; gap: 1px; background: var(--color-border); border-radius: 10px; overflow: hidden; }
+
+.card {
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 18px 20px; background: var(--bg-surface);
+}
+.card:first-child { border-radius: 10px 10px 0 0; }
+.card:last-child  { border-radius: 0 0 10px 10px; }
+.card:only-child  { border-radius: 10px; }
+
+.cardLeft  { display: flex; align-items: flex-start; gap: 14px; flex: 1; min-width: 0; }
+.cardIcon  { width: 40px; height: 40px; border-radius: 10px; background: var(--bg-page); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.cardInfo  { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cardName  { font-size: 14px; font-weight: 600; color: var(--color-ink); }
+.cardDesc  { font-size: 13px; color: var(--color-muted); line-height: 1.5; }
+.cardMeta  { font-size: 11px; color: var(--color-subtle); margin-top: 2px; }
+
+.cardRight { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+/* Badges */
+.badgeConfigured {
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+  background: #d1fae5; color: #0e6245;
+}
+.badgeMissing {
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
+  background: var(--bg-subtle); color: var(--color-muted);
+}
+
+/* Buttons */
+.btnEdit {
+  padding: 7px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: 1.5px solid var(--color-border); background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer; white-space: nowrap; transition: background 0.15s;
+}
+.btnEdit:hover { background: var(--bg-page); }
+
+.btnPrimary {
+  padding: 8px 18px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: none; background: var(--color-accent); color: #fff; cursor: pointer;
+}
+.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnSecondary {
+  padding: 8px 18px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: 1.5px solid var(--color-border); background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer;
+}
+.btnSecondary:hover { background: var(--bg-page); }
+
+.btnDanger {
+  padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: 1.5px solid #fecaca; background: #fff0f3; color: #df1b41; cursor: pointer; margin-right: auto;
+}
+.btnDanger:hover:not(:disabled) { background: #ffe4e6; }
+.btnDanger:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Form ── */
+.form  { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 8px; }
+.label { font-size: 13px; font-weight: 500; color: var(--color-secondary); }
+.hint  { font-size: 12px; color: var(--color-muted); line-height: 1.55; }
+.hint strong { color: var(--color-secondary); }
+
+.textarea {
+  font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+  font-size: 12px; line-height: 1.6;
+  padding: 10px 12px; border-radius: 6px;
+  border: 1.5px solid var(--color-border); background: var(--bg-page);
+  color: var(--color-ink); outline: none; width: 100%; box-sizing: border-box;
+  resize: vertical; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.textarea:focus {
+  border-color: var(--color-accent-active);
+  box-shadow: 0 0 0 3px rgba(98,90,250,.10);
+}
+.textarea::placeholder { color: var(--color-subtle); }
+.textareaError { border-color: #df1b41 !important; }
+.textareaError:focus { box-shadow: 0 0 0 3px rgba(223,27,65,.10) !important; }
+.fieldError { font-size: 12px; color: #df1b41; }

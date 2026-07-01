@@ -405,6 +405,59 @@ export async function deleteBankJob(id: string) {
   });
 }
 
+export type BankAccount = {
+  id: string;
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+  currency: string;
+  countryCode: string;
+  isActive: boolean;
+};
+
+export type DailyMetricsRow = {
+  date: string;
+  accountId: string;
+  accountNumber: string;
+  accountName: string;
+  countryCode: string;
+  currency: string;
+  totalCredit: number;
+  totalDebit: number;
+  txCount: number;
+};
+
+export type MetricsResponse = {
+  summary: { totalCredit: number; totalDebit: number; netFlow: number; txCount: number; accountCount: number };
+  daily: DailyMetricsRow[];
+};
+
+export type JobAccountSummary = {
+  accountId: string;
+  accountNumber: string;
+  accountName: string;
+  countryCode: string;
+  currency: string;
+  txCount: number;
+  totalCredit: number;
+  totalDebit: number;
+};
+
+export async function listBankAccounts() {
+  return request<BankAccount[]>('/management/bank-statement/accounts', { auth: true });
+}
+
+export async function getBankMetrics(from: string, to: string, countryCode?: string, accountId?: string) {
+  const params = new URLSearchParams({ from, to });
+  if (countryCode) params.set('countryCode', countryCode);
+  if (accountId) params.set('accountId', accountId);
+  return request<MetricsResponse>(`/management/bank-statement/metrics?${params}`, { auth: true });
+}
+
+export async function getBankJobSummary(jobId: string) {
+  return request<JobAccountSummary[]>(`/management/bank-statement/jobs/${jobId}/summary`, { auth: true });
+}
+
 // --- Report AR ---
 
 export type ArSettings = {
@@ -484,4 +537,23 @@ export async function getArData(country: string = 'TH', bizClass?: string) {
   const params = new URLSearchParams({ country });
   if (bizClass) params.set('bizClass', bizClass);
   return request<ArData>(`/management/report-ar/data?${params}`, { auth: true });
+}
+
+// ─── System Settings ──────────────────────────────────────────────────────────
+
+export type SystemSettingsStatus = {
+  hasServiceKey: boolean;
+  updatedAt: string | null;
+};
+
+export async function getSystemSettings() {
+  return request<SystemSettingsStatus>('/management/settings/system', { auth: true });
+}
+
+export async function updateSystemServiceAccount(serviceKeyJson: string | null) {
+  return request<SystemSettingsStatus>('/management/settings/system/service-account', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify({ serviceKeyJson }),
+  });
 }

@@ -1,13 +1,17 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { MOCK_ACCOUNTS } from '../_data';
+import { MOCK_ACCOUNTS, ACCOUNT_TRANSACTIONS, parseDMY, type TxRow } from '../_data';
 
 export default function MockAccountDetailPage() {
   const [selectedId, setSelectedId] = useState(MOCK_ACCOUNTS[0].id);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherSearch, setSwitcherSearch] = useState('');
   const [dateFilterOpen, setDateFilterOpen] = useState(false);
-  const [filtered, setFiltered] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [appliedFrom, setAppliedFrom] = useState('');
+  const [appliedTo, setAppliedTo] = useState('');
+  const [shownTxns, setShownTxns] = useState<TxRow[]>([]);
   const [exportOpen, setExportOpen] = useState(false);
 
   const selected = MOCK_ACCOUNTS.find((a) => a.id === selectedId) ?? MOCK_ACCOUNTS[0];
@@ -20,6 +24,13 @@ export default function MockAccountDetailPage() {
       )
     : MOCK_ACCOUNTS;
 
+  // Load all transactions when account changes (data only, no filter state resets here)
+  useEffect(() => {
+    const acc = MOCK_ACCOUNTS.find((a) => a.id === selectedId);
+    if (!acc) return;
+    setShownTxns(ACCOUNT_TRANSACTIONS[acc.number] ?? []);
+  }, [selectedId]);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') { setSwitcherOpen(false); setExportOpen(false); }
@@ -29,13 +40,51 @@ export default function MockAccountDetailPage() {
   }, []);
 
   function selectAccount(id: string) {
+    // Reset all state synchronously so no race between useEffect and worker actions
     setSelectedId(id);
     setSwitcherOpen(false);
     setSwitcherSearch('');
-    setFiltered(false);
+    setFromDate('');
+    setToDate('');
+    setAppliedFrom('');
+    setAppliedTo('');
     setDateFilterOpen(false);
     setExportOpen(false);
+    setShownTxns([]);  // cleared immediately; useEffect will refill
   }
+
+  function applyFilter() {
+    const acc = MOCK_ACCOUNTS.find((a) => a.id === selectedId);
+    if (!acc) return;
+    const txns = ACCOUNT_TRANSACTIONS[acc.number] ?? [];
+    if (!fromDate || !toDate) {
+      setShownTxns(txns);
+    } else {
+      const from = parseDMY(fromDate);
+      const to   = parseDMY(toDate);
+      setShownTxns(txns.filter((t) => {
+        const d = parseDMY(t.postDate);
+        return d >= from && d <= to;
+      }));
+    }
+    setAppliedFrom(fromDate);
+    setAppliedTo(toDate);
+    setDateFilterOpen(false);
+  }
+
+  const showingLabel = appliedFrom && appliedTo
+    ? `${appliedFrom} – ${appliedTo}`
+    : 'All available dates';
+
+  const exportParams = new URLSearchParams({
+    acc:  selected.number,
+    cur:  selected.currency,
+    co:   selected.countryCode,
+    name: selected.company,
+    bank: selected.bankName,
+    from: appliedFrom,
+    to:   appliedTo,
+  });
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
@@ -104,7 +153,6 @@ export default function MockAccountDetailPage() {
                     <p className="switcher-option--number" style={{ margin: '0 0 2px', fontSize: 11, color: '#888' }}>
                       {acc.company}
                     </p>
-                    {/* Text node = account number | <i> = countryCode | <span> = currency */}
                     <p className="switcher-option--account" style={{ margin: 0, fontSize: 13, color: '#333', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                       {acc.number}<i style={{ fontStyle: 'normal', color: '#aaa', fontSize: 11 }}>{acc.countryCode}</i><span style={{ color: '#aaa', fontSize: 11 }}>{acc.currency}</span>
                     </p>
@@ -120,7 +168,7 @@ export default function MockAccountDetailPage() {
       <main style={{ padding: 24 }}>
         <div style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 4, padding: 20 }}>
 
-          {/* Date range filter trigger */}
+          {/* Date range filter trigger — always visible */}
           <div style={{ marginBottom: 16, fontSize: 13, color: '#555' }}>
             Showing:{' '}
             <span
@@ -128,7 +176,7 @@ export default function MockAccountDetailPage() {
               onClick={() => setDateFilterOpen(true)}
               style={{ color: '#0066cc', cursor: 'pointer', textDecoration: 'underline' }}
             >
-              Specify date range
+              {showingLabel}
             </span>
           </div>
 
@@ -137,22 +185,38 @@ export default function MockAccountDetailPage() {
             <div id="rangeDate" style={{ background: '#f9f9f9', border: '1px solid #ddd', borderRadius: 4, padding: 16, marginBottom: 16 }}>
               <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 600, color: '#333' }}>Date range</div>
               <div className="date-picker" style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-                <input type="text" placeholder="dd/mm/yyyy" style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }} />
+                <input
+                  type="text"
+                  placeholder="dd/mm/yyyy"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }}
+                />
                 <span style={{ color: '#888' }}>to</span>
-                <input type="text" placeholder="dd/mm/yyyy" style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }} />
+                <input
+                  type="text"
+                  placeholder="dd/mm/yyyy"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }}
+                />
               </div>
               <input
                 className="form__control-button"
                 type="submit"
                 value="Apply"
-                onClick={() => { setFiltered(true); setDateFilterOpen(false); }}
+                onClick={applyFilter}
                 style={{ padding: '7px 20px', background: '#cc0000', color: '#fff', border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
               />
             </div>
           )}
 
-          {/* Transactions + export */}
-          {filtered && (
+          {/* Transactions table */}
+          {shownTxns.length === 0 ? (
+            <p className="table__error-message" style={{ color: '#888', fontSize: 13 }}>
+              No transactions found for the selected date range.
+            </p>
+          ) : (
             <>
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
                 <thead>
@@ -165,34 +229,21 @@ export default function MockAccountDetailPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px 12px' }}>30/06/2026</td>
-                    <td style={{ padding: '8px 12px' }}>MOCK PAYMENT REF TODAY</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#059669' }}>2,500.00</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}></td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>{selected.balance}</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px 12px' }}>29/06/2026</td>
-                    <td style={{ padding: '8px 12px' }}>MOCK TRANSFER YESTERDAY</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#059669' }}>1,200.00</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}></td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>—</td>
-                  </tr>
-                  <tr style={{ borderBottom: '1px solid #eee' }}>
-                    <td style={{ padding: '8px 12px' }}>29/06/2026</td>
-                    <td style={{ padding: '8px 12px' }}>MOCK SERVICE FEE</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}></td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#dc2626' }}>45.00</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>—</td>
-                  </tr>
-                  <tr>
-                    <td style={{ padding: '8px 12px' }}>28/06/2026</td>
-                    <td style={{ padding: '8px 12px' }}>MOCK INCOMING TRANSFER</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right', color: '#059669' }}>800.00</td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}></td>
-                    <td style={{ padding: '8px 12px', textAlign: 'right' }}>—</td>
-                  </tr>
+                  {shownTxns.map((t) => (
+                    <tr key={t.bankRef} style={{ borderBottom: '1px solid #eee' }}>
+                      <td style={{ padding: '8px 12px' }}>{t.postDate}</td>
+                      <td style={{ padding: '8px 12px' }}>{t.narrative}</td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: t.credit ? '#059669' : undefined }}>
+                        {t.credit != null ? t.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right', color: t.debit ? '#dc2626' : undefined }}>
+                        {t.debit != null ? t.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                      </td>
+                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                        {t.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
 
@@ -210,7 +261,7 @@ export default function MockAccountDetailPage() {
                     <div className="user-action__drop-option--clickable" style={{ padding: '8px 16px', fontSize: 13, cursor: 'pointer', color: '#333' }}>PDF</div>
                     <a
                       className="user-action__drop-option--clickable"
-                      href={`/api/mock-hsbc/export?acc=${encodeURIComponent(selected.number)}&cur=${selected.currency}&co=${encodeURIComponent(selected.countryCode)}&name=${encodeURIComponent(selected.company)}&bank=${encodeURIComponent(selected.bankName)}`}
+                      href={`/mock-hsbc/download-ready?${exportParams.toString()}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       style={{ display: 'block', padding: '8px 16px', fontSize: 13, color: '#333', textDecoration: 'none' }}
@@ -221,10 +272,6 @@ export default function MockAccountDetailPage() {
                 )}
               </div>
             </>
-          )}
-
-          {!filtered && (
-            <p style={{ color: '#888', fontSize: 13 }}>Select a date range above and click Apply to view transactions.</p>
           )}
         </div>
       </main>

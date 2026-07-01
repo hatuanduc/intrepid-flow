@@ -229,8 +229,13 @@ export class ReportArService {
       throw new NotFoundException('GSHEET_CONFIG_NOT_FOUND');
     }
 
-    const settings = await this.prisma.arReportSettings.findUnique({ where: { id: SETTINGS_ID } });
-    if (!settings?.googleServiceKeyJson) {
+    // Use global service account (SystemSettings) first, fall back to module-specific
+    const [globalSettings, moduleSettings] = await Promise.all([
+      this.prisma.systemSettings.findUnique({ where: { id: 'default' } }),
+      this.prisma.arReportSettings.findUnique({ where: { id: SETTINGS_ID } }),
+    ]);
+    const serviceKeyJson = globalSettings?.googleServiceKeyJson ?? moduleSettings?.googleServiceKeyJson ?? null;
+    if (!serviceKeyJson) {
       throw new NotFoundException('SERVICE_KEY_NOT_CONFIGURED');
     }
 
@@ -239,7 +244,7 @@ export class ReportArService {
       // Dynamic import to avoid requiring googleapis at module load time
       const { google } = await import('googleapis');
       const auth = new google.auth.GoogleAuth({
-        credentials: JSON.parse(settings.googleServiceKeyJson) as Record<string, unknown>,
+        credentials: JSON.parse(serviceKeyJson) as Record<string, unknown>,
         scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
       });
       const sheets = google.sheets({ version: 'v4', auth });

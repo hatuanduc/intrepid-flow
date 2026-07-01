@@ -1,6 +1,5 @@
-"use client";
 import React from 'react';
-import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import s from './SettingsHub.module.css';
 
 type Card = { title: string; desc: string; href: string; icon: React.ReactNode };
@@ -36,11 +35,40 @@ const GROUPS: Group[] = [
     ],
   },
   {
+    label: 'Kết nối',
+    cards: [
+      {
+        title: 'Google Service Account',
+        desc: 'Cấu hình service account JSON dùng chung cho tất cả tích hợp Google Sheets trong hệ thống.',
+        href: '/settings/connections',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <rect x="2.5" y="1.5" width="11" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M5 5.5h6M5 8h6M5 10.5h4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <path d="M10 1.5v3.5h3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ),
+      },
+      {
+        title: 'HSBCnet',
+        desc: 'Cấu hình tên đăng nhập HSBCnet để hệ thống tự động đăng nhập và tải sao kê.',
+        href: '/settings/job/bank-statement',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <rect x="1.5" y="4" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M4.5 8h2M9.5 8h2M4.5 10.5h2M9.5 10.5h2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+            <path d="M2 4L8 1l6 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        ),
+      },
+    ],
+  },
+  {
     label: 'Quy trình tự động',
     cards: [
       {
         title: 'Sao kê ngân hàng',
-        desc: 'Cài đặt lịch chạy, cột dữ liệu, mapping quốc gia và Google Sheets cho module sao kê.',
+        desc: 'Lịch chạy tự động, cột dữ liệu và mapping quốc gia cho module sao kê.',
         href: '/settings/job/bank-statement',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -57,7 +85,7 @@ const GROUPS: Group[] = [
     cards: [
       {
         title: 'Báo cáo AR',
-        desc: 'Cấu hình Google Sheets và service account cho module báo cáo công nợ phải thu.',
+        desc: 'Cấu hình lịch chạy và mapping cho module báo cáo công nợ phải thu.',
         href: '/settings/job/report-ar',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -87,8 +115,6 @@ const GROUPS: Group[] = [
 ];
 
 export default function SettingsRoot() {
-  const router = useRouter();
-
   return (
     <div className={s.page}>
       {GROUPS.map((group) => (
@@ -96,17 +122,17 @@ export default function SettingsRoot() {
           <p className={s.groupTitle}>{group.label}</p>
           <div className={s.grid}>
             {group.cards.map((card) => (
-              <button
+              <Link
                 key={card.href + card.title}
+                href={card.href}
                 className={s.card}
-                onClick={() => router.push(card.href)}
               >
                 <span className={s.cardIcon}>{card.icon}</span>
                 <span className={s.cardBody}>
                   <span className={s.cardTitle}>{card.title}</span>
                   <span className={s.cardDesc}>{card.desc}</span>
                 </span>
-              </button>
+              </Link>
             ))}
           </div>
         </div>

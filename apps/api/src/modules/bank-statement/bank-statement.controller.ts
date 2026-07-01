@@ -1,5 +1,5 @@
 import {
-  Controller, Get, Put, Post, Delete,
+  Controller, Get, Put, Post, Delete, Query,
   Body, Param, UseGuards, Req, Sse, MessageEvent,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
@@ -100,6 +100,27 @@ export class BankStatementController {
     return this.service.upsertGsheetConfig(countryCode, body);
   }
 
+  // ─── Accounts & Metrics ─────────────────────────────────────────────────────
+
+  @Get('accounts')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách tài khoản ngân hàng' })
+  listAccounts() {
+    return this.service.listAccounts();
+  }
+
+  @Get('metrics')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Metrics giao dịch theo ngày (group by date × account)' })
+  getMetrics(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('accountId') accountId?: string,
+  ) {
+    return this.service.getMetrics(new Date(from), new Date(to), countryCode, accountId);
+  }
+
   // ─── Job Management ──────────────────────────────────────────────────────────
 
   @Post('jobs')
@@ -121,6 +142,13 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Chi tiết một job' })
   getJob(@Param('id') id: string): Promise<BankSyncJobDto> {
     return this.service.getJobDetail(id);
+  }
+
+  @Get('jobs/:id/summary')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Tóm tắt giao dịch theo tài khoản của một job' })
+  getJobSummary(@Param('id') id: string) {
+    return this.service.getJobSummary(id);
   }
 
   @Post('jobs/:id/retry')

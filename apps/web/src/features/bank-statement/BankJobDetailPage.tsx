@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  getBankJob, retryBankJob, deleteBankJob, getApiBaseUrl,
-  type BankSyncJob,
+  getBankJob, retryBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
+  type BankSyncJob, type JobAccountSummary,
 } from '../../lib/api';
 import { getToken } from '../../lib/auth';
 import { showHsbcAuthNotification } from '../../lib/notifications';
@@ -14,6 +14,13 @@ import AccessDenied from '../../components/common/AccessDenied';
 import { Spinner } from '../../components/common/PageLoader';
 import { useToast } from '../../components/common/Toast';
 import s from './BankJobDetailPage.module.css';
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const ACCOUNT_COLORS: Record<string, string> = {
+  HK: '#635bff', VN: '#0e7490', ID: '#059669', MY: '#c44c0a',
+  PH: '#7c3aed', SG: '#1a56db', TH: '#be185d',
+};
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
@@ -131,9 +138,16 @@ export default function BankJobDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [showRaw, setShowRaw]   = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  const [summary, setSummary]   = useState<JobAccountSummary[]>([]);
 
   const esRef             = useRef<EventSource | null>(null);
   const notifiedJobsRef   = useRef<Set<string>>(new Set());
+
+  const newAccountNumbers = useMemo(() => new Set(
+    (job?.logs ?? [])
+      .filter(l => l.message.startsWith('[NEW_ACCOUNT]'))
+      .map(l => l.message.replace('[NEW_ACCOUNT]', '').trim())
+  ), [job?.logs]);
 
   useEffect(() => {
     if (!canView || !id) return;
@@ -147,6 +161,9 @@ export default function BankJobDetailPage() {
         if (!mounted) return;
         setJob(data);
         startSse(data);
+        if (['completed', 'failed'].includes(data.status)) {
+          getBankJobSummary(id).then(setSummary).catch(() => {});
+        }
       } catch {
         if (mounted) setError('Không tải được thông tin job.');
       } finally {
@@ -183,7 +200,10 @@ export default function BankJobDetailPage() {
         showHsbcAuthNotification(updated.id);
       }
 
-      if (!isActive(updated.status)) es.close();
+      if (!isActive(updated.status)) {
+        es.close();
+        getBankJobSummary(updated.id).then(setSummary).catch(() => {});
+      }
     };
     es.onerror = () => es.close();
     esRef.current = es;
@@ -281,7 +301,7 @@ export default function BankJobDetailPage() {
               <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy ? 'Thủ công' : 'Tự động'}</p>
             </div>
             <div className={s.headerActions}>
-              {job.status === 'failed' && canRun && (
+              {['failed', 'completed'].includes(job.status) && canRun && (
                 <button
                   className={s.btnPrimary}
                   disabled={retrying}
@@ -321,6 +341,49 @@ export default function BankJobDetailPage() {
               <span>{formatDateTime(job.completedAt)}</span>
             </span>
           </div>
+
+          {/* Account summary table */}
+          {summary.length > 0 && (
+            <div className={s.summarySection}>
+              <div className={s.summaryHeader}>
+                <span className={s.summaryTitle}>Giao dịch lấy về</span>
+                <Link href="/bank-metrics" className={s.summaryMetricsLink}>
+                  Xem trong Metrics →
+                </Link>
+              </div>
+              <div className={s.summaryTableWrap}>
+                {summary.map(acc => (
+                  <Link
+                    key={acc.accountId}
+                    href={`/bank-metrics?accountId=${acc.accountId}`}
+                    className={s.summaryRow}
+                  >
+                    <div className={s.summaryRowAccount}>
+                      <span className={s.summaryAvatar} style={{ background: ACCOUNT_COLORS[acc.countryCode] ?? '#697386' }}>
+                        {acc.accountNumber.slice(-2)}
+                      </span>
+                      <div className={s.summaryRowInfo}>
+                        <div className={s.summaryAccNameRow}>
+                          <span className={s.summaryAccName}>{acc.accountName}</span>
+                          {newAccountNumbers.has(acc.accountNumber) && (
+                            <span className={s.newBadge}>Mới</span>
+                          )}
+                        </div>
+                        <span className={s.summaryAccNum}>{acc.accountNumber}</span>
+                      </div>
+                    </div>
+                    <span className={s.summaryCurrency}>{acc.currency}</span>
+                    <span className={s.summaryTxCount}>{acc.txCount} GD</span>
+                    <span className={s.summaryCredit}>+{acc.totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                    <span className={s.summaryDebit}>{acc.totalDebit > 0 ? `-${acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
+                    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.summaryArrow}>
+                      <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Timeline */}
           <JobTimeline
@@ -381,7 +444,7 @@ function JobTimeline({
         job.steps.map((step, si) => {
           const stepLogs = logsByStep[step.key] ?? [];
           const isLast = si === job.steps.length - 1;
-          const canRetryStep = isDone && canRun && step.status === 'failed';
+          const canRetryStep = isDone && canRun && ['failed', 'completed'].includes(step.status);
           const stepDotCls = step.status === 'completed' ? s.stepDotOk
             : step.status === 'failed'   ? s.stepDotErr
             : step.status === 'running'  ? s.stepDotRunning

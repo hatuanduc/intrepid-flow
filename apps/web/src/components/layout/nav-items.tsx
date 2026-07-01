@@ -49,6 +49,12 @@ export const ReportArIcon = (
     <circle cx="12" cy="4" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
   </svg>
 );
+export const BankMetricsIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M2 11.5h10" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    <path d="M3.5 11.5V8M6.5 11.5V5.5M9.5 11.5V3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
 
 /* ── Nav definitions ── */
 export const MAIN_NAV: NavItem[] = [
@@ -62,6 +68,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
     label: 'Công việc',
     icon: JobsIcon,
     children: [
+      { label: 'Quy trình', href: '/modules', icon: WorkflowIcon },
       { label: 'Sao kê NH', href: '/bank-statement', icon: BankIcon },
     ],
   },
@@ -72,12 +79,16 @@ export const NAV_GROUPS: NavGroupDef[] = [
       { label: 'AR', href: '/report-ar', icon: ReportArIcon },
     ],
   },
+  {
+    label: 'Metrics',
+    icon: BankMetricsIcon,
+    children: [
+      { label: 'NH Metrics', href: '/bank-metrics', icon: BankMetricsIcon },
+    ],
+  },
 ];
 
-export const MORE_NAV: NavItem[] = [
-  { label: 'Quy trình', href: '/modules', icon: WorkflowIcon },
-  { label: 'Cài đặt', href: '/settings', icon: SettingsIcon },
-];
+export const MORE_NAV: NavItem[] = [];
 
 export const ALL_PINNABLE: NavItem[] = [
   ...FEATURE_NAV,
@@ -100,11 +111,20 @@ const RolesIcon = (
   </svg>
 );
 
+const GSheetIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <rect x="2" y="1" width="10" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M4 5h6M4 7.5h6M4 10h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    <path d="M9 1v3.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 const SETTINGS_SEARCH: SearchEntry[] = [
-  { label: 'Tài khoản người dùng', href: '/settings/users',              icon: UsersIcon, breadcrumb: 'Cài đặt' },
-  { label: 'Vai trò',              href: '/settings/roles',              icon: RolesIcon, breadcrumb: 'Cài đặt' },
-  { label: 'Sao kê NH',            href: '/settings/job/bank-statement', icon: BankIcon,     breadcrumb: 'Cài đặt' },
-  { label: 'AR Report',            href: '/settings/job/report-ar',      icon: ReportArIcon, breadcrumb: 'Cài đặt' },
+  { label: 'Tài khoản người dùng',    href: '/settings/users',              icon: UsersIcon,   breadcrumb: 'Cài đặt' },
+  { label: 'Vai trò',                  href: '/settings/roles',              icon: RolesIcon,   breadcrumb: 'Cài đặt' },
+  { label: 'Google Service Account',   href: '/settings/connections',        icon: GSheetIcon,  breadcrumb: 'Cài đặt › Kết nối' },
+  { label: 'Sao kê NH',               href: '/settings/job/bank-statement',  icon: BankIcon,    breadcrumb: 'Cài đặt' },
+  { label: 'AR Report',               href: '/settings/job/report-ar',       icon: ReportArIcon, breadcrumb: 'Cài đặt' },
 ];
 
 // Flat list for search

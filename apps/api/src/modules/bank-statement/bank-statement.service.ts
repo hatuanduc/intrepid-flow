@@ -156,6 +156,104 @@ export class BankStatementService {
     return { ...result, hasServiceKey: !!result.serviceKeyJson, serviceKeyJson: undefined };
   }
 
+  // ─── Accounts & Metrics ─────────────────────────────────────────────────────
+
+  async listAccounts() {
+    return this.prisma.bankAccount.findMany({
+      select: { id: true, accountNumber: true, accountName: true, bankName: true, currency: true, countryCode: true, isActive: true },
+      orderBy: [{ countryCode: 'asc' }, { accountNumber: 'asc' }],
+    });
+  }
+
+  async getMetrics(from: Date, to: Date, countryCode?: string, accountId?: string) {
+    const accountWhere: Record<string, unknown> = {};
+    if (countryCode) accountWhere.countryCode = countryCode;
+    if (accountId) accountWhere.id = accountId;
+
+    const accounts = await this.prisma.bankAccount.findMany({
+      where: Object.keys(accountWhere).length > 0 ? accountWhere : undefined,
+      select: { id: true, accountNumber: true, accountName: true, countryCode: true, currency: true },
+    });
+
+    if (accounts.length === 0) {
+      return { summary: { totalCredit: 0, totalDebit: 0, netFlow: 0, txCount: 0, accountCount: 0 }, daily: [] };
+    }
+
+    const accountIds = accounts.map(a => a.id);
+    const accountMap = Object.fromEntries(accounts.map(a => [a.id, a]));
+
+    const grouped = await this.prisma.bankTransaction.groupBy({
+      by: ['bankAccountId', 'postDate'],
+      where: { bankAccountId: { in: accountIds }, postDate: { gte: from, lte: to } },
+      _sum: { creditAmount: true, debitAmount: true },
+      _count: { id: true },
+      orderBy: { postDate: 'asc' },
+    });
+
+    const daily = grouped.map(row => {
+      const acc = accountMap[row.bankAccountId];
+      return {
+        date: (row.postDate as Date).toISOString().split('T')[0],
+        accountId: row.bankAccountId,
+        accountNumber: acc?.accountNumber ?? '',
+        accountName: acc?.accountName ?? '',
+        countryCode: acc?.countryCode ?? '',
+        currency: acc?.currency ?? '',
+        totalCredit: Number(row._sum.creditAmount ?? 0),
+        totalDebit: Number(row._sum.debitAmount ?? 0),
+        txCount: row._count.id,
+      };
+    });
+
+    const totalCredit = daily.reduce((s, r) => s + r.totalCredit, 0);
+    const totalDebit = daily.reduce((s, r) => s + r.totalDebit, 0);
+    return {
+      summary: {
+        totalCredit,
+        totalDebit,
+        netFlow: totalCredit - totalDebit,
+        txCount: daily.reduce((s, r) => s + r.txCount, 0),
+        accountCount: new Set(daily.map(r => r.accountId)).size,
+      },
+      daily,
+    };
+  }
+
+  async getJobSummary(jobId: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const grouped = await this.prisma.bankTransaction.groupBy({
+      by: ['bankAccountId'],
+      where: { jobId },
+      _sum: { creditAmount: true, debitAmount: true },
+      _count: { id: true },
+    });
+
+    if (grouped.length === 0) return [];
+
+    const accountMap = Object.fromEntries(
+      (await this.prisma.bankAccount.findMany({
+        where: { id: { in: grouped.map(g => g.bankAccountId) } },
+        select: { id: true, accountNumber: true, accountName: true, countryCode: true, currency: true },
+      })).map(a => [a.id, a]),
+    );
+
+    return grouped.map(row => {
+      const acc = accountMap[row.bankAccountId];
+      return {
+        accountId: row.bankAccountId,
+        accountNumber: acc?.accountNumber ?? '',
+        accountName: acc?.accountName ?? '',
+        countryCode: acc?.countryCode ?? '',
+        currency: acc?.currency ?? '',
+        txCount: row._count.id,
+        totalCredit: Number(row._sum.creditAmount ?? 0),
+        totalDebit: Number(row._sum.debitAmount ?? 0),
+      };
+    });
+  }
+
   // ─── Job Management ──────────────────────────────────────────────────────────
 
   async triggerJob(triggeredBy: string): Promise<BankSyncJobDto> {

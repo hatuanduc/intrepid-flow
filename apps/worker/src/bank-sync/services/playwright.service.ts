@@ -53,6 +53,8 @@ export class PlaywrightService {
   private browser: import('playwright').Browser | null = null;
   private context: import('playwright').BrowserContext | null = null;
   private page: import('playwright').Page | null = null;
+  // URL of account-detail page — saved after discovery, used as re-entry point in downloadStatement
+  private accountDetailUrl: string | null = null;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -72,8 +74,9 @@ export class PlaywrightService {
 
     const { chromium } = await import('playwright');
     const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false';
-    this.browser = await chromium.launch({ headless });
-    this.logger.log(`Browser launched (headless=${headless})`);
+    const slowMo = Number(process.env.PLAYWRIGHT_SLOW_MO ?? (headless ? 0 : 600));
+    this.browser = await chromium.launch({ headless, slowMo });
+    this.logger.log(`Browser launched (headless=${headless}, slowMo=${slowMo}ms)`);
 
     let storageState: import('playwright').BrowserContextOptions['storageState'];
     if (fs.existsSync(this.sessionPath)) {
@@ -145,7 +148,7 @@ export class PlaywrightService {
     const page = this.requirePage();
 
     this.logger.log(`Navigating to ${HSBCNET_URL}`);
-    await page.goto(HSBCNET_URL, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto(HSBCNET_URL, { waitUntil: 'load', timeout: 30_000 });
 
     // Step 1: fill username
     const usernameInput = await page.waitForSelector(SELECTORS.usernameInput, { timeout: 10_000 }).catch(() => null);
@@ -155,8 +158,12 @@ export class PlaywrightService {
       throw new Error(`LOGIN_FORM_NOT_FOUND — URL: ${url}, title: "${title}" — selector: "${SELECTORS.usernameInput}"`);
     }
     await page.fill(SELECTORS.usernameInput, username);
-    await page.click(SELECTORS.nextBtn);
-    this.logger.log(`Đã nhập tên đăng nhập (${username}) — chờ xác thực 2FA trên điện thoại...`);
+    // Click và chờ navigation hoàn thành (tránh race condition khi dùng window.location.href)
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10_000 }).catch(() => {}),
+      page.click(SELECTORS.nextBtn),
+    ]);
+    this.logger.log(`Đã nhập tên đăng nhập (${username}) — URL sau click: ${page.url()}`);
 
     const errorEl = await page.waitForSelector(SELECTORS.usernameError, { timeout: 4_000 }).catch(() => null);
     if (errorEl) {
@@ -166,11 +173,15 @@ export class PlaywrightService {
     }
 
     // Step 2: auth method confirmation page (optional — some flows skip directly to 2FA)
-    this.logger.log('Tìm nút xác nhận phương thức đăng nhập…');
+    this.logger.log(`Tìm nút xác nhận phương thức đăng nhập — URL: ${page.url()}`);
     const authBtn = await page.waitForSelector(SELECTORS.authMethodBtn, { timeout: 15_000 }).catch(() => null);
     if (authBtn) {
-      await authBtn.click();
-      this.logger.log('Đã xác nhận phương thức — chờ 2FA trên thiết bị di động');
+      // Click và chờ navigation sang 2FA screen
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10_000 }).catch(() => {}),
+        authBtn.click(),
+      ]);
+      this.logger.log(`Đã xác nhận phương thức — URL sau click: ${page.url()}`);
     } else {
       const url = page.url();
       const title = await page.title().catch(() => '');
@@ -231,8 +242,10 @@ export class PlaywrightService {
     const accountInfoLink = page.locator('a, button').filter({ hasText: /account information/i }).first();
     if (await accountInfoLink.count() > 0) {
       this.logger.log('[discover] Clicking "Account information" nav link');
-      await accountInfoLink.click();
-      await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {});
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: 'load', timeout: 15_000 }).catch(() => {}),
+        accountInfoLink.click(),
+      ]);
     } else {
       this.logger.warn('[discover] "Account information" nav link not found on current page');
     }
@@ -248,15 +261,26 @@ export class PlaywrightService {
       return [];
     }
     this.logger.log('[discover] Found first clickable account row — clicking');
-    await firstRow.click();
-    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
+    // Dùng Promise.all để Playwright biết click này sẽ trigger navigation
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 20_000 }).catch(() => {}),
+      firstRow.click(),
+    ]);
     this.logger.log(`[discover] After row click — URL: ${page.url()}`);
 
     // Step 3: Find "Change account" search input
     this.logger.log(`[discover] Waiting for changeAccountInput: ${SELECTORS.changeAccountInput}`);
-    const searchInput = await page.waitForSelector(SELECTORS.changeAccountInput, { timeout: 10_000 })
-      .catch((err) => { this.logger.error(`[discover] changeAccountInput not found: ${err.message}`); return null; });
+    const searchInput = await page.waitForSelector(SELECTORS.changeAccountInput, { timeout: 20_000 })
+      .catch((err) => {
+        this.logger.error(`[discover] changeAccountInput not found after 20s — URL: ${page.url()}, err: ${err.message}`);
+        return null;
+      });
     if (!searchInput) throw new Error('Change account input not found');
+
+    // Save account-detail URL for use as re-entry point in downloadStatement()
+    this.accountDetailUrl = page.url();
+    this.logger.log(`[discover] Stored account-detail URL: ${this.accountDetailUrl}`);
+
     await searchInput.click();
 
     // Step 4: Wait for switcher dropdown
@@ -310,8 +334,19 @@ export class PlaywrightService {
     const page = this.requirePage();
     const ctx = this.requireContext();
 
-    // ── Step 1: Navigate to account via switcher search ───────────────────────
-    const searchInput = await page.waitForSelector(SELECTORS.changeAccountInput, { timeout: 10_000 });
+    // ── Step 1: Ensure we're on account-detail, then navigate via switcher ────
+    const inputVisible = await page.$(SELECTORS.changeAccountInput)
+      .then(el => el?.isVisible()).catch(() => false);
+    if (!inputVisible) {
+      const url = page.url();
+      const title = await page.title().catch(() => '');
+      this.logger.warn(`[${accountNumber}] changeAccountInput not visible — URL: ${url}, title: "${title}"`);
+      const detailUrl = this.accountDetailUrl ?? `${HSBCNET_URL}/account-detail`;
+      this.logger.log(`[${accountNumber}] Navigating back to account-detail: ${detailUrl}`);
+      await page.goto(detailUrl, { waitUntil: 'load', timeout: 30_000 });
+    }
+
+    const searchInput = await page.waitForSelector(SELECTORS.changeAccountInput, { timeout: 15_000 });
     await searchInput.click();
     await searchInput.fill(accountNumber);
 
@@ -321,14 +356,16 @@ export class PlaywrightService {
       return null;
     }
     await firstResult.click();
-    await page.waitForLoadState('networkidle', { timeout: 15_000 }).catch(() => {});
-    this.logger.log(`${accountNumber}: account loaded`);
+    this.logger.log(`${accountNumber}: switcher item clicked — waiting for page to update`);
 
     // ── Step 2: Open date filter ──────────────────────────────────────────────
     const specifyLink = await page.waitForSelector(SELECTORS.specifyDateRange, { timeout: 10_000 }).catch(() => null);
     if (specifyLink) {
       await specifyLink.click();
       await page.waitForTimeout(400);
+    } else {
+      const url = page.url();
+      this.logger.warn(`${accountNumber}: "Specify date range" link không tìm thấy — selector: "${SELECTORS.specifyDateRange}", URL: ${url}`);
     }
 
     // Click the date range combobox to open the picker
@@ -336,6 +373,9 @@ export class PlaywrightService {
     if (rangeWidget) {
       await rangeWidget.click();
       await page.waitForTimeout(400);
+    } else {
+      const url = page.url();
+      this.logger.warn(`${accountNumber}: Date range widget không tìm thấy — selector: "${SELECTORS.dateRangeWidget}", URL: ${url}`);
     }
 
     // ── Step 3: Fill in dates ─────────────────────────────────────────────────
@@ -344,7 +384,7 @@ export class PlaywrightService {
     // ── Step 4: Apply filter ──────────────────────────────────────────────────
     const applyBtn = await page.waitForSelector(SELECTORS.applyBtn, { timeout: 6_000 });
     await applyBtn.click();
-    await page.waitForLoadState('networkidle', { timeout: 20_000 }).catch(() => {});
+    await page.waitForLoadState('load', { timeout: 20_000 }).catch(() => {});
 
     // ── Step 5: Check for empty results ──────────────────────────────────────
     const noTxnEl = await page.$(SELECTORS.noTransactions);
@@ -360,18 +400,25 @@ export class PlaywrightService {
 
     const excelBtn = page.locator(SELECTORS.excelOption).filter({ hasText: 'Excel' }).first();
 
-    // File downloads in a new tab
-    const [newTab] = await Promise.all([
-      ctx.waitForEvent('page'),
-      excelBtn.click(),
-    ]) as [import('playwright').Page, void];
+    // Set up download listener TRƯỚC KHI click để tránh race condition (localhost trả file cực nhanh).
+    // Handle cả 2 case: download trên trang hiện tại (same-tab) hoặc trong tab mới (target="_blank").
+    type DL = import('playwright').Download;
+    const downloadPromise = new Promise<DL>((resolve, reject) => {
+      const tid = setTimeout(() => reject(new Error('Download timeout 30s')), 30_000);
+      const done = (dl: DL) => { clearTimeout(tid); resolve(dl); };
+      page.once('download', done);                          // case: same tab
+      ctx.once('page', (newPage) => newPage.once('download', done)); // case: new tab
+    });
 
-    const download = await newTab.waitForEvent('download', { timeout: 30_000 });
+    await excelBtn.click();
+
+    const download = await downloadPromise;
     const tmpPath = await download.path();
     if (!tmpPath) throw new Error(`Download path null for ${accountNumber}`);
 
     const buffer = await fs.promises.readFile(tmpPath);
-    await newTab.close();
+    // Đóng tab phụ nếu có (ignore nếu không có)
+    await download.page().close().catch(() => {});
     this.logger.log(`${accountNumber}: downloaded ${(buffer.length / 1024).toFixed(1)} KB`);
     return buffer;
   }

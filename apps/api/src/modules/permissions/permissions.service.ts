@@ -19,6 +19,7 @@ const CORE_PERMISSIONS = [
   { key: 'bank_statement:config', module: 'bank_statement', action: 'config', label: 'Cấu hình sao kê ngân hàng' },
   { key: 'report_ar:view',   module: 'report_ar', action: 'view',   label: 'Xem báo cáo AR' },
   { key: 'report_ar:config', module: 'report_ar', action: 'config', label: 'Cấu hình báo cáo AR' },
+  { key: 'system:config',    module: 'system',    action: 'config', label: 'Cấu hình hệ thống (service account, kết nối)' },
 ];
 
 @Injectable()

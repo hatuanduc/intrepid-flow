@@ -207,7 +207,13 @@ function deriveShortcuts(pinnedHrefs: string[]): NavItem[] {
     .map(v => ALL_PINNABLE.find(n => n.href === v.href))
     .filter(Boolean) as NavItem[];
 
-  return [...pinned, ...auto];
+  const combined = [...pinned, ...auto];
+  const seenLabels = new Set<string>();
+  return combined.filter(item => {
+    if (seenLabels.has(item.label)) return false;
+    seenLabels.add(item.label);
+    return true;
+  });
 }
 
 /* ── Hooks ── */

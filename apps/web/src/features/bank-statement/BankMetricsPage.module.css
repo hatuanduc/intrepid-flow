@@ -1,0 +1,110 @@
+.page { padding: 28px 32px; }
+@media (max-width: 768px) { .page { padding: 16px; } }
+
+.pageHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; }
+.pageTitle  { font-size: 20px; font-weight: 600; color: var(--color-ink); letter-spacing: -0.3px; margin: 0; }
+
+/* ── Filters ── */
+.filterBar {
+  display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;
+  padding: 14px 16px; background: var(--bg-surface);
+  border: 1px solid var(--color-border); border-radius: 8px;
+  margin-bottom: 20px;
+}
+.filterGroup { display: flex; flex-direction: column; gap: 5px; }
+.filterLabel { font-size: 11px; font-weight: 600; color: var(--color-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.dateInput, .select {
+  padding: 6px 10px; font-size: 13px; border: 1.5px solid var(--color-border);
+  border-radius: 6px; background: var(--bg-page); color: var(--color-ink);
+  outline: none; transition: border-color 0.15s;
+}
+.dateInput { width: 140px; }
+.select { min-width: 160px; max-width: 240px; }
+.dateInput:focus, .select:focus { border-color: var(--color-accent-active); }
+
+/* ── Currency block (chips + detail strip) ── */
+.currencyBlock {
+  background: var(--bg-surface); border: 1px solid var(--color-border);
+  border-radius: 8px; margin-bottom: 16px; overflow: hidden;
+}
+
+/* Chips row */
+.chips {
+  display: flex; gap: 0; overflow-x: auto;
+  border-bottom: 1px solid var(--color-border);
+  padding: 10px 14px; gap: 6px;
+}
+.chip {
+  display: flex; align-items: center; gap: 6px; padding: 5px 12px;
+  border: 1.5px solid var(--color-border); border-radius: 20px;
+  background: transparent; font-size: 12px; font-weight: 500;
+  color: var(--color-secondary); cursor: pointer; flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.chip:hover { border-color: var(--color-accent-active); background: var(--color-accent-light); color: var(--color-accent-active); }
+.chipActive {
+  border-color: var(--color-accent-active) !important;
+  background: var(--color-accent-light) !important;
+  color: var(--color-accent-active) !important;
+}
+.chipCurrency { font-weight: 700; letter-spacing: 0.02em; }
+.chipCount    { font-size: 11px; color: var(--color-muted); }
+.chipActive .chipCount { color: var(--color-accent-active); opacity: 0.7; }
+
+/* Detail strip */
+.currencyDetail {
+  display: flex; align-items: center; gap: 0; padding: 12px 20px;
+}
+.currencyDetailStat { display: flex; flex-direction: column; gap: 3px; padding: 0 20px; }
+.currencyDetailStat:first-child { padding-left: 0; }
+.currencyDetailStat:last-child  { padding-right: 0; }
+.currencyDetailDivider { width: 1px; height: 30px; background: var(--color-border); flex-shrink: 0; }
+.detailLabel { font-size: 11px; font-weight: 500; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.detailValue { font-size: 14px; font-weight: 700; color: var(--color-ink); font-variant-numeric: tabular-nums; }
+.credit { color: #059669; }
+.debit  { color: #df1b41; }
+
+/* ── Chart ── */
+.chartWrap {
+  background: var(--bg-surface); border: 1px solid var(--color-border);
+  border-radius: 8px; padding: 16px 20px; margin-bottom: 16px;
+}
+.chartTitle  { font-size: 13px; font-weight: 600; color: var(--color-ink); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+.tableTitle  { font-size: 13px; font-weight: 600; color: var(--color-ink); padding: 12px 16px; border-bottom: 1px solid var(--color-border); display: flex; align-items: center; gap: 8px; }
+.chartCurrencyTag { font-size: 11px; font-weight: 600; background: var(--color-accent-light); color: var(--color-accent-active); padding: 2px 8px; border-radius: 10px; }
+.chartTooltip {
+  background: var(--bg-surface); border: 1px solid var(--color-border);
+  border-radius: 6px; padding: 10px 14px; box-shadow: 0 4px 12px rgba(0,0,0,.08);
+  font-size: 12px;
+}
+.chartTooltipDate { font-weight: 600; color: var(--color-ink); margin-bottom: 6px; }
+.chartTooltipRow { display: flex; justify-content: space-between; gap: 16px; color: var(--color-secondary); }
+
+/* ── Table ── */
+.tableWrap { background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden; }
+.table     { width: 100%; border-collapse: collapse; }
+.th {
+  padding: 10px 16px; font-size: 12px; font-weight: 600; color: var(--color-secondary);
+  text-align: left; background: var(--bg-table-head); border-bottom: 1px solid var(--color-border);
+}
+.thRight { text-align: right; }
+.tr { border-bottom: 1px solid var(--color-border-light); }
+.tr:last-child { border-bottom: none; }
+.tr:hover .td { background: var(--bg-hover); }
+.td { padding: 10px 16px; font-size: 13px; font-weight: 500; color: var(--color-secondary); vertical-align: middle; }
+.tdRight { text-align: right; font-variant-numeric: tabular-nums; }
+.creditCell { color: #059669; }
+
+/* ── Name cell ── */
+.nameCell   { display: flex; align-items: center; gap: 10px; }
+.avatar     { width: 28px; height: 28px; border-radius: 50%; color: #fff; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.accountName   { font-size: 13px; font-weight: 500; color: var(--color-ink); }
+.accountNumber { font-size: 11px; color: var(--color-muted); font-family: monospace; }
+
+/* ── Country badge ── */
+.countryBadge { display: inline-flex; align-items: center; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; letter-spacing: 0.04em; }
+
+/* ── States ── */
+.loadingWrap { display: flex; justify-content: center; padding: 60px 0; }
+.empty { font-size: 13px; color: var(--color-subtle); text-align: center; padding: 48px 0; }
+.error { font-size: 13px; color: #df1b41; background: #fff0f3; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; }

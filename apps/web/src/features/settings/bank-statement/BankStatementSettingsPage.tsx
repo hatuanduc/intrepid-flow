@@ -508,7 +508,6 @@ function GsheetsTab({
             key={code}
             countryCode={code}
             existing={configMap[code] ?? null}
-            onSaved={() => onSaved()}
             toast={toast}
           />
         ))}
@@ -634,30 +633,33 @@ function GlobalGsheetConfig({
 }
 
 function GsheetCountryCard({
-  countryCode, existing, onSaved, toast,
+  countryCode, existing, toast,
 }: {
   countryCode: string;
   existing: BankGsheetConfig | null;
-  onSaved: () => void;
+  onSaved?: () => void;
   toast: ReturnType<typeof useToast>;
 }) {
   const [spreadsheetId, setSpreadsheetId] = useState(existing?.spreadsheetId ?? '');
   const [isActive, setIsActive] = useState(existing?.isActive ?? false);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(!!(existing?.spreadsheetId));
+  const [editing, setEditing] = useState(!existing?.spreadsheetId);
+  const savedIdRef = useRef(existing?.spreadsheetId ?? '');
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const countryInfo = COUNTRY_CODES.find(c => c.code === countryCode);
 
-  async function save(overrides?: { isActive?: boolean }) {
+  async function save(overrides?: { isActive?: boolean; id?: string }) {
     const activeVal = overrides?.isActive ?? isActive;
-    if (!spreadsheetId.trim()) return;
+    const idVal = (overrides?.id ?? spreadsheetId).trim();
+    if (!idVal) return;
     setSaving(true);
     try {
-      await upsertBankGsheet(countryCode, {
-        spreadsheetId: spreadsheetId.trim(),
-        isActive: activeVal,
-      });
-      onSaved();
+      await upsertBankGsheet(countryCode, { spreadsheetId: idVal, isActive: activeVal });
+      savedIdRef.current = idVal;
+      setEditing(false);
+      toast.success(`Đã lưu cấu hình ${countryCode}.`);
     } catch {
       toast.error(`Lưu cấu hình ${countryCode} thất bại.`);
     } finally {
@@ -668,10 +670,36 @@ function GsheetCountryCard({
   async function toggleActive() {
     const next = !isActive;
     setIsActive(next);
+    setExpanded(next);
     if (spreadsheetId.trim()) {
       await save({ isActive: next });
     }
   }
+
+  function startEdit() {
+    setExpanded(true);
+    setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function handleBlur() {
+    const trimmed = spreadsheetId.trim();
+    if (trimmed && trimmed !== savedIdRef.current) {
+      void save({ id: trimmed });
+    } else {
+      if (savedIdRef.current) setEditing(false);
+    }
+  }
+
+  function handleKeyDown(e: { key: string; preventDefault(): void }) {
+    if (e.key === 'Enter') { e.preventDefault(); void save(); }
+    if (e.key === 'Escape') {
+      setSpreadsheetId(savedIdRef.current);
+      if (savedIdRef.current) setEditing(false);
+    }
+  }
+
+  const displayId = savedIdRef.current || spreadsheetId;
 
   return (
     <div className={`${s.countryCard} ${isActive ? s.countryCardActive : ''}`}>
@@ -685,37 +713,45 @@ function GsheetCountryCard({
           </svg>
           <CountryBadge code={countryCode} />
           <span className={s.countryCardName}>{countryInfo?.label ?? countryCode}</span>
-          {existing?.spreadsheetId && (
+          {displayId && (
             <span className={s.countryCardSpreadsheetHint}>
-              {existing.spreadsheetId.slice(0, 20)}…
+              {displayId.slice(0, 20)}…
             </span>
           )}
         </button>
-        <button
-          className={`${s.toggle} ${isActive ? s.toggleOn : ''}`}
-          onClick={e => { e.stopPropagation(); toggleActive(); }}
-          title={isActive ? 'Đang đồng bộ — nhấn để tắt' : 'Đang tắt — nhấn để bật'}
-        />
+        <div className={s.countryCardActions}>
+          <button
+            className={`${s.toggle} ${isActive ? s.toggleOn : ''}`}
+            onClick={e => { e.stopPropagation(); void toggleActive(); }}
+            title={isActive ? 'Đang đồng bộ — nhấn để tắt' : 'Đang tắt — nhấn để bật'}
+          />
+        </div>
       </div>
       {expanded && (
         <div className={s.countryCardBody}>
           <div className={s.field}>
             <label className={s.label}>Spreadsheet ID</label>
-            <div className={s.spreadsheetRow}>
+            {editing ? (
               <input
+                ref={inputRef}
                 className={`${s.input} ${s.inputFull}`}
                 value={spreadsheetId}
                 onChange={e => setSpreadsheetId(e.target.value)}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
                 placeholder="1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0"
+                disabled={saving}
               />
-              <button
-                className={s.btnSave}
-                onClick={() => save()}
-                disabled={saving || !spreadsheetId.trim()}
-              >
-                {saving ? '...' : 'Lưu'}
-              </button>
-            </div>
+            ) : (
+              <div className={s.spreadsheetDisplay} onClick={startEdit}>
+                <span className={s.spreadsheetText}>
+                  {displayId || <span className={s.spreadsheetPlaceholder}>Chưa cấu hình — nhấn để nhập</span>}
+                </span>
+                <svg className={s.spreadsheetEditIcon} width="12" height="12" viewBox="0 0 13 13" fill="none">
+                  <path d="M9.2 1.8l2 2L4 11H2v-2L9.2 1.8z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </div>
+            )}
           </div>
         </div>
       )}

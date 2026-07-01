@@ -21,10 +21,10 @@ export class SheetsService {
    * Duplicate detection: reads existing bank references from column D rows 11+
    * before appending, so re-runs are safe.
    */
-  async sync(accountNumber: string, rows: TransactionRow[]): Promise<void> {
+  async sync(accountNumber: string, rows: TransactionRow[]): Promise<{ skipped: boolean; reason?: string; rowsSynced?: number }> {
     if (rows.length === 0) {
       this.logger.log(`No rows to sync for ${accountNumber}`);
-      return;
+      return { skipped: true, reason: 'no_rows' };
     }
 
     // ── Fetch account & GSheet config from DB ──────────────────────────────
@@ -33,7 +33,7 @@ export class SheetsService {
     });
     if (!account) {
       this.logger.warn(`BankAccount not found for ${accountNumber} — skipping GSheets sync`);
-      return;
+      return { skipped: true, reason: 'account_not_found' };
     }
 
     const config = await this.prisma.bankGsheetConfig.findUnique({
@@ -43,7 +43,7 @@ export class SheetsService {
       this.logger.warn(
         `No active GSheet config for country ${account.countryCode} — skipping`,
       );
-      return;
+      return { skipped: true, reason: `no_gsheet_config_for_${account.countryCode}` };
     }
 
     // Global service key and template come from BankJobSettings
@@ -54,7 +54,7 @@ export class SheetsService {
 
     if (!serviceKeyJson) {
       this.logger.warn(`No Google service account key configured — skipping GSheets sync`);
-      return;
+      return { skipped: true, reason: 'no_service_key' };
     }
 
     const { spreadsheetId } = config;
@@ -171,7 +171,7 @@ export class SheetsService {
 
     if (newRows.length === 0) {
       this.logger.log(`No new rows to append for ${accountNumber} (all duplicates)`);
-      return;
+      return { skipped: true, reason: 'all_duplicates' };
     }
 
     // ── Determine append start row (≥ 11) ─────────────────────────────────
@@ -201,6 +201,7 @@ export class SheetsService {
     this.logger.log(
       `Appended ${newRows.length} rows to sheet "${accountNumber}" starting at row ${startRow}`,
     );
+    return { skipped: false, rowsSynced: newRows.length };
   }
 }
 

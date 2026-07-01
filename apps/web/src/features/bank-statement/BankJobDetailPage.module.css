@@ -86,6 +86,58 @@
 .loadingWrap { display: flex; justify-content: center; padding: 80px 0; }
 .empty { font-size: 13px; color: var(--color-subtle); padding: 60px 0; text-align: center; }
 
+/* ── Job account summary table ── */
+.summarySection { margin-bottom: 24px; }
+
+.summaryHeader {
+  display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+}
+.summaryTitle { font-size: 12px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.summaryMetricsLink {
+  font-size: 12px; font-weight: 500; color: var(--color-accent-active);
+  text-decoration: none; display: flex; align-items: center; gap: 4px;
+  transition: opacity 0.15s;
+}
+.summaryMetricsLink:hover { opacity: 0.75; }
+
+.summaryTableWrap {
+  background: var(--bg-surface); border: 1px solid var(--color-border);
+  border-radius: 8px; overflow: hidden;
+}
+
+.summaryRow {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 14px; text-decoration: none;
+  border-bottom: 1px solid var(--color-border-light);
+  cursor: pointer; transition: background 0.12s;
+}
+.summaryRow:last-child { border-bottom: none; }
+.summaryRow:hover { background: var(--bg-hover); }
+
+.summaryRowAccount { display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0; }
+.summaryAvatar {
+  width: 28px; height: 28px; border-radius: 50%; color: #fff;
+  font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.summaryRowInfo { display: flex; flex-direction: column; min-width: 0; }
+.summaryAccNameRow { display: flex; align-items: center; gap: 6px; }
+.summaryAccName { font-size: 13px; font-weight: 500; color: var(--color-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.summaryAccNum  { font-size: 11px; color: var(--color-muted); font-family: monospace; white-space: nowrap; }
+.newBadge {
+  font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 20px;
+  background: #d1fae5; color: #065f46; flex-shrink: 0; letter-spacing: 0.02em;
+}
+
+.summaryCurrency {
+  font-size: 11px; font-weight: 700; color: var(--color-secondary);
+  background: var(--bg-subtle); padding: 2px 7px; border-radius: 10px;
+  letter-spacing: 0.03em; flex-shrink: 0;
+}
+.summaryTxCount { font-size: 12px; color: var(--color-muted); width: 44px; text-align: right; flex-shrink: 0; }
+.summaryCredit  { font-size: 12px; font-weight: 600; color: #059669; width: 120px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.summaryDebit   { font-size: 12px; font-weight: 600; color: #df1b41; width: 120px; text-align: right; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.summaryArrow   { color: var(--color-subtle); flex-shrink: 0; }
+
 /* ── Unified vertical job timeline ── */
 .jobTimeline { display: flex; flex-direction: column; }
 

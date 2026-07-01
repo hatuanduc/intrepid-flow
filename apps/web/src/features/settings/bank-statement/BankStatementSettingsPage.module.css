@@ -252,6 +252,30 @@
 .spreadsheetRow { display: flex; gap: 8px; align-items: center; }
 .spreadsheetRow .inputFull { flex: 1; }
 
+/* Country card — header actions */
+.countryCardActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.pencilBtn {
+  width: 26px; height: 26px; border: none; background: none; border-radius: 5px;
+  color: var(--color-subtle); cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: background 0.12s, color 0.12s;
+}
+.pencilBtn:hover { background: var(--bg-subtle); color: var(--color-secondary); }
+
+/* Spreadsheet ID — view mode (click-to-edit) */
+.spreadsheetDisplay {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px;
+  border: 1.5px solid transparent; border-radius: 6px; cursor: pointer;
+  min-height: 36px; transition: border-color 0.12s, background 0.12s;
+}
+.spreadsheetDisplay:hover { border-color: var(--color-border); background: var(--bg-page); }
+.spreadsheetDisplay:hover .spreadsheetEditIcon { opacity: 1; }
+.spreadsheetText {
+  font-size: 13px; color: var(--color-secondary); font-family: monospace;
+  flex: 1; word-break: break-all;
+}
+.spreadsheetPlaceholder { color: var(--color-subtle); font-family: inherit; font-style: italic; }
+.spreadsheetEditIcon { color: var(--color-subtle); flex-shrink: 0; opacity: 0; transition: opacity 0.12s; }
+
 /* GSheets — global config section */
 .globalConfigSection { display: flex; flex-direction: column; gap: 0; }
 .globalConfigDivider { height: 1px; background: var(--color-border); margin: 24px 0 20px; }

@@ -66,7 +66,6 @@ export class BankSyncService {
         await this.log(jobId, `Bắt đầu đồng bộ ${accountRows.size} tài khoản lên Google Sheets...`, 'sheets_sync');
         await this.runSheetsSync(jobId, accountRows);
         await this.updateStep(jobId, 'sheets_sync', { status: 'completed', completedAt: new Date().toISOString() });
-        await this.log(jobId, 'Hoàn thành bước 2 — đã đồng bộ lên Google Sheets.', 'sheets_sync', 'success');
       }
 
       await this.updateJob(jobId, JOB_STATUS.COMPLETED);
@@ -137,8 +136,13 @@ export class BankSyncService {
       await this.log(jobId, `Cảnh báo: không thể quét danh sách tài khoản — ${msg}. Tiếp tục với tài khoản trong DB.`, 'bank_sync', 'warn');
     }
 
+    // ── 1b-2. Sync discovered accounts (filter by country mapping) ───────────
+    const mappings = await this.prisma.bankCountryMapping.findMany({ where: { isActive: true } });
+    const companyToCountry = new Map(mappings.map(m => [m.companyName, m.countryCode]));
+    const mappedCountryCodes = new Set(mappings.map(m => m.countryCode));
+
     if (discovered.length > 0) {
-      const newAccounts = await this.syncDiscoveredAccounts(jobId, discovered);
+      const newAccounts = await this.syncDiscoveredAccounts(jobId, discovered, companyToCountry);
       if (newAccounts > 0) {
         await this.log(jobId, `★ ${newAccounts} tài khoản mới được phát hiện và thêm vào hệ thống.`, 'bank_sync', 'success');
       }
@@ -153,9 +157,12 @@ export class BankSyncService {
     const rangeLabel = `${formatDateLabel(dateFrom)} → ${formatDateLabel(dateTo)}`;
     await this.log(jobId, `Khoảng ngày đồng bộ: ${rangeLabel} (chế độ: ${dateMode}).`, 'bank_sync');
 
-    // ── 1d. Download per active account ──────────────────────────────────────
-    const accounts = await this.prisma.bankAccount.findMany({ where: { isActive: true } });
-    await this.log(jobId, `Bắt đầu tải sao kê cho ${accounts.length} tài khoản...`, 'bank_sync');
+    // ── 1d. Download per active account (only mapped countries) ──────────────
+    const accountFilter = mappedCountryCodes.size > 0
+      ? { isActive: true, countryCode: { in: [...mappedCountryCodes] } }
+      : { isActive: true };
+    const accounts = await this.prisma.bankAccount.findMany({ where: accountFilter });
+    await this.log(jobId, `Bắt đầu tải sao kê cho ${accounts.length} tài khoản (${mappedCountryCodes.size} quốc gia đã mapping)...`, 'bank_sync');
     await this.updateJob(jobId, JOB_STATUS.DOWNLOADING);
 
     for (const account of accounts) {
@@ -204,9 +211,23 @@ export class BankSyncService {
    * Upsert discovered accounts into bank_accounts table.
    * Returns count of newly inserted accounts.
    */
-  private async syncDiscoveredAccounts(jobId: string, discovered: DiscoveredAccount[]): Promise<number> {
+  private async syncDiscoveredAccounts(
+    jobId: string,
+    discovered: DiscoveredAccount[],
+    companyToCountry: Map<string, string>,
+  ): Promise<number> {
     let newCount = 0;
     for (const acc of discovered) {
+      const mappedCountryCode = companyToCountry.get(acc.companyName);
+      if (!mappedCountryCode) {
+        await this.log(
+          jobId,
+          `⚠ Công ty "${acc.companyName}" chưa có trong mapping — bỏ qua. Vào Cài đặt → Sao kê NH → Countries để thêm.`,
+          'bank_sync', 'warn',
+        );
+        continue;
+      }
+
       const existing = await this.prisma.bankAccount.findUnique({ where: { accountNumber: acc.accountNumber } });
       if (existing) continue;
 
@@ -216,10 +237,11 @@ export class BankSyncService {
           accountName: acc.companyName || acc.accountNumber,
           bankName: 'HSBC',
           currency: acc.currency,
-          countryCode: acc.countryCode,
+          countryCode: mappedCountryCode,
           isActive: true,
         },
       });
+      await this.log(jobId, `[NEW_ACCOUNT] ${acc.accountNumber}`, 'bank_sync', 'success');
       await this.log(jobId, `Tài khoản mới: ${acc.accountNumber} (${acc.companyName}, ${acc.currency}) — đã thêm vào hệ thống.`, 'bank_sync', 'success');
       newCount++;
     }
@@ -234,15 +256,38 @@ export class BankSyncService {
       return;
     }
 
+    let synced = 0;
+    let skipped = 0;
+
     for (const [accountNumber, rows] of accountRows) {
       try {
-        await this.sheets.sync(accountNumber, rows);
-        await this.log(jobId, `${accountNumber}: đã sync lên GSheets`, 'sheets_sync', 'success');
+        const result = await this.sheets.sync(accountNumber, rows);
+        if (result.skipped) {
+          skipped++;
+          const reason = result.reason ?? 'unknown';
+          const msg = reason.startsWith('no_gsheet_config_for_')
+            ? `chưa cấu hình GSheet cho quốc gia ${reason.replace('no_gsheet_config_for_', '')}`
+            : reason === 'no_service_key' ? 'chưa cấu hình Google service key'
+            : reason === 'all_duplicates' ? 'tất cả đã tồn tại (trùng lặp)'
+            : reason;
+          await this.log(jobId, `${accountNumber}: bỏ qua GSheets — ${msg}`, 'sheets_sync', 'warn');
+        } else {
+          synced++;
+          await this.log(jobId, `${accountNumber}: đã sync ${result.rowsSynced ?? 0} dòng lên GSheets`, 'sheets_sync', 'success');
+        }
       } catch (err) {
+        skipped++;
         const msg = (err as Error).message ?? 'Sheets error';
         await this.log(jobId, `${accountNumber}: lỗi GSheets — ${msg} [${FAIL_REASON.SHEET_ERROR}]`, 'sheets_sync', 'error');
       }
     }
+
+    await this.log(
+      jobId,
+      `Hoàn thành bước 2 — ${synced} tài khoản đã sync, ${skipped} bỏ qua.`,
+      'sheets_sync',
+      synced > 0 ? 'success' : 'warn',
+    );
   }
 
   // ─── Load existing transactions from DB (for step2 retry) ───────────────────

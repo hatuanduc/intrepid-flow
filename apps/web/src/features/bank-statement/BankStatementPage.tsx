@@ -191,7 +191,7 @@ export default function BankStatementPage() {
                             >⋯</button>
                             {openMenu === job.id && (
                               <div className={s.moreDropdown}>
-                                {job.status === 'failed' && (
+                                {['failed', 'completed'].includes(job.status) && (
                                   <button
                                     className={s.moreItem}
                                     disabled={retryingId === job.id}
