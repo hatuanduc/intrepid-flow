@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -34,6 +34,27 @@ export class AuthService {
       token,
       user: { id: user.id, email: user.email, name: user.name, roles: [], permissions: [] },
     };
+  }
+
+  async updateMyProfile(userId: string, name: string) {
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { name },
+      select: { id: true, email: true, name: true },
+    });
+  }
+
+  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { password: true },
+    });
+    if (!user) throw new NotFoundException('USER_NOT_FOUND');
+    const valid = await bcrypt.compare(currentPassword, user.password);
+    if (!valid) throw new UnauthorizedException('INVALID_PASSWORD');
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } });
+    return { ok: true };
   }
 
   async me(userId: string) {

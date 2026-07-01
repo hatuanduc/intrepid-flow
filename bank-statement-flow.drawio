@@ -1,0 +1,613 @@
+<mxfile host="VSCode" version="21.0.8">
+  <diagram id="architecture" name="1. Architecture">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1169" pageHeight="827" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="arch-title" value="Bank Statement Job — Architecture"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#1a1f36;"
+          vertex="1" parent="1">
+          <mxGeometry x="40" y="24" width="500" height="36" as="geometry" />
+        </mxCell>
+        <mxCell id="arch-sub" value="3 separate OS processes: api  |  worker  |  redis  +  PostgreSQL"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=12;fontColor=#697386;fontStyle=2;"
+          vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="520" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Process labels -->
+        <mxCell id="pl-browser" value="process: browser tab"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontColor=#8898aa;fontStyle=2;"
+          vertex="1" parent="1">
+          <mxGeometry x="40" y="108" width="130" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="pl-api" value="process: api"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontColor=#8898aa;fontStyle=2;"
+          vertex="1" parent="1">
+          <mxGeometry x="240" y="108" width="130" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="pl-redis" value="process: redis"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontColor=#8898aa;fontStyle=2;"
+          vertex="1" parent="1">
+          <mxGeometry x="460" y="108" width="130" height="18" as="geometry" />
+        </mxCell>
+        <mxCell id="pl-worker" value="process: worker"
+          style="text;html=1;strokeColor=none;fillColor=none;align=center;fontSize=10;fontColor=#8898aa;fontStyle=2;"
+          vertex="1" parent="1">
+          <mxGeometry x="680" y="108" width="150" height="18" as="geometry" />
+        </mxCell>
+
+        <!-- Browser -->
+        <mxCell id="browser" value="&lt;b&gt;Browser&lt;/b&gt;&lt;br&gt;Next.js :3000"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1a1f36;fontSize=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="40" y="130" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- API -->
+        <mxCell id="api" value="&lt;b&gt;API&lt;/b&gt;&lt;br&gt;NestJS :4000"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#635bff;strokeColor=#4f46e5;fontColor=#ffffff;fontSize=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="240" y="130" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Redis -->
+        <mxCell id="redis" value="&lt;b&gt;Redis&lt;/b&gt;&lt;br&gt;Bull Queue&lt;br&gt;&quot;bank-sync&quot;"
+          style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;fontColor=#92400e;fontSize=12;boundedLbl=1;backgroundOutline=1;size=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="460" y="120" width="130" height="90" as="geometry" />
+        </mxCell>
+
+        <!-- Worker -->
+        <mxCell id="worker" value="&lt;b&gt;Worker&lt;/b&gt;&lt;br&gt;BankSyncProcessor"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1a1f36;fontSize=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="680" y="130" width="150" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- PostgreSQL -->
+        <mxCell id="db" value="&lt;b&gt;PostgreSQL&lt;/b&gt;&lt;br&gt;bank_sync_jobs&lt;br&gt;bank_transactions&lt;br&gt;bank_accounts"
+          style="shape=cylinder3;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#1a1f36;fontSize=12;boundedLbl=1;backgroundOutline=1;size=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="350" y="300" width="150" height="110" as="geometry" />
+        </mxCell>
+
+        <!-- Playwright -->
+        <mxCell id="playwright" value="&lt;b&gt;Playwright Browser&lt;/b&gt;&lt;br&gt;headless Chromium"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#1a1f36;fontSize=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="680" y="300" width="150" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- HSBCnet -->
+        <mxCell id="hsbc" value="&lt;b&gt;HSBCnet&lt;/b&gt;&lt;br&gt;(external website)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#c4cdd6;fontColor=#697386;fontSize=12;dashed=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="900" y="300" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Google Sheets -->
+        <mxCell id="gsheets" value="&lt;b&gt;Google Sheets&lt;/b&gt;&lt;br&gt;(external API)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#c4cdd6;fontColor=#697386;fontSize=12;dashed=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="900" y="410" width="130" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- ===== EDGES ===== -->
+
+        <!-- Browser → API -->
+        <mxCell id="e1" value="POST trigger / retry / delete"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=1;exitY=0.4;exitDx=0;exitDy=0;entryX=0;entryY=0.4;entryDx=0;entryDy=0;"
+          edge="1" source="browser" target="api" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- API → Browser SSE -->
+        <mxCell id="e2" value="SSE stream (poll 2s)"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;dashed=1;strokeColor=#635bff;fontColor=#635bff;exitX=0;exitY=0.7;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;"
+          edge="1" source="api" target="browser" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- API → Redis -->
+        <mxCell id="e3" value="queue.add('run', {jobId})"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+          edge="1" source="api" target="redis" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Redis → Worker -->
+        <mxCell id="e4" value="dispatch job"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+          edge="1" source="redis" target="worker" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- API → DB (INSERT on trigger) -->
+        <mxCell id="e5" value="INSERT job record"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.2;entryDx=0;entryDy=0;"
+          edge="1" source="api" target="db" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- API → DB (SELECT for SSE) -->
+        <mxCell id="e6" value="SELECT every 2s (SSE)"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;dashed=1;strokeColor=#635bff;fontColor=#635bff;exitX=0.3;exitY=1;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+          edge="1" source="api" target="db" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Worker → DB (UPDATE status/logs) -->
+        <mxCell id="e7" value="UPDATE status / logs / steps"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=0.4;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.3;entryDx=0;entryDy=0;"
+          edge="1" source="worker" target="db" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Worker → DB (INSERT transactions) -->
+        <mxCell id="e8" value="INSERT bank_transactions"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;strokeColor=#059669;fontColor=#059669;exitX=0.6;exitY=1;exitDx=0;exitDy=0;entryX=1;entryY=0.7;entryDx=0;entryDy=0;"
+          edge="1" source="worker" target="db" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Worker → Playwright -->
+        <mxCell id="e9" value="drives automation"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=0.5;exitY=1;exitDx=0;exitDy=0;entryX=0.5;entryY=0;entryDx=0;entryDy=0;"
+          edge="1" source="worker" target="playwright" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Worker → GSheets -->
+        <mxCell id="e10" value="sync rows"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=1;exitY=0.9;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+          edge="1" source="worker" target="gsheets" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Playwright → HSBCnet -->
+        <mxCell id="e11" value="headless browser"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;exitX=1;exitY=0.5;exitDx=0;exitDy=0;entryX=0;entryY=0.5;entryDx=0;entryDy=0;"
+          edge="1" source="playwright" target="hsbc" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="statusflow" name="2. Job Status Flow">
+    <mxGraphModel dx="900" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="sf-title" value="Job Status Flow"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#1a1f36;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="20" width="300" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- Step 1 background -->
+        <mxCell id="step1-bg" value=""
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0effe;strokeColor=#c7d2fe;opacity=60;"
+          vertex="1" parent="1">
+          <mxGeometry x="110" y="100" width="280" height="510" as="geometry" />
+        </mxCell>
+        <mxCell id="step1-label" value="Step 1: bank_sync"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;fontStyle=1;fontColor=#635bff;"
+          vertex="1" parent="1">
+          <mxGeometry x="118" y="106" width="160" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- Step 2 background -->
+        <mxCell id="step2-bg" value=""
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#86efac;opacity=60;"
+          vertex="1" parent="1">
+          <mxGeometry x="110" y="630" width="280" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="step2-label" value="Step 2: sheets_sync"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=11;fontStyle=1;fontColor=#059669;"
+          vertex="1" parent="1">
+          <mxGeometry x="118" y="636" width="160" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- ===== STATUS NODES ===== -->
+
+        <!-- pending -->
+        <mxCell id="s-pending" value="pending"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#f1f5f9;strokeColor=#94a3b8;fontColor=#64748b;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="44" width="170" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- checking_session -->
+        <mxCell id="s-check" value="checking_session"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#93c5fd;fontColor=#1e40af;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="130" width="170" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- logging_in -->
+        <mxCell id="s-login" value="logging_in"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#93c5fd;fontColor=#1e40af;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="214" width="170" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- waiting_2fa -->
+        <mxCell id="s-2fa" value="waiting_2fa"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#fcd34d;fontColor=#92400e;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="298" width="170" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="s-2fa-note" value="⏱ mobile push — timeout 5min"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontColor=#92400e;"
+          vertex="1" parent="1">
+          <mxGeometry x="348" y="308" width="180" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- authenticated -->
+        <mxCell id="s-auth" value="authenticated"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#93c5fd;fontColor=#1e40af;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="382" width="170" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- downloading -->
+        <mxCell id="s-dl" value="downloading"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#93c5fd;fontColor=#1e40af;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="466" width="170" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="s-dl-note" value="per-account errors → warn only, continue"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontColor=#697386;"
+          vertex="1" parent="1">
+          <mxGeometry x="348" y="476" width="210" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- storing -->
+        <mxCell id="s-store" value="storing"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#dbeafe;strokeColor=#93c5fd;fontColor=#1e40af;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="550" width="170" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- syncing_sheets -->
+        <mxCell id="s-sheets" value="syncing_sheets"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#dcfce7;strokeColor=#86efac;fontColor=#065f46;fontSize=13;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="650" width="170" height="44" as="geometry" />
+        </mxCell>
+        <mxCell id="s-sheets-note" value="per-account errors → warn only, continue"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=10;fontColor=#697386;"
+          vertex="1" parent="1">
+          <mxGeometry x="348" y="660" width="210" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- completed -->
+        <mxCell id="s-done" value="completed ✓"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#d1fae5;strokeColor=#6ee7b7;fontColor=#065f46;fontSize=14;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="165" y="754" width="170" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- failed -->
+        <mxCell id="s-failed" value="failed ✕"
+          style="ellipse;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#fca5a5;fontColor=#b91c1c;fontSize=14;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="560" y="380" width="160" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- failed notes -->
+        <mxCell id="sf-note1" value="step.status = 'failed'&lt;br&gt;step.errorMessage = err.message&lt;br&gt;job.status = 'failed'&lt;br&gt;Bull job re-throws (no auto-retry)"
+          style="text;html=1;strokeColor=#fca5a5;fillColor=#fff5f5;align=left;fontSize=10;fontColor=#b91c1c;rounded=1;spacingLeft=6;spacingTop=4;"
+          vertex="1" parent="1">
+          <mxGeometry x="554" y="440" width="220" height="74" as="geometry" />
+        </mxCell>
+
+        <!-- ===== NORMAL FLOW EDGES ===== -->
+
+        <mxCell id="ef-1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="s-pending" target="s-check" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-2" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="s-check" target="s-login" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-3" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="s-login" target="s-2fa" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-4" value="approved on mobile" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;fontColor=#059669;" edge="1" source="s-2fa" target="s-auth" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-5" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="s-auth" target="s-dl" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-6" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="s-dl" target="s-store" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-7" value="step 1 done" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;" edge="1" source="s-store" target="s-sheets" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="ef-8" value="step 2 done" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;" edge="1" source="s-sheets" target="s-done" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== ERROR EDGES ===== -->
+
+        <mxCell id="ee-check" value="session error"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;fontColor=#b91c1c;strokeColor=#fca5a5;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.1;"
+          edge="1" source="s-check" target="s-failed" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ee-login" value="login failed"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;fontColor=#b91c1c;strokeColor=#fca5a5;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.3;"
+          edge="1" source="s-login" target="s-failed" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ee-2fa" value="TIMEOUT_2FA"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;fontColor=#b91c1c;strokeColor=#ef4444;strokeWidth=2;exitX=1;exitY=0.5;entryX=0;entryY=0.5;"
+          edge="1" source="s-2fa" target="s-failed" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ee-dl" value="critical download error"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;fontColor=#b91c1c;strokeColor=#fca5a5;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.7;"
+          edge="1" source="s-dl" target="s-failed" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <mxCell id="ee-sheets" value="sheets critical error"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=10;fontColor=#b91c1c;strokeColor=#fca5a5;dashed=1;exitX=1;exitY=0.5;entryX=0;entryY=0.9;"
+          edge="1" source="s-sheets" target="s-failed" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- ===== RETRY EDGES ===== -->
+
+        <!-- Retry full: failed → pending (wrap around left) -->
+        <mxCell id="er-full" value="retry full (reset to bank_sync)"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;fontColor=#635bff;strokeColor=#635bff;strokeWidth=2;dashed=1;exitX=0.5;exitY=1;entryX=0;entryY=0.5;"
+          edge="1" source="s-failed" target="s-pending" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="640" y="870" />
+              <mxPoint x="60" y="870" />
+              <mxPoint x="60" y="66" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Retry sheets only: failed → syncing_sheets -->
+        <mxCell id="er-sheets" value="retry sheets_sync only"
+          style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;fontColor=#059669;strokeColor=#059669;strokeWidth=1;dashed=1;exitX=0;exitY=0.5;entryX=1;entryY=0.5;"
+          edge="1" source="s-failed" target="s-sheets" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+
+  <diagram id="retry" name="3. Retry &amp; Error Detail">
+    <mxGraphModel dx="900" dy="700" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="700" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="rd-title" value="Retry Flow &amp; Error Handling Detail"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#1a1f36;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="20" width="500" height="36" as="geometry" />
+        </mxCell>
+
+        <!-- ===== RETRY FLOW ===== -->
+
+        <mxCell id="rd-h1" value="Retry Flow"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#635bff;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="66" width="200" height="24" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rd-user" value="User clicks&lt;br&gt;&quot;Retry&quot;"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#1a1f36;fontSize=12;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="100" width="120" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rd-api" value="API: retryJob()&lt;br&gt;1. Validate status = failed&lt;br&gt;2. Reset steps to pending&lt;br&gt;3. job.status = pending&lt;br&gt;4. logs += __RETRY__&lt;br&gt;5. queue.add('run', {jobId})"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ede9fe;strokeColor=#c4b5fd;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="200" y="86" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rd-worker" value="Worker: run(jobId)&lt;br&gt;Loads steps from DB.&lt;br&gt;If step already 'completed'&lt;br&gt;→ skip it, load data from DB.&lt;br&gt;Run from first 'pending' step."
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="494" y="86" width="240" height="90" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rd-e1" value=""
+          style="edgeStyle=orthogonalEdgeStyle;html=1;"
+          edge="1" source="rd-user" target="rd-api" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="rd-e2" value=""
+          style="edgeStyle=orthogonalEdgeStyle;html=1;"
+          edge="1" source="rd-api" target="rd-worker" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Step resume logic -->
+        <mxCell id="rd-case1" value="Case A: Retry full job&lt;br&gt;(bank_sync failed)"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontStyle=1;fontColor=#1a1f36;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="210" width="260" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="rd-case1-box" value="bank_sync: pending → run from checking_session&lt;br&gt;sheets_sync: pending → run after bank_sync"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0effe;strokeColor=#c7d2fe;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="238" width="340" height="50" as="geometry" />
+        </mxCell>
+
+        <mxCell id="rd-case2" value="Case B: Retry sheets_sync only&lt;br&gt;(bank_sync was completed, sheets failed)"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=12;fontStyle=1;fontColor=#1a1f36;"
+          vertex="1" parent="1">
+          <mxGeometry x="420" y="210" width="320" height="24" as="geometry" />
+        </mxCell>
+        <mxCell id="rd-case2-box" value="bank_sync: completed → load transactions from DB, skip&lt;br&gt;sheets_sync: pending → run sync only"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0fdf4;strokeColor=#86efac;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="420" y="238" width="360" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- ===== ERROR HANDLING ===== -->
+
+        <mxCell id="rd-h2" value="Error Handling Detail"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=14;fontStyle=1;fontColor=#b91c1c;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="320" width="260" height="24" as="geometry" />
+        </mxCell>
+
+        <!-- Error table header -->
+        <mxCell id="eh-h-err" value="Error"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#f5c6cb;fontColor=#b91c1c;fontSize=12;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="354" width="180" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-h-sev" value="Severity"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#f5c6cb;fontColor=#b91c1c;fontSize=12;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="210" y="354" width="100" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-h-act" value="Action"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#f5c6cb;fontColor=#b91c1c;fontSize=12;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="310" y="354" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-h-res" value="Recovery"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8d7da;strokeColor=#f5c6cb;fontColor=#b91c1c;fontSize=12;fontStyle=1;"
+          vertex="1" parent="1">
+          <mxGeometry x="510" y="354" width="220" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- Row 1: TIMEOUT_2FA -->
+        <mxCell id="eh-r1-e" value="TIMEOUT_2FA (5 min)"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="388" width="180" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r1-s" value="Job fails"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#e3e8ee;fontColor=#b91c1c;fontSize=11;"
+          vertex="1" parent="1">
+          <mxGeometry x="210" y="388" width="100" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r1-a" value="step.failed, job.failed"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="310" y="388" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r1-r" value="Manual retry (full job)"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="510" y="388" width="220" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- Row 2: Per-account download error -->
+        <mxCell id="eh-r2-e" value="Per-account download error"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="422" width="180" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r2-s" value="Warn only"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#e3e8ee;fontColor=#92400e;fontSize=11;"
+          vertex="1" parent="1">
+          <mxGeometry x="210" y="422" width="100" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r2-a" value="log.warn, skip account, continue"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="310" y="422" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r2-r" value="Job continues, other accounts ok"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="510" y="422" width="220" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- Row 3: Per-account sheets error -->
+        <mxCell id="eh-r3-e" value="Per-account sheets error"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="456" width="180" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r3-s" value="Warn only"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#e3e8ee;fontColor=#92400e;fontSize=11;"
+          vertex="1" parent="1">
+          <mxGeometry x="210" y="456" width="100" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r3-a" value="log.warn, rows_skipped++, continue"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="310" y="456" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r3-r" value="Retry sheets_sync step only"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="510" y="456" width="220" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- Row 4: Duplicate transaction -->
+        <mxCell id="eh-r4-e" value="Duplicate transaction (upsert)"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="490" width="180" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r4-s" value="Silent"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d1fae5;strokeColor=#e3e8ee;fontColor=#065f46;fontSize=11;"
+          vertex="1" parent="1">
+          <mxGeometry x="210" y="490" width="100" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r4-a" value="rows_duplicate++, no error"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="310" y="490" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r4-r" value="Idempotent — safe to re-run"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="510" y="490" width="220" height="34" as="geometry" />
+        </mxCell>
+
+        <!-- Row 5: Worker crash -->
+        <mxCell id="eh-r5-e" value="Worker process crash"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="30" y="524" width="180" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r5-s" value="Job stuck"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fee2e2;strokeColor=#e3e8ee;fontColor=#b91c1c;fontSize=11;"
+          vertex="1" parent="1">
+          <mxGeometry x="210" y="524" width="100" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r5-a" value="status stays 'running' in DB&lt;br&gt;Bull job goes to failed queue"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="310" y="524" width="200" height="34" as="geometry" />
+        </mxCell>
+        <mxCell id="eh-r5-r" value="Manual retry after worker restarts"
+          style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=6;"
+          vertex="1" parent="1">
+          <mxGeometry x="510" y="524" width="220" height="34" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

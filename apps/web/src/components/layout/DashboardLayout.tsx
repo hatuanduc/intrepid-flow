@@ -360,8 +360,11 @@ export default function DashboardLayout({ user, children }: { user: User; childr
                 </div>
               </div>
               <div className={s.dropdownDivider} />
+              <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/account'); }}>
+                Tài khoản
+              </button>
               <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/settings'); }}>
-                Cài đặt cá nhân
+                Cài đặt
               </button>
               <div className={s.dropdownDivider} />
               <button className={s.dropdownItem} onClick={handleLogout}>Đăng xuất</button>

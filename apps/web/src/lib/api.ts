@@ -557,3 +557,19 @@ export async function updateSystemServiceAccount(serviceKeyJson: string | null) 
     body: JSON.stringify({ serviceKeyJson }),
   });
 }
+
+export async function updateMyProfile(name: string) {
+  return request<{ id: string; email: string; name: string | null }>('/auth/me/profile', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify({ name }),
+  });
+}
+
+export async function changeMyPassword(currentPassword: string, newPassword: string) {
+  return request<{ ok: boolean }>('/auth/me/password', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
