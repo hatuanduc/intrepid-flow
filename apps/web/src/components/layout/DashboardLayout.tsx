@@ -3,7 +3,8 @@
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useState, useRef, useEffect } from 'react';
-import { clearToken } from '../../lib/auth';
+import { clearToken, isImpersonating } from '../../lib/auth';
+import ImpersonationBanner from '../common/ImpersonationBanner';
 import s from './DashboardLayout.module.css';
 import { BellIcon, ChevronDownIcon, GearIcon, PinIcon } from '../icons';
 import {
@@ -264,6 +265,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen]       = useState(false);
   const [pinnedHrefs, setPinnedHrefs] = useState<string[]>(() => loadPins());
+  const [impersonating, setImpersonating] = useState(false);
   const [shortcuts, setShortcuts]     = useState<NavItem[]>(() => deriveShortcuts(loadPins()));
 
   /* Track visits */
@@ -276,6 +278,8 @@ export default function DashboardLayout({ user, children }: { user: User; childr
       setShortcuts(deriveShortcuts(loadPins()));
     }
   }, [pathname]);
+
+  useEffect(() => { setImpersonating(isImpersonating()); }, []);
 
 
   function handleLogout() { clearToken(); router.replace('/login'); }
@@ -356,6 +360,8 @@ export default function DashboardLayout({ user, children }: { user: User; childr
 
   return (
     <div className={s.shell}>
+      {impersonating && <ImpersonationBanner userName={user.name} userEmail={user.email} />}
+
       {/* ── TOPBAR ── */}
       <header className={s.topbar}>
         <button className={s.menuBtn} onClick={() => setSidebarOpen(v => !v)} aria-label="Menu">

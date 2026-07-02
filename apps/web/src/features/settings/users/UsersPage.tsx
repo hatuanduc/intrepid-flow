@@ -7,7 +7,9 @@ import {
   deleteUser as apiDeleteUser,
   deleteRole as apiDeleteRole,
   resendInvite as apiResendInvite,
+  impersonateUser as apiImpersonateUser,
 } from '../../../lib/api';
+import { startImpersonation } from '../../../lib/auth';
 import { useToast } from '../../../components/common/Toast';
 import AddUserPanel from './AddUserPanel';
 import EditUserPanel from './EditUserPanel';
@@ -163,12 +165,14 @@ function MoreMenu({
   onEdit,
   onDelete,
   onResendInvite,
+  onImpersonate,
 }: {
   onEdit?: () => void;
   onDelete?: () => void;
   onResendInvite?: () => void;
+  onImpersonate?: () => void;
 }) {
-  if (!onEdit && !onDelete && !onResendInvite) return null;
+  if (!onEdit && !onDelete && !onResendInvite && !onImpersonate) return null;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -195,6 +199,7 @@ function MoreMenu({
         <div className={s.moreDropdown}>
           {onEdit && <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>Chỉnh sửa</button>}
           {onResendInvite && <button className={s.moreItem} onClick={() => { setOpen(false); onResendInvite(); }}>Gửi lại invite</button>}
+          {onImpersonate && <button className={s.moreItem} onClick={() => { setOpen(false); onImpersonate(); }}>Đăng nhập với tư cách này</button>}
           {onDelete && <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpen(false); onDelete(); }}>Xóa</button>}
         </div>
       )}
@@ -339,11 +344,12 @@ function ConfirmModal({
 export default function UsersPage() {
   const currentUser = useUser();
   const toast = useToast();
-  const canViewUsers   = currentUser?.permissions.includes('users:view')   ?? false;
-  const canCreateUser  = currentUser?.permissions.includes('users:create')  ?? false;
-  const canCreateRole  = currentUser?.permissions.includes('roles:create')  ?? false;
-  const canEditUser    = currentUser?.permissions.includes('users:edit')    ?? false;
-  const canDeleteUser  = currentUser?.permissions.includes('users:delete')  ?? false;
+  const canViewUsers      = currentUser?.permissions.includes('users:view')        ?? false;
+  const canCreateUser     = currentUser?.permissions.includes('users:create')      ?? false;
+  const canCreateRole     = currentUser?.permissions.includes('roles:create')      ?? false;
+  const canEditUser       = currentUser?.permissions.includes('users:edit')        ?? false;
+  const canDeleteUser     = currentUser?.permissions.includes('users:delete')      ?? false;
+  const canImpersonateUser = currentUser?.permissions.includes('users:impersonate') ?? false;
 
   const [mainTab, setMainTab] = useState<MainTab>('users');
 
@@ -375,6 +381,22 @@ export default function UsersPage() {
       toast.success(`Đã gửi lại invite đến ${user.email}.`);
     } catch {
       toast.error('Gửi invite thất bại. Vui lòng thử lại.');
+    }
+  }
+
+  async function handleImpersonate(user: UserItem) {
+    try {
+      const res = await apiImpersonateUser(user.id);
+      startImpersonation(res.token);
+      window.location.replace('/');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      const MSG: Record<string, string> = {
+        USER_NOT_FOUND: 'Tài khoản không tồn tại.',
+        USER_INACTIVE: 'Tài khoản đang bị khóa.',
+        USER_PENDING: 'Tài khoản chưa được kích hoạt.',
+      };
+      toast.error(MSG[code] ?? 'Không thể đăng nhập với tư cách này.');
     }
   }
 
@@ -621,6 +643,7 @@ export default function UsersPage() {
                         <MoreMenu
                           onEdit={canEditUser ? () => setEditUser(u) : undefined}
                           onResendInvite={canCreateUser && !u.hasPassword ? () => handleResendInvite(u) : undefined}
+                          onImpersonate={canImpersonateUser && u.hasPassword && u.isActive && u.id !== currentUser?.id ? () => handleImpersonate(u) : undefined}
                           onDelete={canDeleteUser ? () => setDeleteTarget({ type: 'user', item: u }) : undefined}
                         />
                       </td>

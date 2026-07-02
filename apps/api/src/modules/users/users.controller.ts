@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Post, Put, Query, UseGuards, Param } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, Put, Query, UseGuards, Param, Req } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { UsersService } from './users.service';
 import { JwtAuthGuard } from '../auth/jwt.guard';
@@ -54,5 +54,12 @@ export class UsersController {
   @ApiOperation({ summary: 'Gửi lại email invite' })
   async resendInvite(@Param('id') id: string) {
     return this.users.resendInvite(id);
+  }
+
+  @Post('users/:id/impersonate')
+  @HasPermission('users:impersonate')
+  @ApiOperation({ summary: 'Đăng nhập với tư cách người dùng' })
+  async impersonate(@Param('id') id: string, @Req() req: any) {
+    return this.users.impersonateUser(req.authUser.id, id);
   }
 }

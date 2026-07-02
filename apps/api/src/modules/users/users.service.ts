@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import jwt from 'jsonwebtoken';
 import { userListArgs } from './types';
 import type { UserListRow } from './types';
 import { CreateUserInput, UpdateUserInput } from './types';
@@ -156,6 +157,23 @@ export class UsersService {
     const existed = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!existed) throw new NotFoundException('USER_NOT_FOUND');
     await this.prisma.user.delete({ where: { id: userId } });
+  }
+
+  async impersonateUser(adminId: string, targetUserId: string) {
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetUserId },
+      select: { id: true, email: true, name: true, isActive: true, hasPassword: true },
+    });
+    if (!target) throw new NotFoundException('USER_NOT_FOUND');
+    if (!target.isActive) throw new UnprocessableEntityException('USER_INACTIVE');
+    if (!target.hasPassword) throw new UnprocessableEntityException('USER_PENDING');
+
+    const token = jwt.sign(
+      { sub: target.id, email: target.email, impersonatedBy: adminId },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '2h' },
+    );
+    return { token, user: { id: target.id, email: target.email, name: target.name } };
   }
 
   async createRole(input: {

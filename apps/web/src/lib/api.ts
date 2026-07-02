@@ -207,6 +207,13 @@ export async function deleteUser(id: string) {
   });
 }
 
+export async function impersonateUser(id: string) {
+  return request<{ token: string; user: { id: string; email: string; name: string | null } }>(
+    `/management/users/${id}/impersonate`,
+    { method: 'POST', auth: true },
+  );
+}
+
 export async function deleteRole(id: string) {
   return request<{ ok: boolean }>(`/management/roles/${id}`, {
     method: 'DELETE',
