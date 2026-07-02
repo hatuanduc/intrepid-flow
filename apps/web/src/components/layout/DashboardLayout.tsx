@@ -43,6 +43,24 @@ const SearchIconSvg = (
     <path d="M9 9l2.5 2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
   </svg>
 );
+const AccountMenuIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <circle cx="7" cy="5" r="2.3" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M2.5 12c0-2 2.02-3.5 4.5-3.5s4.5 1.5 4.5 3.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+const SettingsMenuIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <circle cx="7" cy="7" r="1.8" stroke="currentColor" strokeWidth="1.3"/>
+    <path d="M7 1.5v1.2M7 11.3v1.2M1.5 7h1.2M11.3 7h1.2M3.28 3.28l.85.85M9.87 9.87l.85.85M3.28 10.72l.85-.85M9.87 4.13l.85-.85" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+const SignOutMenuIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M9.5 5l2.5 2.5-2.5 2.5M12 7.5H6" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6 2.5H3a.5.5 0 00-.5.5v8a.5.5 0 00.5.5h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
 
 /* ── Inline search bar with dropdown ── */
 function SearchBar() {
@@ -361,13 +379,15 @@ export default function DashboardLayout({ user, children }: { user: User; childr
               </div>
               <div className={s.dropdownDivider} />
               <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/account'); }}>
-                Tài khoản
+                <span className={s.dropdownItemIcon}>{AccountMenuIcon}</span>Tài khoản
               </button>
               <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/settings'); }}>
-                Cài đặt
+                <span className={s.dropdownItemIcon}>{SettingsMenuIcon}</span>Cài đặt
               </button>
               <div className={s.dropdownDivider} />
-              <button className={s.dropdownItem} onClick={handleLogout}>Đăng xuất</button>
+              <button className={s.dropdownItem} onClick={handleLogout}>
+                <span className={s.dropdownItemIcon}>{SignOutMenuIcon}</span>Đăng xuất
+              </button>
             </div>
           )}
         </div>

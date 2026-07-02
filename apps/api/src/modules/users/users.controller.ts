@@ -48,4 +48,11 @@ export class UsersController {
     await this.users.deleteUser(id);
     return { ok: true };
   }
+
+  @Post('users/:id/resend-invite')
+  @HasPermission('users:create')
+  @ApiOperation({ summary: 'Gửi lại email invite' })
+  async resendInvite(@Param('id') id: string) {
+    return this.users.resendInvite(id);
+  }
 }

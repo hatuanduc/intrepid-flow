@@ -1,31 +1,64 @@
 .page {
   padding: 28px 32px;
-  max-width: 640px;
+  max-width: 600px;
 }
 
-.pageHeader { margin-bottom: 28px; }
-.pageTitle { font-size: 20px; font-weight: 600; color: var(--color-ink); letter-spacing: -0.3px; margin: 0 0 4px; }
-.pageMeta  { font-size: 13px; color: var(--color-muted); margin: 0; }
+.pageHeader { margin-bottom: 24px; }
+.pageTitle  { font-size: 20px; font-weight: 600; color: var(--color-ink); letter-spacing: -0.3px; margin: 0; }
 
-/* Card */
+/* ── Card ── */
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--color-border);
   border-radius: 10px;
   overflow: hidden;
-  margin-bottom: 20px;
 }
-.cardHeader {
-  padding: 14px 20px;
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
   border-bottom: 1px solid var(--color-border);
   background: var(--bg-table-head);
+  min-height: 44px;
 }
-.cardTitle { font-size: 13px; font-weight: 600; color: var(--color-secondary); margin: 0; }
-.cardBody  { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.cardTitle { font-size: 13px; font-weight: 600; color: var(--color-secondary); }
 
-/* Profile top */
+/* Edit / Save / Cancel */
+.btnEdit {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer; transition: background 0.15s;
+}
+.btnEdit:hover { background: var(--bg-page); color: var(--color-ink); }
+
+.editActions { display: flex; gap: 8px; align-items: center; }
+
+.btnCancel {
+  padding: 5px 14px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer; transition: background 0.15s;
+}
+.btnCancel:hover:not(:disabled) { background: var(--bg-page); }
+.btnCancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btnSave {
+  padding: 5px 14px; font-size: 12px; font-weight: 500;
+  border: none; border-radius: 6px;
+  background: var(--color-accent); color: #fff;
+  cursor: pointer; transition: background 0.15s;
+}
+.btnSave:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btnSave:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Profile top (avatar + name) ── */
 .profileTop {
   display: flex; align-items: center; gap: 14px;
+  padding: 20px;
 }
 .avatar {
   width: 52px; height: 52px; border-radius: 50%; color: #fff;
@@ -35,16 +68,44 @@
 .profileInfo  { display: flex; flex-direction: column; gap: 3px; }
 .profileName  { font-size: 15px; font-weight: 600; color: var(--color-ink); }
 .profileEmail { font-size: 12px; color: var(--color-muted); }
-.profileRoles { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; }
-.roleBadge {
-  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
-  background: var(--bg-subtle); color: var(--color-secondary);
-}
 
 .divider { height: 1px; background: var(--color-border); }
 
-/* Form */
-.form { display: flex; flex-direction: column; gap: 14px; }
+/* ── Info rows (Stripe-style) ── */
+.infoRow {
+  display: flex;
+  align-items: center;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--color-border-light);
+  min-height: 48px;
+}
+.infoRowLast { border-bottom: none; }
+.infoLabel {
+  width: 140px; flex-shrink: 0;
+  font-size: 13px; color: var(--color-muted);
+}
+.infoValue {
+  flex: 1; font-size: 13px; font-weight: 500; color: var(--color-ink);
+}
+.infoEmpty { color: var(--color-subtle); font-weight: 400; font-style: italic; }
+.pwDots    { font-size: 11px; color: var(--color-muted); letter-spacing: 3px; }
+.pwRow     { flex: 1; display: flex; align-items: center; gap: 12px; }
+.infoInput { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+
+.btnChangePw {
+  display: inline-flex; align-items: center;
+  padding: 4px 12px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btnChangePw:hover { background: var(--bg-page); border-color: var(--color-border-strong); color: var(--color-ink); }
+
+.roleList { display: flex; gap: 5px; flex-wrap: wrap; }
+
+/* ── Form (in RightPanel) ── */
+.form  { display: flex; flex-direction: column; gap: 16px; }
 .field { display: flex; flex-direction: column; gap: 5px; }
 .label { font-size: 13px; font-weight: 500; color: var(--color-secondary); }
 
@@ -56,21 +117,19 @@
 }
 .input:focus        { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 .input::placeholder { color: var(--color-subtle); }
-.inputReadonly      { background: var(--bg-page); color: var(--color-muted); cursor: default; }
 .inputError         { border-color: #df1b41 !important; }
-.inputError:focus   { border-color: #df1b41 !important; box-shadow: 0 0 0 3px rgba(223,27,65,.10) !important; }
+.inputError:focus   { box-shadow: 0 0 0 3px rgba(223,27,65,.10) !important; }
 .fieldError         { font-size: 12px; color: #df1b41; margin-top: -2px; }
 
-.formFooter { display: flex; justify-content: flex-end; }
-
-/* Button */
-.btnPrimary {
-  padding: 8px 18px; font-size: 13px; font-weight: 500; border-radius: 6px;
-  border: none; background: var(--color-accent); color: #fff; cursor: pointer;
-}
-.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
-.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+/* ── Role badges ── */
+.roleBadge  { display: inline-flex; align-items: center; font-size: 11px; font-weight: 600;
+              padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.roleAdmin  { background: #ede9fe; color: #5b21b6; }
+.roleOwner  { background: #1e293b; color: #e2e8f0; }
+.roleEditor { background: #dbeafe; color: #1e40af; }
+.roleViewer { background: var(--bg-subtle); color: var(--color-secondary); }
 
 @media (max-width: 768px) {
   .page { padding: 16px; max-width: 100%; }
+  .infoLabel { width: 100px; }
 }

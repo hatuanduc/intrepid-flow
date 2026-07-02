@@ -1,7 +1,12 @@
 import { Prisma } from '@prisma/client';
 
 export const userListArgs = {
-  include: {
+  select: {
+    id: true,
+    email: true,
+    name: true,
+    isActive: true,
+    hasPassword: true,
     roles: {
       include: {
         role: {

@@ -134,6 +134,7 @@ export type UserItem = {
   email: string;
   name: string | null;
   isActive: boolean;
+  hasPassword: boolean;
   roles: Array<{ id: string; key: string; name: string }>;
 };
 
@@ -147,8 +148,6 @@ export async function listUsers(search = '') {
 
 export async function createUser(input: {
   email: string;
-  name: string;
-  password: string;
   roleIds: string[];
 }) {
   return request<{ item: UserItem }>('/management/users', {
@@ -555,6 +554,24 @@ export async function updateSystemServiceAccount(serviceKeyJson: string | null) 
     method: 'PUT',
     auth: true,
     body: JSON.stringify({ serviceKeyJson }),
+  });
+}
+
+export async function resendInvite(userId: string) {
+  return request<{ ok: boolean }>(`/management/users/${userId}/resend-invite`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function verifyInviteToken(token: string) {
+  return request<{ valid: boolean; email: string; name: string | null }>(`/auth/invite/${token}`);
+}
+
+export async function setPasswordWithToken(token: string, password: string, name?: string) {
+  return request<{ ok: boolean }>('/auth/set-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password, name }),
   });
 }
 

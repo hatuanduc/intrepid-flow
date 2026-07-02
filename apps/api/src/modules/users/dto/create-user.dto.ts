@@ -1,4 +1,4 @@
-import { IsEmail, IsString, MinLength, IsArray, IsUUID, ArrayMinSize } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsArray, IsUUID } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -6,19 +6,13 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
-  @ApiProperty({ example: 'Nguyễn Văn A' })
+  @ApiProperty({ example: 'Nguyễn Văn A', required: false })
+  @IsOptional()
   @IsString()
-  @MinLength(1)
-  name!: string;
-
-  @ApiProperty({ example: 'secret123', minLength: 6 })
-  @IsString()
-  @MinLength(6)
-  password!: string;
+  name?: string;
 
   @ApiProperty({ type: [String], description: 'UUID của các role' })
   @IsArray()
   @IsUUID('4', { each: true })
-  @ArrayMinSize(1)
   roleIds!: string[];
 }

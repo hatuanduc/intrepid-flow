@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -54,6 +54,37 @@ export class AuthService {
     if (!valid) throw new UnauthorizedException('INVALID_PASSWORD');
     const hashed = await bcrypt.hash(newPassword, 10);
     await this.prisma.user.update({ where: { id: userId }, data: { password: hashed } });
+    return { ok: true };
+  }
+
+  async verifyInviteToken(token: string) {
+    const invite = await this.prisma.userInvite.findUnique({
+      where: { token },
+      include: { user: { select: { email: true, name: true } } },
+    });
+    if (!invite) throw new NotFoundException('INVITE_NOT_FOUND');
+    if (invite.expiredAt < new Date()) throw new UnprocessableEntityException('INVITE_EXPIRED');
+    return { valid: true, email: invite.user.email, name: invite.user.name };
+  }
+
+  async setPasswordWithToken(token: string, password: string, name?: string) {
+    const invite = await this.prisma.userInvite.findUnique({
+      where: { token },
+      include: { user: { select: { id: true } } },
+    });
+    if (!invite) throw new NotFoundException('INVITE_NOT_FOUND');
+    if (invite.expiredAt < new Date()) throw new UnprocessableEntityException('INVITE_EXPIRED');
+
+    const hashed = await bcrypt.hash(password, 10);
+    await this.prisma.user.update({
+      where: { id: invite.user.id },
+      data: {
+        password: hashed,
+        hasPassword: true,
+        ...(name?.trim() ? { name: name.trim() } : {}),
+      },
+    });
+    await this.prisma.userInvite.delete({ where: { token } });
     return { ok: true };
   }
 

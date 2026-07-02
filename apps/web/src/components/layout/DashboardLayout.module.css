@@ -349,7 +349,7 @@
 .dropdownItem {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 9px;
   width: 100%;
   padding: 7px 10px;
   font-size: 13px;
@@ -362,6 +362,10 @@
   transition: background 0.1s;
 }
 .dropdownItem:hover { background: var(--bg-page); }
+.dropdownItemIcon {
+  display: flex; align-items: center; flex-shrink: 0;
+  color: var(--color-muted);
+}
 
 .dropdownItem kbd {
   font-size: 11px;

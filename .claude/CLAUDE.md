@@ -148,6 +148,58 @@ Use `RightPanel` component from `components/common/RightPanel` for create/edit f
 Use modal only for destructive confirm (delete, lock).
 See ui-reference.md §4 for full usage pattern.
 
+## View-First, Edit-On-Demand Pattern
+
+Trang hiển thị thông tin (profile, detail, settings) nên theo pattern: **chỉ hiện thị mặc định, show form khi click Edit**.
+
+**Khi nào dùng:**
+- Trang profile/account, trang chi tiết của entity
+- Card/section có nhiều fields cần hiển thị nhưng ít khi edit
+
+**3 variants tuỳ độ phức tạp:**
+
+| Trường hợp | Pattern |
+|---|---|
+| 1 field đơn giản (tên) | Inline edit mode: toggle giữa text ↔ input trong cùng card |
+| Nhiều fields liên quan | RightPanel slide-in khi click Edit |
+| Action nguy hiểm (đổi mật khẩu) | Riêng biệt — button trong edit mode → mở RightPanel |
+
+**Cấu trúc card view-first (inline edit mode):**
+
+```tsx
+// Card header: tiêu đề + Edit/Save/Cancel
+<div className={s.cardHead}>
+  <span className={s.cardTitle}>Thông tin</span>
+  {!editing ? (
+    <button className={s.btnEdit} onClick={startEdit}><EditIcon /> Chỉnh sửa</button>
+  ) : (
+    <div className={s.editActions}>
+      <button className={s.btnCancel} onClick={cancelEdit}>Hủy</button>
+      <button className={s.btnSave} form="my-form" type="submit">Lưu thay đổi</button>
+    </div>
+  )}
+</div>
+
+// Rows: label + value (view) hoặc label + input (edit)
+<div className={s.infoRow}>
+  <span className={s.infoLabel}>Tên hiển thị</span>
+  {editing
+    ? <input className={s.input} value={name} onChange={...} autoFocus />
+    : <span className={s.infoValue}>{displayName}</span>}
+</div>
+<div className={s.infoRow}>
+  <span className={s.infoLabel}>Email</span>
+  <span className={s.infoValue}>{email}</span>  {/* luôn read-only */}
+</div>
+```
+
+**Quy tắc:**
+- Row label width cố định (~140px), value flex-1
+- Email / ID / system fields: **luôn read-only**, không edit dù ở edit mode
+- `displayName` là local state riêng để cập nhật ngay sau save, không cần reload
+- Sau save thành công: `setDisplayName(newValue); setEditing(false);` + toast success
+- Nếu card chỉ có 1–2 editable fields → inline edit mode thay vì mở thêm RightPanel
+
 ## API Controller & DTO Pattern (NestJS)
 
 Mỗi module có cấu trúc:

@@ -1,7 +1,6 @@
 export type CreateUserInput = {
   email: string;
-  name: string;
-  password: string;
+  name?: string;
   roleIds: string[];
 };
 

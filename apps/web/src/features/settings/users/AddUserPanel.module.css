@@ -39,21 +39,47 @@
   margin: 4px 0;
 }
 
-/* ── Role groups ── */
-.roleGroup {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+/* ── Role section (label + search) ── */
+.roleSection { display: flex; flex-direction: column; gap: 8px; }
+.roleSectionHead {
+  display: flex; align-items: center; justify-content: space-between;
 }
+.roleTotalCount { font-size: 12px; color: var(--color-accent-active); font-weight: 500; }
+
+.roleSearchWrap { position: relative; display: flex; align-items: center; }
+.roleSearchIcon { position: absolute; left: 9px; color: var(--color-subtle); pointer-events: none; }
+.roleSearchInput {
+  width: 100%; padding: 7px 10px 7px 28px;
+  font-size: 13px; border: 1.5px solid var(--color-border);
+  border-radius: 6px; background: var(--bg-surface); color: var(--color-ink);
+  outline: none; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.roleSearchInput:focus {
+  border-color: var(--color-accent-active);
+  box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
+}
+.roleSearchInput::placeholder { color: var(--color-subtle); }
+
+/* ── Collapsible role groups ── */
+.roleGroup { display: flex; flex-direction: column; }
+
+.roleGroupHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 2px; background: none; border: none; cursor: pointer;
+  width: 100%; text-align: left;
+}
+.roleGroupHeader:hover .roleGroupLabel { color: var(--color-ink); }
+
+.roleGroupHeaderLeft { display: flex; align-items: center; gap: 6px; }
+.roleGroupChevron    { display: flex; align-items: center; color: var(--color-muted); }
 
 .roleGroupLabel {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-subtle);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 4px 0 8px;
+  font-size: 13px; font-weight: 600; color: var(--color-secondary);
 }
+.roleGroupCount {
+  font-size: 12px; color: var(--color-muted);
+}
+.roleGroupBody { display: flex; flex-direction: column; gap: 4px; padding-bottom: 4px; }
 
 .roleOption {
   display: flex;
@@ -140,6 +166,64 @@
   font-size: 12px;
   color: #df1b41;
   margin-top: -2px;
+}
+
+/* ── Email chip input ── */
+.emailInputWrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 10px;
+  border: 1.5px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--bg-surface);
+  min-height: 40px;
+  cursor: text;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.emailInputWrap:focus-within {
+  border-color: var(--color-accent-active);
+  box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
+}
+.emailInputWrapError { border-color: #df1b41 !important; }
+.emailInputWrapError:focus-within { box-shadow: 0 0 0 3px rgba(223,27,65,.10) !important; }
+
+.emailChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  padding: 3px 6px 3px 10px;
+  font-size: 13px;
+  color: var(--color-ink);
+  font-weight: 500;
+}
+.chipRemove {
+  background: none; border: none; cursor: pointer;
+  color: var(--color-muted); font-size: 16px; line-height: 1;
+  padding: 0 2px; display: flex; align-items: center;
+  border-radius: 3px;
+}
+.chipRemove:hover { background: var(--color-border); color: var(--color-ink); }
+
+.emailInput {
+  border: none; outline: none; background: transparent;
+  font-size: 13px; color: var(--color-ink); flex: 1; min-width: 180px;
+  padding: 3px 0;
+}
+.emailInput::placeholder { color: var(--color-subtle); }
+
+.inviteNote {
+  font-size: 12px;
+  color: var(--color-muted);
+  background: var(--bg-page);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 9px 12px;
+  line-height: 1.5;
 }
 
 .error {

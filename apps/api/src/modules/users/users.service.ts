@@ -1,6 +1,8 @@
-import { Injectable, ConflictException, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { userListArgs } from './types';
 import type { UserListRow } from './types';
 import { CreateUserInput, UpdateUserInput } from './types';
@@ -13,13 +15,23 @@ function toUserItem(user: UserListRow) {
     email: user.email,
     name: user.name,
     isActive: user.isActive,
+    hasPassword: user.hasPassword,
     roles: user.roles.map((item: { role: RoleSummary }) => item.role),
   };
 }
 
+function generateInviteToken() {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+const INVITE_TTL_DAYS = 7;
+
 @Injectable()
 export class UsersService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mail: MailService,
+  ) {}
 
   async listUsers(search?: string) {
     const users = await this.prisma.user.findMany({
@@ -37,8 +49,6 @@ export class UsersService {
     return users.map(toUserItem);
   }
 
-  // role operations moved to RolesModule
-
   async listPermissions() {
     return this.prisma.permission.findMany({
       orderBy: [{ module: 'asc' }, { action: 'asc' }],
@@ -50,24 +60,26 @@ export class UsersService {
       where: { email: input.email },
       select: { id: true },
     });
-    if (existed) {
-      throw new ConflictException('EMAIL_EXISTS');
+    if (existed) throw new ConflictException('EMAIL_EXISTS');
+
+    if (input.roleIds.length > 0) {
+      const roleCount = await this.prisma.role.count({
+        where: { id: { in: input.roleIds } },
+      });
+      if (roleCount !== input.roleIds.length) {
+        throw new UnprocessableEntityException('ROLE_NOT_FOUND');
+      }
     }
 
-    const roleCount = await this.prisma.role.count({
-      where: { id: { in: input.roleIds } },
-    });
-    if (roleCount !== input.roleIds.length) {
-      throw new UnprocessableEntityException('ROLE_NOT_FOUND');
-    }
-
-    const password = bcrypt.hashSync(input.password, 10);
+    // Random placeholder password — user can't login until they set their own via invite
+    const placeholderPw = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
 
     const created = await this.prisma.user.create({
       data: {
         email: input.email,
-        name: input.name,
-        password,
+        name: input.name ?? null,
+        password: placeholderPw,
+        hasPassword: false,
         isActive: true,
         roles: {
           create: input.roleIds.map((roleId) => ({ roleId })),
@@ -76,7 +88,30 @@ export class UsersService {
       ...userListArgs,
     });
 
+    // Generate and send invite
+    const token = generateInviteToken();
+    const expiredAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+    await this.prisma.userInvite.create({ data: { userId: created.id, token, expiredAt } });
+    await this.mail.sendInvite(created.email, created.name, token);
+
     return toUserItem(created);
+  }
+
+  async resendInvite(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, name: true, hasPassword: true },
+    });
+    if (!user) throw new NotFoundException('USER_NOT_FOUND');
+    if (user.hasPassword) throw new BadRequestException('USER_ALREADY_HAS_PASSWORD');
+
+    // Rotate token
+    await this.prisma.userInvite.deleteMany({ where: { userId } });
+    const token = generateInviteToken();
+    const expiredAt = new Date(Date.now() + INVITE_TTL_DAYS * 24 * 60 * 60 * 1000);
+    await this.prisma.userInvite.create({ data: { userId, token, expiredAt } });
+    await this.mail.sendInvite(user.email, user.name, token);
+    return { ok: true };
   }
 
   async updateUser(userId: string, input: UpdateUserInput) {
@@ -84,16 +119,14 @@ export class UsersService {
       where: { id: userId },
       select: { id: true },
     });
-    if (!existed) {
-      throw new NotFoundException('USER_NOT_FOUND');
-    }
+    if (!existed) throw new NotFoundException('USER_NOT_FOUND');
 
     if (input.roleIds) {
       const roleCount = await this.prisma.role.count({
         where: { id: { in: input.roleIds } },
       });
       if (roleCount !== input.roleIds.length) {
-        throw new Error('ROLE_NOT_FOUND');
+        throw new UnprocessableEntityException('ROLE_NOT_FOUND');
       }
     }
 
@@ -105,6 +138,7 @@ export class UsersService {
         name: input.name,
         isActive: input.isActive,
         password: nextPassword,
+        hasPassword: nextPassword ? true : undefined,
         roles: input.roleIds
           ? {
               deleteMany: {},
@@ -134,15 +168,13 @@ export class UsersService {
       where: { key: input.key },
       select: { id: true },
     });
-    if (existed) {
-      throw new Error('ROLE_KEY_EXISTS');
-    }
+    if (existed) throw new ConflictException('ROLE_KEY_EXISTS');
 
     const permissionCount = await this.prisma.permission.count({
       where: { id: { in: input.permissionIds } },
     });
     if (permissionCount !== input.permissionIds.length) {
-      throw new Error('PERMISSION_NOT_FOUND');
+      throw new UnprocessableEntityException('PERMISSION_NOT_FOUND');
     }
 
     return this.prisma.role.create({
@@ -171,14 +203,14 @@ export class UsersService {
       where: { id: roleId },
       select: { id: true, isSystem: true },
     });
-    if (!role) throw new Error('ROLE_NOT_FOUND');
+    if (!role) throw new NotFoundException('ROLE_NOT_FOUND');
 
     if (input.permissionIds) {
       const permissionCount = await this.prisma.permission.count({
         where: { id: { in: input.permissionIds } },
       });
       if (permissionCount !== input.permissionIds.length) {
-        throw new Error('PERMISSION_NOT_FOUND');
+        throw new UnprocessableEntityException('PERMISSION_NOT_FOUND');
       }
     }
 

@@ -6,7 +6,9 @@ import {
   listRoles, type RoleItem,
   deleteUser as apiDeleteUser,
   deleteRole as apiDeleteRole,
+  resendInvite as apiResendInvite,
 } from '../../../lib/api';
+import { useToast } from '../../../components/common/Toast';
 import AddUserPanel from './AddUserPanel';
 import EditUserPanel from './EditUserPanel';
 import RolePanel from '../roles/RolePanel';
@@ -160,11 +162,13 @@ function RoleFilter({ roles, selected, onApply }: {
 function MoreMenu({
   onEdit,
   onDelete,
+  onResendInvite,
 }: {
   onEdit?: () => void;
   onDelete?: () => void;
+  onResendInvite?: () => void;
 }) {
-  if (!onEdit && !onDelete) return null;
+  if (!onEdit && !onDelete && !onResendInvite) return null;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -190,6 +194,7 @@ function MoreMenu({
       {open && (
         <div className={s.moreDropdown}>
           {onEdit && <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>Chỉnh sửa</button>}
+          {onResendInvite && <button className={s.moreItem} onClick={() => { setOpen(false); onResendInvite(); }}>Gửi lại invite</button>}
           {onDelete && <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpen(false); onDelete(); }}>Xóa</button>}
         </div>
       )}
@@ -333,6 +338,7 @@ function ConfirmModal({
 /* ══════════════════════════════════════════════ */
 export default function UsersPage() {
   const currentUser = useUser();
+  const toast = useToast();
   const canViewUsers   = currentUser?.permissions.includes('users:view')   ?? false;
   const canCreateUser  = currentUser?.permissions.includes('users:create')  ?? false;
   const canCreateRole  = currentUser?.permissions.includes('roles:create')  ?? false;
@@ -362,6 +368,15 @@ export default function UsersPage() {
   const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  async function handleResendInvite(user: UserItem) {
+    try {
+      await apiResendInvite(user.id);
+      toast.success(`Đã gửi lại invite đến ${user.email}.`);
+    } catch {
+      toast.error('Gửi invite thất bại. Vui lòng thử lại.');
+    }
+  }
 
   async function loadUsers() {
     setLoadingUsers(true);
@@ -595,13 +610,17 @@ export default function UsersPage() {
                         )}
                       </td>
                       <td className={s.td}>
-                        <span className={u.isActive ? s.badgeActive : s.badgeInactive}>
-                          {u.isActive ? 'Hoạt động' : 'Đã khóa'}
-                        </span>
+                        {!u.hasPassword
+                          ? <span className={s.badgePending}>Chờ xác nhận</span>
+                          : <span className={u.isActive ? s.badgeActive : s.badgeInactive}>
+                              {u.isActive ? 'Hoạt động' : 'Đã khóa'}
+                            </span>
+                        }
                       </td>
                       <td className={s.td}>
                         <MoreMenu
                           onEdit={canEditUser ? () => setEditUser(u) : undefined}
+                          onResendInvite={canCreateUser && !u.hasPassword ? () => handleResendInvite(u) : undefined}
                           onDelete={canDeleteUser ? () => setDeleteTarget({ type: 'user', item: u }) : undefined}
                         />
                       </td>

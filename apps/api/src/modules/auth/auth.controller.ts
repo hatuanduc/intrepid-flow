@@ -1,6 +1,6 @@
-import { Body, Controller, Post, Put, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
+import { Body, Controller, Post, Put, Get, Param, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { IsString, IsOptional, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { LoginDto } from './dto/login.dto';
@@ -20,6 +20,20 @@ class ChangeMyPasswordDto {
   @ApiProperty()
   @IsString() @MinLength(6)
   newPassword!: string;
+}
+
+class SetPasswordDto {
+  @ApiProperty()
+  @IsString() @MinLength(1)
+  token!: string;
+
+  @ApiProperty()
+  @IsString() @MinLength(6)
+  password!: string;
+
+  @ApiProperty({ required: false })
+  @IsOptional() @IsString() @MinLength(1)
+  name?: string;
 }
 
 @ApiTags('Auth')
@@ -61,5 +75,17 @@ export class AuthController {
   @ApiOperation({ summary: 'Đổi mật khẩu' })
   async changeMyPassword(@Req() req: any, @Body() body: ChangeMyPasswordDto) {
     return this.auth.changeMyPassword(req.authUser.id, body.currentPassword, body.newPassword);
+  }
+
+  @Get('invite/:token')
+  @ApiOperation({ summary: 'Verify invite token (public)' })
+  async verifyInvite(@Param('token') token: string) {
+    return this.auth.verifyInviteToken(token);
+  }
+
+  @Post('set-password')
+  @ApiOperation({ summary: 'Set password with invite token (public)' })
+  async setPassword(@Body() body: SetPasswordDto) {
+    return this.auth.setPasswordWithToken(body.token, body.password, body.name);
   }
 }
