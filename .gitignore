@@ -7,3 +7,11 @@ dist/
 !**/.env.example
 .DS_Store
 data/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.backup
+tfplan
+!infra/aws/bootstrap/terraform.tfstate

@@ -1,33 +1,24 @@
-# syntax=docker/dockerfile:1
-
-FROM node:20-alpine AS deps
-WORKDIR /repo
-
-COPY package.json package-lock.json ./
-COPY apps/web/package.json ./apps/web/package.json
-COPY apps/api/package.json ./apps/api/package.json
-RUN npm ci
-
-FROM node:20-alpine AS build
-WORKDIR /repo
-ENV NEXT_TELEMETRY_DISABLED=1
-
-COPY --from=deps /repo/node_modules ./node_modules
-COPY package.json package-lock.json ./
-COPY apps/web ./apps/web
-COPY apps/api/package.json ./apps/api/package.json
-
-RUN npm run build -w @tiemen/web
-
-FROM node:20-alpine AS runner
+FROM node:22-alpine
 WORKDIR /app
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
 
-# Next.js standalone output
-COPY --from=build /repo/apps/web/.next/standalone ./
-COPY --from=build /repo/apps/web/.next/static ./.next/static
-COPY --from=build /repo/apps/web/public ./public
+RUN npm install -g pnpm@9
+
+# NEXT_PUBLIC_* vars are baked into the bundle at build time — must be build args
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+COPY apps/worker/package.json ./apps/worker/
+COPY prisma/ ./prisma/
+
+RUN pnpm install --frozen-lockfile --ignore-scripts
+
+COPY apps/web/ ./apps/web/
+RUN pnpm --filter @intrepid/web build
 
 EXPOSE 3000
-CMD ["node", "server.js"]
+ENV PORT=3000 HOSTNAME=0.0.0.0
+# next.config.ts has output: 'standalone' — server.js is self-contained
+CMD ["node", "apps/web/.next/standalone/server.js"]

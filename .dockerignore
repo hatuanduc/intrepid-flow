@@ -5,8 +5,18 @@ node_modules
 .git
 .env
 .env.*
+*.env
+
+# Infra / CI (not needed inside containers)
+infra/
+.github/
 
 # Terraform
-infra/**/.terraform
-infra/**/.terraform.lock.hcl
-infra/**/terraform.tfstate*
+**/.terraform
+**/.terraform.lock.hcl
+**/terraform.tfstate*
+
+# Dev / editor artifacts
+.claude/
+*.log
+.DS_Store
