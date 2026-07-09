@@ -42,7 +42,7 @@ module "app" {
   vpc_id    = data.terraform_remote_state.shared.outputs.vpc_id
   subnet_id = data.terraform_remote_state.shared.outputs.public_subnet_id
 
-  # Dev: không có schedule — start/stop thủ công khi cần
+  # Staging: không có schedule — start/stop thủ công khi cần
   schedule_enabled = false
 
   github_repo   = "hatuanduc/intrepid-flow"

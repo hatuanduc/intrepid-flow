@@ -35,6 +35,30 @@ resource "aws_iam_role_policy" "app_s3_deploy" {
   })
 }
 
+resource "aws_iam_role_policy_attachment" "app_cloudwatch" {
+  role       = aws_iam_role.app.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+}
+
+# EC2 can read SSM parameters to generate /app/.env on deploy
+resource "aws_iam_role_policy" "app_ssm_params" {
+  name = "${local.name_prefix}-ec2-ssm-params"
+  role = aws_iam_role.app.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "ssm:GetParametersByPath",
+        "ssm:GetParameter",
+        "ssm:GetParameters"
+      ]
+      Resource = "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}/*"
+    }]
+  })
+}
+
 resource "aws_iam_instance_profile" "app" {
   name = "${local.name_prefix}-profile"
   role = aws_iam_role.app.name
@@ -68,14 +92,16 @@ resource "aws_iam_role_policy" "scheduler_ec2" {
   })
 }
 
-# ── GitHub Actions OIDC + IAM Role ───────────────────────────────────────────
-# OIDC provider được tạo 1 lần trong infra/aws/bootstrap/ — reference qua data source
+# ── GitHub Actions Deploy Role ────────────────────────────────────────────────
+# Minimal role — chỉ đủ quyền deploy app (SSM + S3).
+# Infra changes dùng infra-manager role (tạo trong bootstrap/).
+
 data "aws_iam_openid_connect_provider" "github" {
   url = "https://token.actions.githubusercontent.com"
 }
 
 resource "aws_iam_role" "github_actions" {
-  name = "${local.name_prefix}-github-actions-role"
+  name = "${local.name_prefix}-deploy-role"
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -88,7 +114,6 @@ resource "aws_iam_role" "github_actions" {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Allow any event (push, PR, manual) from this repo
           "token.actions.githubusercontent.com:sub" = "repo:${var.github_repo}:*"
         }
       }
@@ -96,38 +121,16 @@ resource "aws_iam_role" "github_actions" {
   })
 }
 
-# Terraform needs broad permissions to manage infra
-resource "aws_iam_role_policy_attachment" "github_ec2" {
-  role       = aws_iam_role.github_actions.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "github_iam" {
-  role       = aws_iam_role.github_actions.name
-  policy_arn = "arn:aws:iam::aws:policy/IAMFullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "github_s3" {
-  role       = aws_iam_role.github_actions.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
-}
-
-resource "aws_iam_role_policy_attachment" "github_events" {
-  role       = aws_iam_role.github_actions.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchEventsFullAccess"
-}
-
-# SSM: send deploy commands to this EC2 instance
-resource "aws_iam_role_policy" "github_ssm" {
-  name = "${local.name_prefix}-github-ssm"
+resource "aws_iam_role_policy" "github_deploy" {
+  name = "${local.name_prefix}-deploy-policy"
   role = aws_iam_role.github_actions.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
-        Effect   = "Allow"
-        Action   = ["ssm:SendCommand"]
+        Effect = "Allow"
+        Action = ["ssm:SendCommand"]
         Resource = [
           aws_instance.app.arn,
           "arn:aws:ssm:${var.aws_region}::document/AWS-RunShellScript"
@@ -137,6 +140,11 @@ resource "aws_iam_role_policy" "github_ssm" {
         Effect   = "Allow"
         Action   = ["ssm:GetCommandInvocation", "ssm:ListCommandInvocations"]
         Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:GetObject"]
+        Resource = "arn:aws:s3:::${var.deploy_bucket}/deploy/*"
       }
     ]
   })

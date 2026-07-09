@@ -35,3 +35,79 @@ output "oidc_provider_arn" {
   description = "Dùng để xác nhận OIDC provider đã được tạo"
   value       = aws_iam_openid_connect_provider.github.arn
 }
+
+# ── Infra Manager Role ────────────────────────────────────────────────────────
+# Role dùng trong GitHub Actions infra job để chạy Terraform.
+# Tạo 1 lần ở đây → không bao giờ bị chicken-and-egg.
+
+resource "aws_iam_role" "infra_manager" {
+  name = "intrepid-flow-infra-manager"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Federated = aws_iam_openid_connect_provider.github.arn }
+      Action    = "sts:AssumeRoleWithWebIdentity"
+      Condition = {
+        StringEquals = {
+          "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
+        }
+        StringLike = {
+          "token.actions.githubusercontent.com:sub" = "repo:hatuanduc/intrepid-flow:*"
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "infra_manager_ec2" {
+  role       = aws_iam_role.infra_manager.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "infra_manager_iam" {
+  role       = aws_iam_role.infra_manager.name
+  policy_arn = "arn:aws:iam::aws:policy/IAMFullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "infra_manager_s3" {
+  role       = aws_iam_role.infra_manager.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "infra_manager_cloudwatch" {
+  role       = aws_iam_role.infra_manager.name
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
+}
+
+resource "aws_iam_role_policy" "infra_manager_scheduler" {
+  name = "infra-manager-scheduler"
+  role = aws_iam_role.infra_manager.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["scheduler:*"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:*"]
+        Resource = "*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["iam:PassRole"]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
+output "infra_manager_role_arn" {
+  description = "Set làm AWS_INFRA_ROLE_ARN trong GitHub Actions (dùng cho infra job)"
+  value       = aws_iam_role.infra_manager.arn
+}

@@ -66,5 +66,4 @@ variable "subnet_id" {
 
 locals {
   name_prefix = "${var.app_name}-${var.env}"
-  github_env  = var.env == "prod" ? "production" : "development"
 }
