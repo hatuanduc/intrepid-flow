@@ -308,6 +308,34 @@
 .empty { font-size: 13px; color: var(--color-subtle); padding: 40px 0; text-align: center; }
 .successMsg { font-size: 12px; color: #0e6245; font-weight: 500; }
 
+/* Account count badge in table row */
+.accountCountBadge {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  background: var(--bg-subtle); color: var(--color-muted);
+}
+
+/* RightPanel — entity detail */
+.panelEntityMeta {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.panelEntityCode { font-size: 12px; color: var(--color-muted); }
+.panelAccountCount {
+  margin-left: auto; font-size: 12px; font-weight: 600; color: var(--color-secondary);
+}
+
+/* Account list in panel */
+.accountNumber { font-family: monospace; font-size: 12px; color: var(--color-ink); letter-spacing: 0.02em; }
+.currencyBadge {
+  display: inline-flex; font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 4px;
+  background: #ede9fe; color: #5b21b6; font-family: monospace;
+}
+.syncDate { font-size: 12px; color: var(--color-secondary); }
+.syncNever { font-size: 12px; color: var(--color-subtle); font-style: italic; }
+
 @media (max-width: 768px) {
   .page { padding: 16px; }
   .addRow { flex-direction: column; align-items: stretch; }

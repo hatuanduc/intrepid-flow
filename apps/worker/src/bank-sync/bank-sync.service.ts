@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import { JOB_STATUS, FAIL_REASON } from './constants';
 import { PlaywrightService, computeDateRange, type DiscoveredAccount } from './services/playwright.service';
 import { ExcelService, type TransactionRow } from './services/excel.service';
@@ -39,6 +39,15 @@ export class BankSyncService {
   ) {}
 
   async run(jobId: string): Promise<void> {
+    const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
+    if (!settings?.hsbcnetUsername) {
+      await this.prisma.bankSyncJob.update({
+        where: { id: jobId },
+        data: { status: JOB_STATUS.FAILED, errorMessage: 'HSBCNET_USERNAME_NOT_CONFIGURED', completedAt: new Date() },
+      });
+      throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
+    }
+
     const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId } });
     const steps = parseSteps(job?.steps);
 
@@ -110,7 +119,10 @@ export class BankSyncService {
     if (!(await this.playwright.isLoggedIn())) {
       await this.log(jobId, 'Phiên đăng nhập hết hạn — bắt đầu đăng nhập lại.', 'bank_sync', 'warn');
       await this.updateJob(jobId, JOB_STATUS.LOGGING_IN);
-      const username = settings?.hsbcnetUsername ?? process.env.HSBCNET_USERNAME ?? '';
+      const username = settings?.hsbcnetUsername ?? '';
+      if (!username) {
+        throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
+      }
       await this.playwright.login(username);
       await this.log(jobId, `Đã nhập tên đăng nhập (${username}) — chờ xác thực 2FA trên điện thoại...`, 'bank_sync');
       await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
@@ -138,8 +150,8 @@ export class BankSyncService {
 
     // ── 1b-2. Sync discovered accounts (filter by country mapping) ───────────
     const mappings = await this.prisma.bankCountryMapping.findMany({ where: { isActive: true } });
-    const companyToCountry = new Map(mappings.map(m => [m.companyName, m.countryCode]));
-    const mappedCountryCodes = new Set(mappings.map(m => m.countryCode));
+    const companyToCountry = new Map(mappings.map(m => [m.companyName, m.accountCode]));
+    const mappedAccountCodes = new Set(mappings.map(m => m.accountCode));
 
     if (discovered.length > 0) {
       const newAccounts = await this.syncDiscoveredAccounts(jobId, discovered, companyToCountry);
@@ -157,12 +169,12 @@ export class BankSyncService {
     const rangeLabel = `${formatDateLabel(dateFrom)} → ${formatDateLabel(dateTo)}`;
     await this.log(jobId, `Khoảng ngày đồng bộ: ${rangeLabel} (chế độ: ${dateMode}).`, 'bank_sync');
 
-    // ── 1d. Download per active account (only mapped countries) ──────────────
-    const accountFilter = mappedCountryCodes.size > 0
-      ? { isActive: true, countryCode: { in: [...mappedCountryCodes] } }
+    // ── 1d. Download per active account (only mapped account codes) ──────────────
+    const accountFilter = mappedAccountCodes.size > 0
+      ? { isActive: true, accountCode: { in: [...mappedAccountCodes] } }
       : { isActive: true };
     const accounts = await this.prisma.bankAccount.findMany({ where: accountFilter });
-    await this.log(jobId, `Bắt đầu tải sao kê cho ${accounts.length} tài khoản (${mappedCountryCodes.size} quốc gia đã mapping)...`, 'bank_sync');
+    await this.log(jobId, `Bắt đầu tải sao kê cho ${accounts.length} tài khoản (${mappedAccountCodes.size} account code đã mapping)...`, 'bank_sync');
     await this.updateJob(jobId, JOB_STATUS.DOWNLOADING);
 
     for (const account of accounts) {
@@ -218,11 +230,11 @@ export class BankSyncService {
   ): Promise<number> {
     let newCount = 0;
     for (const acc of discovered) {
-      const mappedCountryCode = companyToCountry.get(acc.companyName);
-      if (!mappedCountryCode) {
+      const mappedAccountCode = companyToCountry.get(acc.companyName);
+      if (!mappedAccountCode) {
         await this.log(
           jobId,
-          `⚠ Công ty "${acc.companyName}" chưa có trong mapping — bỏ qua. Vào Cài đặt → Sao kê NH → Countries để thêm.`,
+          `⚠ Công ty "${acc.companyName}" chưa có trong mapping — bỏ qua. Vào Cài đặt → Sao kê NH → Tài khoản để thêm.`,
           'bank_sync', 'warn',
         );
         continue;
@@ -237,7 +249,7 @@ export class BankSyncService {
           accountName: acc.companyName || acc.accountNumber,
           bankName: 'HSBC',
           currency: acc.currency,
-          countryCode: mappedCountryCode,
+          accountCode: mappedAccountCode,
           isActive: true,
         },
       });
@@ -330,6 +342,17 @@ export class BankSyncService {
 
     for (const row of rows) {
       const dataHash = ExcelService.hashRow(accountNumber, row);
+
+      const existing = await this.prisma.bankTransaction.findUnique({
+        where: { bankAccountId_dataHash: { bankAccountId, dataHash } },
+        select: { id: true },
+      });
+
+      if (existing) {
+        duplicates++;
+        continue;
+      }
+
       try {
         await this.prisma.bankTransaction.create({
           data: {
@@ -348,8 +371,12 @@ export class BankSyncService {
           },
         });
         inserted++;
-      } catch {
-        duplicates++;
+      } catch (err) {
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          duplicates++;
+        } else {
+          throw err;
+        }
       }
     }
 

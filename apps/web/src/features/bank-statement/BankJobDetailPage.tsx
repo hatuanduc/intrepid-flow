@@ -359,7 +359,7 @@ export default function BankJobDetailPage() {
                     className={s.summaryRow}
                   >
                     <div className={s.summaryRowAccount}>
-                      <span className={s.summaryAvatar} style={{ background: ACCOUNT_COLORS[acc.countryCode] ?? '#697386' }}>
+                      <span className={s.summaryAvatar} style={{ background: ACCOUNT_COLORS[acc.accountCode] ?? '#697386' }}>
                         {acc.accountNumber.slice(-2)}
                       </span>
                       <div className={s.summaryRowInfo}>

@@ -46,6 +46,19 @@
 .badgeRunning  { background: #dbeafe; color: #1e40af; }
 .badgeDefault  { background: var(--bg-subtle); color: var(--color-muted); }
 
+.setupBanner {
+  display: flex; align-items: center; gap: 10px;
+  background: #fffbeb; border: 1px solid #fcd34d; border-radius: 8px;
+  padding: 10px 14px; margin-bottom: 20px;
+  font-size: 13px; color: #92400e;
+}
+.setupBannerIcon { font-size: 14px; flex-shrink: 0; }
+.setupBannerLink {
+  margin-left: auto; font-size: 13px; font-weight: 500;
+  color: var(--color-accent); text-decoration: none; white-space: nowrap; flex-shrink: 0;
+}
+.setupBannerLink:hover { text-decoration: underline; }
+
 .empty { font-size: 13px; color: var(--color-subtle); padding: 60px 0; text-align: center; }
 
 /* Detail panel */

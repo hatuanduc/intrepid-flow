@@ -4,9 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
@@ -105,7 +104,7 @@ model BankAccount {
   accountName   String   @map("account_name")
   bankName      String   @map("bank_name")
   currency      String
-  countryCode   String   @map("country_code")
+  accountCode   String   @map("country_code")
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -189,7 +188,7 @@ model BankDownloadTemplate {
 model BankCountryMapping {
   id          String   @id @default(uuid())
   companyName String   @unique @map("company_name")
-  countryCode String   @map("country_code")
+  accountCode String   @map("country_code")
   isActive    Boolean  @default(true) @map("is_active")
   createdAt   DateTime @default(now()) @map("created_at")
 
@@ -198,7 +197,7 @@ model BankCountryMapping {
 
 model BankGsheetConfig {
   id                String   @id @default(uuid())
-  countryCode       String   @unique @map("country_code")
+  accountCode       String   @unique @map("country_code")
   spreadsheetId     String   @map("spreadsheet_id")
   spreadsheetUrl    String?  @map("spreadsheet_url")
   templateSheetName String?  @map("template_sheet_name")
@@ -246,6 +245,34 @@ model ArReportSettings {
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("ar_report_settings")
+}
+
+model Country {
+  id       String  @id @default(uuid())
+  code     String  @unique
+  name     String
+  currency String
+  isActive Boolean @default(true) @map("is_active")
+
+  @@map("countries")
+}
+
+model CurrencyRate {
+  currency  String   @id
+  rateToUsd Decimal  @map("rate_to_usd")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("currency_rates")
+}
+
+model CurrencySettings {
+  id            String    @id @default("default")
+  autoUpdateDay Int       @default(1) @map("auto_update_day")
+  lastUpdatedAt DateTime? @map("last_updated_at")
+  nextUpdateAt  DateTime? @map("next_update_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("currency_settings")
 }
 
 model SystemSettings {

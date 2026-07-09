@@ -2,8 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import {
-  getSystemSettings, updateSystemServiceAccount,
-  type SystemSettingsStatus,
+  getSystemSettings, updateSystemServiceAccount, type SystemSettingsStatus,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import { useToast } from '../../../components/common/Toast';
@@ -29,8 +28,6 @@ function GoogleSheetsIcon() {
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
-
 export default function ConnectionsPage() {
   const canConfig = useHasPermission('system:config');
   const toast = useToast();
@@ -38,26 +35,23 @@ export default function ConnectionsPage() {
   const [status, setStatus] = useState<SystemSettingsStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [panelOpen, setPanelOpen] = useState(false);
-
-  // Form state
   const [jsonInput, setJsonInput] = useState('');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  if (!canConfig) return <AccessDenied />;
-
   useEffect(() => {
+    if (!canConfig) { setLoading(false); return; }
     getSystemSettings()
       .then(setStatus)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [canConfig]);
+
+  if (!canConfig) return <AccessDenied />;
 
   function openPanel() {
-    setJsonInput('');
-    setFormError('');
-    setPanelOpen(true);
+    setJsonInput(''); setFormError(''); setPanelOpen(true);
     setTimeout(() => textareaRef.current?.focus(), 100);
   }
 
@@ -79,33 +73,23 @@ export default function ConnectionsPage() {
     const trimmed = jsonInput.trim();
     if (!trimmed) { setFormError('Vui lòng dán nội dung JSON.'); return; }
     if (!validateJson(trimmed)) return;
-
-    setSaving(true);
-    setFormError('');
+    setSaving(true); setFormError('');
     try {
-      const updated = await updateSystemServiceAccount(trimmed);
-      setStatus(updated);
+      setStatus(await updateSystemServiceAccount(trimmed));
       setPanelOpen(false);
       toast.success('Đã lưu service account thành công.');
-    } catch {
-      setFormError('Lưu thất bại. Vui lòng thử lại.');
-    } finally {
-      setSaving(false);
-    }
+    } catch { setFormError('Lưu thất bại. Vui lòng thử lại.'); }
+    finally { setSaving(false); }
   }
 
   async function handleClear() {
     setSaving(true);
     try {
-      const updated = await updateSystemServiceAccount(null);
-      setStatus(updated);
+      setStatus(await updateSystemServiceAccount(null));
       setPanelOpen(false);
       toast.success('Đã xóa service account.');
-    } catch {
-      toast.error('Xóa thất bại. Vui lòng thử lại.');
-    } finally {
-      setSaving(false);
-    }
+    } catch { toast.error('Xóa thất bại. Vui lòng thử lại.'); }
+    finally { setSaving(false); }
   }
 
   return (
@@ -114,9 +98,7 @@ export default function ConnectionsPage() {
         <h1 className={s.pageTitle}>Kết nối & Tích hợp</h1>
       </div>
 
-      {loading ? (
-        <PageLoader />
-      ) : (
+      {loading ? <PageLoader /> : (
         <div className={s.section}>
           <p className={s.sectionTitle}>Google Workspace</p>
           <div className={s.cards}>
@@ -134,11 +116,9 @@ export default function ConnectionsPage() {
                 </div>
               </div>
               <div className={s.cardRight}>
-                {status?.hasServiceKey ? (
-                  <span className={s.badgeConfigured}>✓ Đã cấu hình</span>
-                ) : (
-                  <span className={s.badgeMissing}>Chưa cấu hình</span>
-                )}
+                {status?.hasServiceKey
+                  ? <span className={s.badgeConfigured}>✓ Đã cấu hình</span>
+                  : <span className={s.badgeMissing}>Chưa cấu hình</span>}
                 <button className={s.btnEdit} onClick={openPanel}>
                   {status?.hasServiceKey ? 'Cập nhật' : 'Cấu hình'}
                 </button>
@@ -156,9 +136,7 @@ export default function ConnectionsPage() {
         footer={
           <>
             {status?.hasServiceKey && (
-              <button className={s.btnDanger} onClick={handleClear} disabled={saving}>
-                Xóa
-              </button>
+              <button className={s.btnDanger} onClick={handleClear} disabled={saving}>Xóa</button>
             )}
             <button className={s.btnSecondary} onClick={() => setPanelOpen(false)}>Hủy</button>
             <button className={s.btnPrimary} onClick={handleSave} disabled={saving}>

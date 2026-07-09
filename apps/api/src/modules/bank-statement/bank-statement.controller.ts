@@ -38,6 +38,15 @@ export class BankStatementController {
     return this.service.updateSettings(body);
   }
 
+  // ─── Currency Rates (read-only, for metrics page) ───────────────────────────
+
+  @Get('currency-rates')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Lấy tỉ giá hối đoái hiện tại' })
+  getCurrencyRates() {
+    return this.service.getCurrencyRates();
+  }
+
   // ─── Download Template ───────────────────────────────────────────────────────
 
   @Get('settings/template')
@@ -93,11 +102,11 @@ export class BankStatementController {
     return this.service.listGsheetConfigs();
   }
 
-  @Put('settings/gsheets/:countryCode')
+  @Put('settings/gsheets/:accountCode')
   @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Tạo / cập nhật cấu hình Google Sheets theo quốc gia' })
-  upsertGsheet(@Param('countryCode') countryCode: string, @Body() body: UpsertGsheetConfigDto) {
-    return this.service.upsertGsheetConfig(countryCode, body);
+  @ApiOperation({ summary: 'Tạo / cập nhật cấu hình Google Sheets theo account code' })
+  upsertGsheet(@Param('accountCode') accountCode: string, @Body() body: UpsertGsheetConfigDto) {
+    return this.service.upsertGsheetConfig(accountCode, body);
   }
 
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
@@ -115,10 +124,10 @@ export class BankStatementController {
   getMetrics(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('countryCode') countryCode?: string,
+    @Query('accountCode') accountCode?: string,
     @Query('accountId') accountId?: string,
   ) {
-    return this.service.getMetrics(new Date(from), new Date(to), countryCode, accountId);
+    return this.service.getMetrics(new Date(from), new Date(to), accountCode, accountId);
   }
 
   // ─── Job Management ──────────────────────────────────────────────────────────

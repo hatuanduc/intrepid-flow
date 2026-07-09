@@ -37,13 +37,13 @@ export class SheetsService {
     }
 
     const config = await this.prisma.bankGsheetConfig.findUnique({
-      where: { countryCode: account.countryCode },
+      where: { accountCode: account.accountCode },
     });
     if (!config || !config.isActive || !config.spreadsheetId) {
       this.logger.warn(
-        `No active GSheet config for country ${account.countryCode} — skipping`,
+        `No active GSheet config for account code ${account.accountCode} — skipping`,
       );
-      return { skipped: true, reason: `no_gsheet_config_for_${account.countryCode}` };
+      return { skipped: true, reason: `no_gsheet_config_for_${account.accountCode}` };
     }
 
     // Global service key and template come from BankJobSettings

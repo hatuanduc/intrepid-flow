@@ -32,14 +32,6 @@ resource "aws_ssm_parameter" "smtp_pass" {
   lifecycle { ignore_changes = [value] }
 }
 
-resource "aws_ssm_parameter" "hsbcnet_username" {
-  name        = "/intrepid/${var.env}/HSBCNET_USERNAME"
-  description = "HSBCnet username for Playwright worker"
-  type        = "SecureString"
-  value       = "PLACEHOLDER"
-  lifecycle { ignore_changes = [value] }
-}
-
 # ── Config (String, env-specific) ────────────────────────────────────────────
 
 resource "aws_ssm_parameter" "app_url" {

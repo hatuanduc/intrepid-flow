@@ -280,14 +280,14 @@ export type BankDownloadTemplate = {
 export type BankCountryMapping = {
   id: string;
   companyName: string;
-  countryCode: string;
+  accountCode: string;
   isActive: boolean;
   createdAt: string;
 };
 
 export type BankGsheetConfig = {
   id: string;
-  countryCode: string;
+  accountCode: string;
   spreadsheetId: string;
   spreadsheetUrl: string | null;
   templateSheetName: string | null;
@@ -329,13 +329,13 @@ export async function listBankCountries() {
   return request<BankCountryMapping[]>('/management/bank-statement/settings/countries', { auth: true });
 }
 
-export async function createBankCountry(input: { companyName: string; countryCode: string }) {
+export async function createBankCountry(input: { companyName: string; accountCode: string }) {
   return request<BankCountryMapping>('/management/bank-statement/settings/countries', {
     method: 'POST', auth: true, body: JSON.stringify(input),
   });
 }
 
-export async function updateBankCountry(id: string, input: { companyName?: string; countryCode?: string; isActive?: boolean }) {
+export async function updateBankCountry(id: string, input: { companyName?: string; accountCode?: string; isActive?: boolean }) {
   return request<BankCountryMapping>(`/management/bank-statement/settings/countries/${id}`, {
     method: 'PUT', auth: true, body: JSON.stringify(input),
   });
@@ -351,11 +351,11 @@ export async function listBankGsheets() {
   return request<BankGsheetConfig[]>('/management/bank-statement/settings/gsheets', { auth: true });
 }
 
-export async function upsertBankGsheet(countryCode: string, input: {
+export async function upsertBankGsheet(accountCode: string, input: {
   spreadsheetId: string;
   isActive?: boolean;
 }) {
-  return request<BankGsheetConfig>(`/management/bank-statement/settings/gsheets/${countryCode}`, {
+  return request<BankGsheetConfig>(`/management/bank-statement/settings/gsheets/${accountCode}`, {
     method: 'PUT', auth: true, body: JSON.stringify(input),
   });
 }
@@ -417,8 +417,10 @@ export type BankAccount = {
   accountName: string;
   bankName: string;
   currency: string;
-  countryCode: string;
+  accountCode: string;
   isActive: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
 };
 
 export type DailyMetricsRow = {
@@ -426,7 +428,7 @@ export type DailyMetricsRow = {
   accountId: string;
   accountNumber: string;
   accountName: string;
-  countryCode: string;
+  accountCode: string;
   currency: string;
   totalCredit: number;
   totalDebit: number;
@@ -442,7 +444,7 @@ export type JobAccountSummary = {
   accountId: string;
   accountNumber: string;
   accountName: string;
-  countryCode: string;
+  accountCode: string;
   currency: string;
   txCount: number;
   totalCredit: number;
@@ -453,9 +455,9 @@ export async function listBankAccounts() {
   return request<BankAccount[]>('/management/bank-statement/accounts', { auth: true });
 }
 
-export async function getBankMetrics(from: string, to: string, countryCode?: string, accountId?: string) {
+export async function getBankMetrics(from: string, to: string, accountCode?: string, accountId?: string) {
   const params = new URLSearchParams({ from, to });
-  if (countryCode) params.set('countryCode', countryCode);
+  if (accountCode) params.set('accountCode', accountCode);
   if (accountId) params.set('accountId', accountId);
   return request<MetricsResponse>(`/management/bank-statement/metrics?${params}`, { auth: true });
 }
@@ -561,6 +563,78 @@ export async function updateSystemServiceAccount(serviceKeyJson: string | null) 
     method: 'PUT',
     auth: true,
     body: JSON.stringify({ serviceKeyJson }),
+  });
+}
+
+export async function getBankCurrencyRates() {
+  return request<CurrencyRate[]>('/management/bank-statement/currency-rates', { auth: true });
+}
+
+// ─── Countries ────────────────────────────────────────────────────────────────
+
+export type Country = {
+  id: string;
+  code: string;
+  name: string;
+  currency: string;
+  isActive: boolean;
+};
+
+export async function listCountries() {
+  return request<Country[]>('/management/settings/system/countries', { auth: true });
+}
+
+export async function createCountry(body: { code: string; name: string; currency: string }) {
+  return request<Country>('/management/settings/system/countries', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateCountry(code: string, body: Partial<{ name: string; currency: string; isActive: boolean }>) {
+  return request<Country>(`/management/settings/system/countries/${code}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteCountry(code: string) {
+  return request<{ ok: boolean }>(`/management/settings/system/countries/${code}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
+
+// ─── Currency Rates ───────────────────────────────────────────────────────────
+
+export type CurrencyRate = { currency: string; rateToUsd: number; updatedAt: string };
+export type CurrencySettingsData = {
+  id: string;
+  autoUpdateDay: number;
+  lastUpdatedAt: string | null;
+  nextUpdateAt: string | null;
+  updatedAt: string;
+};
+export type CurrencyData = { rates: CurrencyRate[]; settings: CurrencySettingsData | null };
+
+export async function getCurrencyData() {
+  return request<CurrencyData>('/management/settings/system/currency-rates', { auth: true });
+}
+
+export async function refreshCurrencyRates() {
+  return request<CurrencyData>('/management/settings/system/currency-rates/refresh', {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function updateCurrencySettings(body: { autoUpdateDay: number }) {
+  return request<CurrencySettingsData>('/management/settings/system/currency-settings', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(body),
   });
 }
 

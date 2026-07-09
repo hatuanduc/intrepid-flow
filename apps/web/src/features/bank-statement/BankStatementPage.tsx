@@ -2,8 +2,9 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import {
-  listBankJobs, triggerBankSync, retryBankJob, deleteBankJob,
+  listBankJobs, triggerBankSync, retryBankJob, deleteBankJob, getBankSettings,
   type BankSyncJob,
 } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
@@ -72,6 +73,7 @@ export default function BankStatementPage() {
 
   const [jobs, setJobs] = useState<BankSyncJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [missingConfig, setMissingConfig] = useState(false);
   const [triggering, setTriggering] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -80,8 +82,13 @@ export default function BankStatementPage() {
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setJobs(await listBankJobs()); }
-    finally { setLoading(false); }
+    try {
+      const [fetched, settings] = await Promise.all([listBankJobs(), getBankSettings()]);
+      setJobs(fetched);
+      setMissingConfig(!settings.hsbcnetUsername);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { if (canView) load(); }, [canView, load]);
@@ -149,11 +156,19 @@ export default function BankStatementPage() {
               )}
             </div>
             {canRun && (
-              <button className={s.btnPrimary} onClick={trigger} disabled={triggering}>
+              <button className={s.btnPrimary} onClick={trigger} disabled={triggering || missingConfig} title={missingConfig ? 'Cần cấu hình HSBC trước' : undefined}>
                 {triggering ? 'Đang kích hoạt...' : '▶ Chạy đồng bộ'}
               </button>
             )}
           </div>
+
+          {missingConfig && (
+            <div className={s.setupBanner}>
+              <span className={s.setupBannerIcon}>⚠</span>
+              <span>Chưa cấu hình tài khoản HSBC. Vui lòng thiết lập trước khi chạy đồng bộ.</span>
+              <Link href="/bank-statement/settings" className={s.setupBannerLink}>Vào Cài đặt →</Link>
+            </div>
+          )}
 
           {jobs.length === 0 ? (
             <div className={s.empty}>Chưa có job nào. Nhấn "Chạy đồng bộ" để bắt đầu.</div>

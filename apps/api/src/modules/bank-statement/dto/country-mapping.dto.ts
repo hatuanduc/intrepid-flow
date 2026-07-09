@@ -8,7 +8,7 @@ export class CreateCountryMappingDto {
 
   @ApiProperty({ example: 'VN' })
   @IsString() @MinLength(1)
-  countryCode!: string;
+  accountCode!: string;
 }
 
 export class UpdateCountryMappingDto {
@@ -18,7 +18,7 @@ export class UpdateCountryMappingDto {
 
   @ApiProperty({ required: false })
   @IsOptional() @IsString() @MinLength(1)
-  countryCode?: string;
+  accountCode?: string;
 
   @ApiProperty({ required: false })
   @IsOptional() @IsBoolean()
@@ -28,7 +28,7 @@ export class UpdateCountryMappingDto {
 export class CountryMappingResponseDto {
   @ApiProperty() id!: string;
   @ApiProperty() companyName!: string;
-  @ApiProperty() countryCode!: string;
+  @ApiProperty() accountCode!: string;
   @ApiProperty() isActive!: boolean;
   @ApiProperty() createdAt!: Date;
 }

@@ -61,6 +61,18 @@ const GROUPS: Group[] = [
           </svg>
         ),
       },
+      {
+        title: 'Quốc gia & Tỉ giá',
+        desc: 'Quản lý danh sách quốc gia và tỉ giá hối đoái quy đổi về USD, tự động cập nhật hàng tháng.',
+        href: '/settings/geography',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
+            <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M8 2c0 0-3 2-3 6s3 6 3 6M8 2c0 0 3 2 3 6s-3 6-3 6" stroke="currentColor" strokeWidth="1.3"/>
+            <path d="M2 8h12" stroke="currentColor" strokeWidth="1.3"/>
+          </svg>
+        ),
+      },
     ],
   },
   {

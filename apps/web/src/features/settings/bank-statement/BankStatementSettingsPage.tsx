@@ -1,18 +1,20 @@
 'use client';
 
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   getBankSettings, updateBankSettings,
   listBankCountries, createBankCountry, updateBankCountry, deleteBankCountry,
   listBankGsheets, upsertBankGsheet,
+  listCountries, listBankAccounts,
   type BankJobSettings, type SyncDateMode,
-  type BankCountryMapping, type BankGsheetConfig,
+  type BankCountryMapping, type BankGsheetConfig, type Country, type BankAccount,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import AccessDenied from '../../../components/common/AccessDenied';
 import PageLoader from '../../../components/common/PageLoader';
 import { useToast } from '../../../components/common/Toast';
+import RightPanel from '../../../components/common/RightPanel';
 import s from './BankStatementSettingsPage.module.css';
 
 type Tab = 'schedule' | 'connect' | 'countries' | 'gsheets';
@@ -27,18 +29,24 @@ export default function BankStatementSettingsPage() {
   const [settings, setSettings] = useState<BankJobSettings | null>(null);
   const [countries, setCountries] = useState<BankCountryMapping[]>([]);
   const [gsheets, setGsheets] = useState<BankGsheetConfig[]>([]);
+  const [globalCountries, setGlobalCountries] = useState<Country[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
 
   async function load() {
     setLoading(true);
     try {
-      const [s, c, g] = await Promise.all([
+      const [s, c, g, gc, ba] = await Promise.all([
         getBankSettings(),
         listBankCountries(),
         listBankGsheets(),
+        listCountries(),
+        listBankAccounts().catch(() => [] as BankAccount[]),
       ]);
       setSettings(s);
       setCountries(c);
       setGsheets(g);
+      setGlobalCountries(gc);
+      setBankAccounts(ba);
     } finally {
       setLoading(false);
     }
@@ -65,7 +73,7 @@ export default function BankStatementSettingsPage() {
         {([
           ['schedule', 'Lịch trình'],
           ['connect', 'Kết nối'],
-          ['countries', 'Quốc gia'],
+          ['countries', 'Tài khoản'],
           ['gsheets', 'Google Sheets'],
         ] as [Tab, string][]).map(([key, label]) => (
           <button
@@ -85,13 +93,14 @@ export default function BankStatementSettingsPage() {
         <ConnectTab settings={settings} onSaved={(s) => { setSettings(s); toast.success('Đã lưu thông tin kết nối.'); }} />
       )}
       {tab === 'countries' && (
-        <CountriesTab countries={countries} onChanged={load} toast={toast} />
+        <CountriesTab countries={countries} bankAccounts={bankAccounts} onChanged={load} toast={toast} />
       )}
       {tab === 'gsheets' && settings && (
         <GsheetsTab
           settings={settings}
           gsheets={gsheets}
           countries={countries}
+          globalCountries={globalCountries}
           onSaved={(s) => { if (s) setSettings(s); else load(); }}
           toast={toast}
         />
@@ -312,12 +321,18 @@ function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved:
   );
 }
 
-// ─── Tab: Country mappings ────────────────────────────────────────────────────
+// ─── Tab: Account names (entity mappings) ─────────────────────────────────────
+
+function fmtSyncDate(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
 
 function CountriesTab({
-  countries, onChanged, toast,
+  countries, bankAccounts, onChanged, toast,
 }: {
   countries: BankCountryMapping[];
+  bankAccounts: BankAccount[];
   onChanged: () => void;
   toast: ReturnType<typeof useToast>;
 }) {
@@ -328,6 +343,7 @@ function CountriesTab({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editCompany, setEditCompany] = useState('');
   const [editCode, setEditCode] = useState('');
+  const [detailEntity, setDetailEntity] = useState<BankCountryMapping | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -341,7 +357,7 @@ function CountriesTab({
   function startEdit(c: BankCountryMapping) {
     setEditingId(c.id);
     setEditCompany(c.companyName);
-    setEditCode(c.countryCode);
+    setEditCode(c.accountCode);
     setOpenMenu(null);
   }
 
@@ -354,13 +370,10 @@ function CountriesTab({
   async function saveEdit(id: string) {
     if (!editCompany.trim() || !editCode.trim()) return;
     try {
-      await updateBankCountry(id, {
-        companyName: editCompany.trim(),
-        countryCode: editCode,
-      });
+      await updateBankCountry(id, { companyName: editCompany.trim(), accountCode: editCode });
       setEditingId(null);
       onChanged();
-      toast.success('Đã cập nhật mapping.');
+      toast.success('Đã cập nhật.');
     } catch {
       toast.error('Cập nhật thất bại.');
     }
@@ -370,10 +383,10 @@ function CountriesTab({
     if (!company.trim() || !code.trim()) return;
     setAdding(true);
     try {
-      await createBankCountry({ companyName: company.trim(), countryCode: code });
+      await createBankCountry({ companyName: company.trim(), accountCode: code });
       setCompany(''); setCode('');
       onChanged();
-      toast.success('Đã thêm mapping.');
+      toast.success('Đã thêm.');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Thêm thất bại.');
     } finally {
@@ -385,51 +398,60 @@ function CountriesTab({
     try {
       await deleteBankCountry(id);
       onChanged();
-      toast.success('Đã xóa mapping.');
+      toast.success('Đã xóa.');
     } catch {
       toast.error('Xóa thất bại.');
     }
   }
 
+  const detailAccounts = detailEntity
+    ? bankAccounts.filter(a => a.accountName === detailEntity.companyName)
+    : [];
+
   return (
     <div className={s.section}>
       <div>
-        <p className={s.sectionTitle}>Mapping công ty → quốc gia</p>
-        <p className={s.sectionDesc}>Xác định tên công ty trong HSBCnet tương ứng với mã quốc gia nào.</p>
+        <p className={s.sectionTitle}>Account names</p>
+        <p className={s.sectionDesc}>Khai báo tên tài khoản trong HSBCnet để hệ thống nhận biết và phân loại khi sync.</p>
       </div>
 
       <div className={s.tableWrap}>
         <table className={s.table}>
           <thead>
             <tr>
-              <th className={s.th}>Tên công ty</th>
-              <th className={s.th} style={{ width: 120 }}>Mã quốc gia</th>
-              <th className={s.th} style={{ width: 120 }}></th>
+              <th className={s.th}>Account name (HSBCnet)</th>
+              <th className={s.th} style={{ width: 130 }}>Account code</th>
+              <th className={s.th} style={{ width: 110 }}>Tài khoản</th>
+              <th className={s.th} style={{ width: 52 }}></th>
             </tr>
           </thead>
           <tbody>
             {countries.length === 0 && (
-              <tr><td className={s.td} colSpan={3}><span className={s.empty}>Chưa có dữ liệu.</span></td></tr>
+              <tr><td className={s.td} colSpan={4}><span className={s.empty}>Chưa có dữ liệu.</span></td></tr>
             )}
             {countries.map(c => {
               const isEditing = editingId === c.id;
+              const count = bankAccounts.filter(a => a.accountName === c.companyName).length;
               return (
-                <tr key={c.id}>
+                <tr key={c.id} onClick={() => { if (!editingId) setDetailEntity(c); }}>
                   <td className={s.td}>
                     {isEditing
-                      ? <input className={s.editInput} value={editCompany} onChange={e => setEditCompany(e.target.value)} autoFocus />
+                      ? <input className={s.editInput} value={editCompany} onChange={e => setEditCompany(e.target.value)} autoFocus onClick={e => e.stopPropagation()} />
                       : c.companyName
                     }
                   </td>
                   <td className={s.td}>
                     {isEditing
-                      ? <CountrySelect value={editCode} onChange={setEditCode} />
-                      : <CountryBadge code={c.countryCode} />
+                      ? <input className={s.editInput} value={editCode} onChange={e => setEditCode(e.target.value.toUpperCase())} onClick={e => e.stopPropagation()} style={{ width: 100 }} />
+                      : <CountryBadge code={c.accountCode} />
                     }
                   </td>
                   <td className={s.td}>
+                    <span className={s.accountCountBadge}>{count} acc</span>
+                  </td>
+                  <td className={s.td}>
                     {isEditing ? (
-                      <div className={s.editActions}>
+                      <div className={s.editActions} onClick={e => e.stopPropagation()}>
                         <button className={s.btnSave} onClick={() => saveEdit(c.id)}>Lưu</button>
                         <button className={s.btnCancel} onClick={cancelEdit}>Hủy</button>
                       </div>
@@ -441,8 +463,8 @@ function CountriesTab({
                         >⋯</button>
                         {openMenu === c.id && (
                           <div className={s.moreDropdown}>
-                            <button className={s.moreItem} onClick={() => startEdit(c)}>Chỉnh sửa</button>
-                            <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpenMenu(null); remove(c.id); }}>
+                            <button className={s.moreItem} onClick={e => { e.stopPropagation(); startEdit(c); }}>Chỉnh sửa</button>
+                            <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={e => { e.stopPropagation(); setOpenMenu(null); remove(c.id); }}>
                               Xóa
                             </button>
                           </div>
@@ -459,17 +481,70 @@ function CountriesTab({
 
       <div className={s.addRow}>
         <div className={s.field}>
-          <label className={s.label}>Tên công ty (HSBCnet)</label>
+          <label className={s.label}>Account name (HSBCnet)</label>
           <input className={s.input} value={company} onChange={e => setCompany(e.target.value)} placeholder="INTREPID VIETNAM LTD" />
         </div>
         <div className={s.field}>
-          <label className={s.label}>Mã quốc gia</label>
-          <CountrySelect value={code} onChange={setCode} />
+          <label className={s.label}>Account code</label>
+          <input
+            className={s.input}
+            value={code}
+            onChange={e => setCode(e.target.value.toUpperCase())}
+            placeholder="VN, HK, DM_VN..."
+            style={{ width: 140 }}
+          />
         </div>
         <button className={s.btnPrimary} onClick={add} disabled={adding || !company.trim() || !code}>
           {adding ? '...' : '+ Thêm'}
         </button>
       </div>
+
+      <RightPanel
+        title={detailEntity?.companyName ?? ''}
+        open={!!detailEntity}
+        onClose={() => setDetailEntity(null)}
+        width={520}
+      >
+        {detailEntity && (
+          <div>
+            <div className={s.panelEntityMeta}>
+              <CountryBadge code={detailEntity.accountCode} />
+              <span className={s.panelEntityCode}>Account code</span>
+              <span className={s.panelAccountCount}>{detailAccounts.length} tài khoản</span>
+            </div>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th className={s.th}>Account number</th>
+                  <th className={s.th} style={{ width: 80 }}>Currency</th>
+                  <th className={s.th}>Sync cuối</th>
+                </tr>
+              </thead>
+              <tbody>
+                {detailAccounts.length === 0 && (
+                  <tr>
+                    <td className={s.td} colSpan={3} style={{ textAlign: 'center' }}>
+                      <span className={s.syncNever}>Chưa có account nào được sync.</span>
+                    </td>
+                  </tr>
+                )}
+                {detailAccounts.map(a => (
+                  <tr key={a.id}>
+                    <td className={s.td}><span className={s.accountNumber}>{a.accountNumber}</span></td>
+                    <td className={s.td}><span className={s.currencyBadge}>{a.currency}</span></td>
+                    <td className={s.td}>
+                      {a.lastSyncAt
+                        ? <span className={s.syncDate}>{fmtSyncDate(a.lastSyncAt)}</span>
+                        : <span className={s.syncNever}>Chưa sync</span>
+                      }
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </RightPanel>
     </div>
   );
 }
@@ -477,36 +552,38 @@ function CountriesTab({
 // ─── Tab: Google Sheets ───────────────────────────────────────────────────────
 
 function GsheetsTab({
-  settings, gsheets, countries, onSaved, toast,
+  settings, gsheets, countries, globalCountries, onSaved, toast,
 }: {
   settings: BankJobSettings;
   gsheets: BankGsheetConfig[];
   countries: BankCountryMapping[];
+  globalCountries: Country[];
   onSaved: (s?: BankJobSettings) => void;
   toast: ReturnType<typeof useToast>;
 }) {
-  const countryCodes = [...new Set(countries.map(c => c.countryCode))].sort();
-  const configMap = Object.fromEntries(gsheets.map(g => [g.countryCode, g]));
+  const countryCodes = [...new Set(countries.map(c => c.accountCode))].sort();
+  const configMap = Object.fromEntries(gsheets.map(g => [g.accountCode, g]));
 
   return (
     <div className={s.section}>
       {/* Per-country first */}
       <div>
-        <p className={s.sectionTitle}>Spreadsheet theo quốc gia</p>
+        <p className={s.sectionTitle}>Spreadsheet theo account</p>
         <p className={s.sectionDesc}>
-          Danh sách lấy từ tab Quốc gia. Bật/tắt để chọn quốc gia nào cần đồng bộ.
+          Danh sách lấy từ tab Tài khoản. Bật/tắt để chọn account nào cần đồng bộ.
         </p>
       </div>
 
       {countryCodes.length === 0 && (
-        <div className={s.empty}>Chưa có quốc gia nào. Thêm ở tab Quốc gia trước.</div>
+        <div className={s.empty}>Chưa có account nào. Thêm ở tab Tài khoản trước.</div>
       )}
 
       <div className={s.countryCardList}>
         {countryCodes.map(code => (
           <GsheetCountryCard
             key={code}
-            countryCode={code}
+            accountCode={code}
+            countryName={globalCountries.find(c => c.code === code)?.name ?? code}
             existing={configMap[code] ?? null}
             toast={toast}
           />
@@ -633,9 +710,10 @@ function GlobalGsheetConfig({
 }
 
 function GsheetCountryCard({
-  countryCode, existing, toast,
+  accountCode, countryName, existing, toast,
 }: {
-  countryCode: string;
+  accountCode: string;
+  countryName: string;
   existing: BankGsheetConfig | null;
   onSaved?: () => void;
   toast: ReturnType<typeof useToast>;
@@ -648,20 +726,18 @@ function GsheetCountryCard({
   const savedIdRef = useRef(existing?.spreadsheetId ?? '');
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const countryInfo = COUNTRY_CODES.find(c => c.code === countryCode);
-
   async function save(overrides?: { isActive?: boolean; id?: string }) {
     const activeVal = overrides?.isActive ?? isActive;
     const idVal = (overrides?.id ?? spreadsheetId).trim();
     if (!idVal) return;
     setSaving(true);
     try {
-      await upsertBankGsheet(countryCode, { spreadsheetId: idVal, isActive: activeVal });
+      await upsertBankGsheet(accountCode, { spreadsheetId: idVal, isActive: activeVal });
       savedIdRef.current = idVal;
       setEditing(false);
-      toast.success(`Đã lưu cấu hình ${countryCode}.`);
+      toast.success(`Đã lưu cấu hình ${accountCode}.`);
     } catch {
-      toast.error(`Lưu cấu hình ${countryCode} thất bại.`);
+      toast.error(`Lưu cấu hình ${accountCode} thất bại.`);
     } finally {
       setSaving(false);
     }
@@ -711,8 +787,8 @@ function GsheetCountryCard({
           >
             <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
-          <CountryBadge code={countryCode} />
-          <span className={s.countryCardName}>{countryInfo?.label ?? countryCode}</span>
+          <CountryBadge code={accountCode} />
+          <span className={s.countryCardName}>{countryName}</span>
           {displayId && (
             <span className={s.countryCardSpreadsheetHint}>
               {displayId.slice(0, 20)}…
@@ -787,14 +863,6 @@ function Tooltip({ children, wide }: { children: React.ReactNode; wide?: boolean
   );
 }
 
-const COUNTRY_CODES: Array<{ code: string; label: string }> = [
-  { code: 'VN', label: 'Việt Nam' },
-  { code: 'MY', label: 'Malaysia' },
-  { code: 'ID', label: 'Indonesia' },
-  { code: 'PH', label: 'Philippines' },
-  { code: 'SG', label: 'Singapore' },
-  { code: 'TH', label: 'Thái Lan' },
-];
 
 const COUNTRY_COLORS: Record<string, { bg: string; color: string }> = {
   VN:    { bg: '#dbeafe', color: '#1e40af' },
@@ -815,55 +883,3 @@ function CountryBadge({ code }: { code: string }) {
   );
 }
 
-function CountrySelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  const handleOutside = useCallback((e: MouseEvent) => {
-    if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-  }, []);
-
-  useEffect(() => {
-    document.addEventListener('mousedown', handleOutside);
-    return () => document.removeEventListener('mousedown', handleOutside);
-  }, [handleOutside]);
-
-  const selected = COUNTRY_CODES.find(c => c.code === value);
-
-  return (
-    <div ref={ref} className={s.countrySelect}>
-      <button
-        type="button"
-        className={`${s.countrySelectTrigger} ${open ? s.countrySelectOpen : ''}`}
-        onClick={() => setOpen(v => !v)}
-      >
-        {value ? (
-          <>
-            <CountryBadge code={value} />
-            <span className={s.countrySelectName}>{selected?.label}</span>
-          </>
-        ) : (
-          <span className={s.countrySelectPlaceholder}>Chọn quốc gia</span>
-        )}
-        <svg className={s.countrySelectChevron} width="12" height="12" viewBox="0 0 12 12" fill="none">
-          <path d="M2 4l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
-      </button>
-      {open && (
-        <div className={s.countrySelectDropdown}>
-          {COUNTRY_CODES.map(c => (
-            <button
-              key={c.code}
-              type="button"
-              className={`${s.countrySelectOption} ${value === c.code ? s.countrySelectOptionActive : ''}`}
-              onClick={() => { onChange(c.code); setOpen(false); }}
-            >
-              <CountryBadge code={c.code} />
-              <span>{c.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}

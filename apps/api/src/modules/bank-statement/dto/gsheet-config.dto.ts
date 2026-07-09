@@ -25,7 +25,7 @@ export class UpsertGsheetConfigDto {
 
 export class GsheetConfigResponseDto {
   @ApiProperty() id!: string;
-  @ApiProperty() countryCode!: string;
+  @ApiProperty() accountCode!: string;
   @ApiProperty() spreadsheetId!: string;
   @ApiProperty({ nullable: true }) spreadsheetUrl!: string | null;
   @ApiProperty({ nullable: true }) templateSheetName!: string | null;

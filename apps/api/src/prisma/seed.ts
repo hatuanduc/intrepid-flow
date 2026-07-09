@@ -199,6 +199,18 @@ async function main() {
     });
   }
   console.log('Bank statement defaults seeded');
+
+  // ─── Countries ──────────────────────────────────────────────────────────────
+  const countries = [
+    { code: 'HK', name: 'Hong Kong', currency: 'HKD' },
+    { code: 'ID', name: 'Indonesia',  currency: 'IDR' },
+    { code: 'MY', name: 'Malaysia',   currency: 'MYR' },
+    { code: 'PH', name: 'Philippines', currency: 'PHP' },
+  ];
+  for (const c of countries) {
+    await prisma.country.upsert({ where: { code: c.code }, create: c, update: {} });
+  }
+  console.log('Countries seeded: HK, ID, MY, PH');
 }
 
 main()

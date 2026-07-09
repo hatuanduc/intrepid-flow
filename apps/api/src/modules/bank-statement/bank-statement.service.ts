@@ -1,6 +1,7 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { JobSchedulerService } from '../../common/job-scheduler.service';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSettingsDto } from './dto/settings.dto';
@@ -76,11 +77,25 @@ function toDto(job: {
 }
 
 @Injectable()
-export class BankStatementService {
+export class BankStatementService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     @InjectQueue('bank-sync') private readonly queue: Queue,
+    private readonly jobScheduler: JobSchedulerService,
   ) {}
+
+  async onModuleInit() {
+    const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: SETTINGS_ID } });
+    if (settings) {
+      this.jobScheduler.sync('bank-sync', settings.scheduleCron, settings.isScheduled, () => this.triggerJob('cron'));
+    }
+  }
+
+  // ─── Currency Rates ───────────────────────────────────────────────────────────
+
+  async getCurrencyRates() {
+    return this.prisma.currencyRate.findMany({ orderBy: { currency: 'asc' } });
+  }
 
   // ─── Schedule Settings ───────────────────────────────────────────────────────
 
@@ -95,11 +110,13 @@ export class BankStatementService {
   }
 
   async updateSettings(dto: UpdateSettingsDto) {
-    return this.prisma.bankJobSettings.upsert({
+    const settings = await this.prisma.bankJobSettings.upsert({
       where: { id: SETTINGS_ID },
       create: { id: SETTINGS_ID, ...dto },
       update: dto,
     });
+    this.jobScheduler.sync('bank-sync', settings.scheduleCron, settings.isScheduled, () => this.triggerJob('cron'));
+    return settings;
   }
 
   // ─── Download Template ───────────────────────────────────────────────────────
@@ -143,14 +160,14 @@ export class BankStatementService {
   // ─── GSheet Configs ──────────────────────────────────────────────────────────
 
   async listGsheetConfigs() {
-    const configs = await this.prisma.bankGsheetConfig.findMany({ orderBy: { countryCode: 'asc' } });
+    const configs = await this.prisma.bankGsheetConfig.findMany({ orderBy: { accountCode: 'asc' } });
     return configs.map(c => ({ ...c, hasServiceKey: !!c.serviceKeyJson, serviceKeyJson: undefined }));
   }
 
-  async upsertGsheetConfig(countryCode: string, dto: UpsertGsheetConfigDto) {
+  async upsertGsheetConfig(accountCode: string, dto: UpsertGsheetConfigDto) {
     const result = await this.prisma.bankGsheetConfig.upsert({
-      where: { countryCode },
-      create: { countryCode, ...dto },
+      where: { accountCode },
+      create: { accountCode, ...dto },
       update: dto,
     });
     return { ...result, hasServiceKey: !!result.serviceKeyJson, serviceKeyJson: undefined };
@@ -159,20 +176,37 @@ export class BankStatementService {
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
 
   async listAccounts() {
-    return this.prisma.bankAccount.findMany({
-      select: { id: true, accountNumber: true, accountName: true, bankName: true, currency: true, countryCode: true, isActive: true },
-      orderBy: [{ countryCode: 'asc' }, { accountNumber: 'asc' }],
+    const accounts = await this.prisma.bankAccount.findMany({
+      include: {
+        syncJobAccounts: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { job: { select: { completedAt: true } } },
+        },
+      },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
     });
+    return accounts.map(a => ({
+      id: a.id,
+      accountNumber: a.accountNumber,
+      accountName: a.accountName,
+      bankName: a.bankName,
+      currency: a.currency,
+      accountCode: a.accountCode,
+      isActive: a.isActive,
+      lastSyncAt: a.syncJobAccounts[0]?.job?.completedAt ?? null,
+      lastSyncStatus: a.syncJobAccounts[0]?.status ?? null,
+    }));
   }
 
-  async getMetrics(from: Date, to: Date, countryCode?: string, accountId?: string) {
+  async getMetrics(from: Date, to: Date, accountCode?: string, accountId?: string) {
     const accountWhere: Record<string, unknown> = {};
-    if (countryCode) accountWhere.countryCode = countryCode;
+    if (accountCode) accountWhere.accountCode = accountCode;
     if (accountId) accountWhere.id = accountId;
 
     const accounts = await this.prisma.bankAccount.findMany({
       where: Object.keys(accountWhere).length > 0 ? accountWhere : undefined,
-      select: { id: true, accountNumber: true, accountName: true, countryCode: true, currency: true },
+      select: { id: true, accountNumber: true, accountName: true, accountCode: true, currency: true },
     });
 
     if (accounts.length === 0) {
@@ -197,7 +231,7 @@ export class BankStatementService {
         accountId: row.bankAccountId,
         accountNumber: acc?.accountNumber ?? '',
         accountName: acc?.accountName ?? '',
-        countryCode: acc?.countryCode ?? '',
+        accountCode: acc?.accountCode ?? '',
         currency: acc?.currency ?? '',
         totalCredit: Number(row._sum.creditAmount ?? 0),
         totalDebit: Number(row._sum.debitAmount ?? 0),
@@ -235,7 +269,7 @@ export class BankStatementService {
     const accountMap = Object.fromEntries(
       (await this.prisma.bankAccount.findMany({
         where: { id: { in: grouped.map(g => g.bankAccountId) } },
-        select: { id: true, accountNumber: true, accountName: true, countryCode: true, currency: true },
+        select: { id: true, accountNumber: true, accountName: true, accountCode: true, currency: true },
       })).map(a => [a.id, a]),
     );
 
@@ -245,7 +279,7 @@ export class BankStatementService {
         accountId: row.bankAccountId,
         accountNumber: acc?.accountNumber ?? '',
         accountName: acc?.accountName ?? '',
-        countryCode: acc?.countryCode ?? '',
+        accountCode: acc?.accountCode ?? '',
         currency: acc?.currency ?? '',
         txCount: row._count.id,
         totalCredit: Number(row._sum.creditAmount ?? 0),
