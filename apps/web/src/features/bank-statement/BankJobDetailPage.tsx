@@ -5,14 +5,17 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   getBankJob, retryBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
-  type BankSyncJob, type JobAccountSummary,
+  getJobAccountTransactions,
+  type BankSyncJob, type JobAccountSummary, type JobTransaction,
 } from '../../lib/api';
+import RightPanel from '../../components/common/RightPanel';
 import { getToken } from '../../lib/auth';
 import { showHsbcAuthNotification } from '../../lib/notifications';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import AccessDenied from '../../components/common/AccessDenied';
 import { Spinner } from '../../components/common/PageLoader';
 import { useToast } from '../../components/common/Toast';
+import { useT } from '../../lib/i18n';
 import s from './BankJobDetailPage.module.css';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -24,20 +27,8 @@ const ACCOUNT_COLORS: Record<string, string> = {
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<string, string> = {
-  pending:           'Chờ xử lý',
-  checking_session:  'Kiểm tra phiên',
-  logging_in:        'Đang đăng nhập',
-  waiting_2fa:       'Chờ 2FA',
-  authenticated:     'Đã xác thực',
-  downloading:       'Đang tải',
-  storing:           'Đang lưu',
-  syncing_sheets:    'Sync GSheets',
-  completed:         'Hoàn thành',
-  failed:            'Thất bại',
-};
-
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useT();
   const cls = status === 'completed' ? s.badgeSuccess
     : status === 'failed'           ? s.badgeError
     : status === 'waiting_2fa'      ? s.badgeWarn
@@ -45,7 +36,9 @@ function StatusBadge({ status }: { status: string }) {
     : ['checking_session', 'logging_in', 'authenticated',
        'downloading', 'storing', 'syncing_sheets'].includes(status) ? s.badgeRunning
     : s.badgeDefault;
-  return <span className={`${s.badge} ${cls}`}>{STATUS_LABEL[status] ?? status}</span>;
+  const key = `bankStatement.status_${status}`;
+  const label = t(key);
+  return <span className={`${s.badge} ${cls}`}>{label !== key ? label : status}</span>;
 }
 
 function isActive(status: string) {
@@ -82,24 +75,24 @@ function formatLogTime(iso: string): string {
 
 // ─── Friendly error mapping ───────────────────────────────────────────────────
 
-const FRIENDLY_ERRORS: Array<[RegExp, string]> = [
-  [/INVALID_USERNAME/i,                 'Tên đăng nhập HSBCnet không đúng. Vui lòng kiểm tra lại trong Cài đặt → Kết nối.'],
-  [/HSBCNET_USERNAME.*not configured/i, 'Chưa cấu hình tên đăng nhập HSBCnet. Vào Cài đặt → Kết nối để cập nhật.'],
-  [/TIMEOUT_2FA/i,                      'Hết thời gian chờ xác thực — không nhận được phê duyệt từ ứng dụng di động HSBCnet.'],
-  [/Timeout.*exceeded/i,                'Hết thời gian chờ — trang web ngân hàng phản hồi quá chậm hoặc không tải được đúng hạn.'],
-  [/page\.(fill|click|goto)/i,          'Không tương tác được với trang web ngân hàng — giao diện có thể đã thay đổi.'],
-  [/locator\(/i,                        'Không tìm thấy phần tử trên trang — giao diện ngân hàng có thể đã cập nhật.'],
-  [/net::ERR_/i,                        'Lỗi kết nối mạng — không thể truy cập trang web ngân hàng.'],
-  [/2fa|mobile.*app|approval/i,         'Xác thực 2 bước thất bại hoặc hết thời gian chờ phê duyệt trên ứng dụng di động.'],
-  [/download|csv|xlsx/i,                'Lỗi tải xuống file sao kê — trang web ngân hàng không trả về đúng định dạng.'],
+const FRIENDLY_ERROR_KEYS: Array<[RegExp, string]> = [
+  [/INVALID_USERNAME/i,                 'bankJob.err_invalidUsername'],
+  [/HSBCNET_USERNAME.*not configured/i, 'bankJob.err_notConfigured'],
+  [/TIMEOUT_2FA/i,                      'bankJob.err_timeout2fa'],
+  [/Timeout.*exceeded/i,                'bankJob.err_timeout'],
+  [/page\.(fill|click|goto)/i,          'bankJob.err_pageInteraction'],
+  [/locator\(/i,                        'bankJob.err_locator'],
+  [/net::ERR_/i,                        'bankJob.err_network'],
+  [/2fa|mobile.*app|approval/i,         'bankJob.err_twoFa'],
+  [/download|csv|xlsx/i,                'bankJob.err_download'],
 ];
 
-function friendlyError(raw: string | null): string {
-  if (!raw) return 'Đồng bộ thất bại. Vui lòng kiểm tra cài đặt và thử lại.';
-  for (const [pattern, msg] of FRIENDLY_ERRORS) {
-    if (pattern.test(raw)) return msg;
+function friendlyError(raw: string | null, t: (key: string) => string): string {
+  if (!raw) return t('bankJob.err_default');
+  for (const [pattern, key] of FRIENDLY_ERROR_KEYS) {
+    if (pattern.test(raw)) return t(key);
   }
-  return 'Đồng bộ thất bại. Vui lòng kiểm tra log chi tiết và thử lại.';
+  return t('bankJob.err_defaultWithLog');
 }
 
 // ─── Log types ───────────────────────────────────────────────────────────────
@@ -129,6 +122,7 @@ export default function BankJobDetailPage() {
   const toast     = useToast();
   const router    = useRouter();
   const params    = useParams();
+  const { t }     = useT();
   const id        = params?.id as string;
 
   const [job, setJob]           = useState<BankSyncJob | null>(null);
@@ -138,10 +132,14 @@ export default function BankJobDetailPage() {
   const [deleting, setDeleting] = useState(false);
   const [showRaw, setShowRaw]   = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
+  const [openSteps, setOpenSteps]         = useState<Set<string>>(new Set());
   const [summary, setSummary]   = useState<JobAccountSummary[]>([]);
+  const [txPanel, setTxPanel]   = useState<{ acc: JobAccountSummary; rows: JobTransaction[] } | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
 
   const esRef             = useRef<EventSource | null>(null);
   const notifiedJobsRef   = useRef<Set<string>>(new Set());
+  const openStepsInitRef  = useRef(false);
 
   const newAccountNumbers = useMemo(() => new Set(
     (job?.logs ?? [])
@@ -160,12 +158,17 @@ export default function BankJobDetailPage() {
         const data = await getBankJob(id);
         if (!mounted) return;
         setJob(data);
+        if (!openStepsInitRef.current) {
+          openStepsInitRef.current = true;
+          const running = data.steps?.find(s => s.status === 'running');
+          if (running) setOpenSteps(new Set([running.key]));
+        }
         startSse(data);
         if (['completed', 'failed'].includes(data.status)) {
           getBankJobSummary(id).then(setSummary).catch(() => {});
         }
       } catch {
-        if (mounted) setError('Không tải được thông tin job.');
+        if (mounted) setError(t('bankJob.loadFailed'));
       } finally {
         if (mounted) setLoading(false);
       }
@@ -194,7 +197,6 @@ export default function BankJobDetailPage() {
       const updated: BankSyncJob = JSON.parse(e.data);
       setJob(updated);
 
-      // Notify when HSBC pushes mobile auth request (waiting_2fa screen)
       if (updated.status === 'waiting_2fa' && !notifiedJobsRef.current.has(updated.id)) {
         notifiedJobsRef.current.add(updated.id);
         showHsbcAuthNotification(updated.id);
@@ -217,9 +219,12 @@ export default function BankJobDetailPage() {
       setJob(updated);
       setShowRaw(false);
       setExpandedSteps(new Set());
+      openStepsInitRef.current = false;
+      const running = updated.steps?.find(s => s.status === 'running');
+      setOpenSteps(running ? new Set([running.key]) : new Set());
       startSse(updated);
     } catch {
-      toast.error('Chạy lại thất bại. Vui lòng thử lại.');
+      toast.error(t('bankJob.retryFailed'));
     } finally {
       setRetrying(false);
     }
@@ -230,16 +235,38 @@ export default function BankJobDetailPage() {
     setDeleting(true);
     try {
       await deleteBankJob(job.id);
-      toast.success('Đã xóa job thành công.');
+      toast.success(t('bankJob.deleteSuccess'));
       router.push('/bank-statement');
     } catch {
-      toast.error('Xóa thất bại. Vui lòng thử lại.');
+      toast.error(t('bankJob.deleteFailed'));
       setDeleting(false);
     }
   }
 
   function expand(key: string) {
     setExpandedSteps(prev => new Set([...prev, key]));
+  }
+
+  async function openTxPanel(acc: JobAccountSummary) {
+    setTxPanel({ acc, rows: [] });
+    setTxLoading(true);
+    try {
+      const rows = await getJobAccountTransactions(id, acc.accountId);
+      setTxPanel({ acc, rows });
+    } catch {
+      toast.error(t('bankJob.txLoadFailed'));
+      setTxPanel(null);
+    } finally {
+      setTxLoading(false);
+    }
+  }
+
+  function toggleStep(key: string) {
+    setOpenSteps(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
   }
 
   function renderLogNodes(logs: LogItem[], stepKey: string) {
@@ -255,7 +282,7 @@ export default function BankJobDetailPage() {
             return (
               <div key={i} className={s.timelineRetryDivider}>
                 <span className={s.timelineRetryDividerLine} />
-                <span className={s.timelineRetryDividerLabel}>↺ Chạy lại · {item.time ? formatLogTime(item.time) : ''}</span>
+                <span className={s.timelineRetryDividerLabel}>{t('bankJob.retryDivider', { time: item.time ? formatLogTime(item.time) : '' })}</span>
                 <span className={s.timelineRetryDividerLine} />
               </div>
             );
@@ -272,7 +299,7 @@ export default function BankJobDetailPage() {
         })}
         {!isExpanded && hiddenCount > 0 && (
           <button className={s.showMoreBtn} onClick={() => expand(stepKey)}>
-            ↑ Xem thêm {hiddenCount} mục cũ hơn
+            {t('bankJob.showMore', { n: hiddenCount })}
           </button>
         )}
       </>
@@ -283,7 +310,7 @@ export default function BankJobDetailPage() {
     <div className={s.page}>
       {/* Back link */}
       <Link href="/bank-statement" className={s.backBtn}>
-        ← Sao kê ngân hàng
+        {t('bankJob.back')}
       </Link>
 
       {loading ? (
@@ -291,14 +318,14 @@ export default function BankJobDetailPage() {
       ) : error ? (
         <div className={s.error}>{error}</div>
       ) : !job ? (
-        <div className={s.empty}>Không tìm thấy job.</div>
+        <div className={s.empty}>{t('bankJob.notFound')}</div>
       ) : (
         <>
           {/* Page header */}
           <div className={s.pageHeader}>
             <div>
-              <h1 className={s.pageTitle}>Chi tiết job</h1>
-              <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy ? 'Thủ công' : 'Tự động'}</p>
+              <h1 className={s.pageTitle}>{t('bankJob.title')}</h1>
+              <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy ? t('bankJob.manual') : t('bankJob.automatic')}</p>
             </div>
             <div className={s.headerActions}>
               {['failed', 'completed'].includes(job.status) && canRun && (
@@ -307,7 +334,7 @@ export default function BankJobDetailPage() {
                   disabled={retrying}
                   onClick={() => handleRetry()}
                 >
-                  {retrying ? 'Đang chạy...' : '↺ Chạy lại toàn bộ'}
+                  {retrying ? t('bankJob.retrying') : t('bankJob.retryAll')}
                 </button>
               )}
               {['completed', 'failed'].includes(job.status) && canRun && (
@@ -316,7 +343,7 @@ export default function BankJobDetailPage() {
                   disabled={deleting}
                   onClick={handleDelete}
                 >
-                  {deleting ? 'Đang xóa...' : 'Xóa'}
+                  {deleting ? t('bankJob.deleting') : t('bankJob.delete')}
                 </button>
               )}
             </div>
@@ -326,18 +353,18 @@ export default function BankJobDetailPage() {
           <div className={s.detailMeta}>
             <StatusBadge status={job.status} />
             {job.durationMs != null && <span className={s.detailDuration}>{formatDuration(job.durationMs)}</span>}
-            {isRunning(job.status) && <span className={s.liveIndicator}>● LIVE</span>}
-            {job.status === 'pending' && <span className={s.queueIndicator}>● Đang chờ worker</span>}
+            {isRunning(job.status) && <span className={s.liveIndicator}>{t('bankJob.live')}</span>}
+            {job.status === 'pending' && <span className={s.queueIndicator}>{t('bankJob.queuedWorker')}</span>}
           </div>
 
           {/* Timestamps */}
           <div className={s.detailTimes}>
             <span className={s.detailTimeItem}>
-              <span className={s.detailTimeLabel}>Bắt đầu</span>
+              <span className={s.detailTimeLabel}>{t('bankJob.startedAt')}</span>
               <span>{formatDateTime(job.startedAt)}</span>
             </span>
             <span className={s.detailTimeItem}>
-              <span className={s.detailTimeLabel}>Kết thúc</span>
+              <span className={s.detailTimeLabel}>{t('bankJob.completedAt')}</span>
               <span>{formatDateTime(job.completedAt)}</span>
             </span>
           </div>
@@ -346,17 +373,18 @@ export default function BankJobDetailPage() {
           {summary.length > 0 && (
             <div className={s.summarySection}>
               <div className={s.summaryHeader}>
-                <span className={s.summaryTitle}>Giao dịch lấy về</span>
+                <span className={s.summaryTitle}>{t('bankJob.transactionsSynced')}</span>
                 <Link href="/bank-metrics" className={s.summaryMetricsLink}>
-                  Xem trong Metrics →
+                  {t('bankJob.viewInMetrics')}
                 </Link>
               </div>
               <div className={s.summaryTableWrap}>
                 {summary.map(acc => (
-                  <Link
+                  <div
                     key={acc.accountId}
-                    href={`/bank-metrics?accountId=${acc.accountId}`}
+                    role="button"
                     className={s.summaryRow}
+                    onClick={() => openTxPanel(acc)}
                   >
                     <div className={s.summaryRowAccount}>
                       <span className={s.summaryAvatar} style={{ background: ACCOUNT_COLORS[acc.accountCode] ?? '#697386' }}>
@@ -366,20 +394,20 @@ export default function BankJobDetailPage() {
                         <div className={s.summaryAccNameRow}>
                           <span className={s.summaryAccName}>{acc.accountName}</span>
                           {newAccountNumbers.has(acc.accountNumber) && (
-                            <span className={s.newBadge}>Mới</span>
+                            <span className={s.newBadge}>{t('bankJob.newBadge')}</span>
                           )}
                         </div>
                         <span className={s.summaryAccNum}>{acc.accountNumber}</span>
                       </div>
                     </div>
                     <span className={s.summaryCurrency}>{acc.currency}</span>
-                    <span className={s.summaryTxCount}>{acc.txCount} GD</span>
+                    <span className={s.summaryTxCount}>{acc.txCount} {t('bankJob.transactions')}</span>
                     <span className={s.summaryCredit}>+{acc.totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className={s.summaryDebit}>{acc.totalDebit > 0 ? `-${acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.summaryArrow}>
                       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
-                  </Link>
+                  </div>
                 ))}
               </div>
             </div>
@@ -393,10 +421,89 @@ export default function BankJobDetailPage() {
             showRaw={showRaw}
             setShowRaw={setShowRaw}
             expandedSteps={expandedSteps}
+            openSteps={openSteps}
+            onToggleStep={toggleStep}
             onRetryStep={handleRetry}
             renderLogNodes={renderLogNodes}
           />
         </>
+      )}
+
+      {/* Transaction detail panel */}
+      <RightPanel
+        title={txPanel?.acc.accountName ?? ''}
+        open={txPanel !== null}
+        onClose={() => setTxPanel(null)}
+        width={640}
+      >
+        {txPanel && (
+          <TxDetailPanel
+            acc={txPanel.acc}
+            rows={txPanel.rows}
+            loading={txLoading}
+          />
+        )}
+      </RightPanel>
+    </div>
+  );
+}
+
+// ─── Transaction detail panel ────────────────────────────────────────────────
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function TxDetailPanel({ acc, rows, loading }: {
+  acc: JobAccountSummary;
+  rows: JobTransaction[];
+  loading: boolean;
+}) {
+  const { t } = useT();
+  return (
+    <div className={s.txPanel}>
+      <div className={s.txPanelMeta}>
+        <span className={s.txPanelAccNum}>{acc.accountNumber}</span>
+        <span className={s.summaryCurrency}>{acc.currency}</span>
+        <span className={s.txPanelCount}>{acc.txCount} {t('bankJob.transactions')}</span>
+      </div>
+
+      {loading ? (
+        <div className={s.txPanelLoading}><Spinner size={20} /></div>
+      ) : rows.length === 0 ? (
+        <div className={s.empty}>{t('bankJob.noTransactions')}</div>
+      ) : (
+        <div className={s.txTableWrap}>
+          <table className={s.txTable}>
+            <thead>
+              <tr>
+                <th className={s.txTh}>{t('bankJob.postDate')}</th>
+                <th className={s.txTh}>{t('bankJob.narrative')}</th>
+                <th className={s.txTh}>{t('bankJob.bankReference')}</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.creditAmount')}</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.debitAmount')}</th>
+                <th className={s.txTh}>{t('bankJob.fetchedAt')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(tx => (
+                <tr key={tx.id}>
+                  <td className={s.txTd}>{formatDate(tx.postDate)}</td>
+                  <td className={s.txTdNarrative}>{tx.narrative ?? '—'}</td>
+                  <td className={s.txTdMono}>{tx.bankReference ?? '—'}</td>
+                  <td className={s.txTdCredit}>
+                    {tx.creditAmount ? tx.creditAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                  </td>
+                  <td className={s.txTdDebit}>
+                    {tx.debitAmount ? tx.debitAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                  </td>
+                  <td className={s.txTdFetched}>{formatDateTime(tx.fetchedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -406,7 +513,7 @@ export default function BankJobDetailPage() {
 
 function JobTimeline({
   job, canRun, retrying, showRaw, setShowRaw,
-  expandedSteps, onRetryStep, renderLogNodes,
+  expandedSteps, openSteps, onToggleStep, onRetryStep, renderLogNodes,
 }: {
   job: BankSyncJob;
   canRun: boolean;
@@ -414,9 +521,12 @@ function JobTimeline({
   showRaw: boolean;
   setShowRaw: (v: boolean | ((prev: boolean) => boolean)) => void;
   expandedSteps: Set<string>;
+  openSteps: Set<string>;
+  onToggleStep: (key: string) => void;
   onRetryStep: (stepKey?: 'bank_sync' | 'sheets_sync') => void;
   renderLogNodes: (logs: LogItem[], stepKey: string) => React.ReactNode;
 }) {
+  const { t } = useT();
   const isDone = ['completed', 'failed'].includes(job.status);
   const hasSteps = (job.steps?.length ?? 0) > 0;
 
@@ -433,7 +543,7 @@ function JobTimeline({
   if (failedStep?.errorMessage) {
     logsByStep[failedStep.key].push({
       time: failedStep.completedAt ?? '',
-      message: friendlyError(failedStep.errorMessage),
+      message: friendlyError(failedStep.errorMessage, t),
       level: 'error',
     });
   }
@@ -444,11 +554,13 @@ function JobTimeline({
         job.steps.map((step, si) => {
           const stepLogs = logsByStep[step.key] ?? [];
           const isLast = si === job.steps.length - 1;
-          const canRetryStep = isDone && canRun && ['failed', 'completed'].includes(step.status);
+          const canRetryStep = isDone && canRun && ['failed', 'completed', 'skipped'].includes(step.status);
           const stepDotCls = step.status === 'completed' ? s.stepDotOk
             : step.status === 'failed'   ? s.stepDotErr
             : step.status === 'running'  ? s.stepDotRunning
             : s.stepDotPending;
+          const isOpen = step.status === 'running' || openSteps.has(step.key);
+          const hasLogs = stepLogs.length > 0;
 
           return (
             <div key={step.key} className={s.stepRow}>
@@ -457,7 +569,10 @@ function JobTimeline({
                 {!isLast && <span className={s.stepLine} />}
               </div>
               <div className={s.stepContent}>
-                <div className={s.stepHeader}>
+                <div
+                  className={`${s.stepHeader} ${hasLogs ? s.stepHeaderClickable : ''}`}
+                  onClick={hasLogs ? () => onToggleStep(step.key) : undefined}
+                >
                   <span className={s.stepLabel}>{step.label}</span>
                   {step.completedAt && step.startedAt && (
                     <span className={s.stepDuration}>
@@ -468,21 +583,24 @@ function JobTimeline({
                     <button
                       className={s.stepRetryBtn}
                       disabled={retrying}
-                      onClick={() => onRetryStep(step.key as 'bank_sync' | 'sheets_sync')}
+                      onClick={(e) => { e.stopPropagation(); onRetryStep(step.key as 'bank_sync' | 'sheets_sync'); }}
                     >
-                      {retrying ? '...' : '↺ Chạy lại'}
+                      {retrying ? '...' : t('bankJob.retryStep')}
                     </button>
                   )}
+                  {hasLogs && (
+                    <span className={s.stepChevron}>{isOpen ? '▴' : '▾'}</span>
+                  )}
                 </div>
-                {stepLogs.length > 0 && (
+                {isOpen && hasLogs && (
                   <div className={s.stepLogs}>
                     {renderLogNodes(stepLogs, step.key)}
                   </div>
                 )}
-                {step.status === 'failed' && step.errorMessage && (
+                {isOpen && step.status === 'failed' && step.errorMessage && (
                   <div className={s.stepErrorToggle}>
                     <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
-                      {showRaw ? '▴ Ẩn chi tiết kỹ thuật' : '▾ Xem chi tiết kỹ thuật'}
+                      {showRaw ? t('bankJob.hideRaw') : t('bankJob.showRaw')}
                     </button>
                     {showRaw && <pre className={s.rawErrorCode}>{step.errorMessage}</pre>}
                   </div>
@@ -503,14 +621,14 @@ function JobTimeline({
           </div>
           <div className={s.stepContent}>
             <div className={s.stepHeader}>
-              <span className={s.stepLabel}>Nhật ký hoạt động</span>
+              <span className={s.stepLabel}>{t('bankJob.activityLog')}</span>
             </div>
             <div className={s.stepLogs}>
               {renderLogNodes([
                 ...logsByStep._general,
                 ...(job.errorMessage ? [{
                   time: job.completedAt ?? '',
-                  message: friendlyError(job.errorMessage),
+                  message: friendlyError(job.errorMessage, t),
                   level: 'error' as LogLevel,
                 }] : []),
               ], '_general')}
@@ -518,7 +636,7 @@ function JobTimeline({
             {job.errorMessage && (
               <div className={s.stepErrorToggle}>
                 <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
-                  {showRaw ? '▴ Ẩn chi tiết kỹ thuật' : '▾ Xem chi tiết kỹ thuật'}
+                  {showRaw ? t('bankJob.hideRaw') : t('bankJob.showRaw')}
                 </button>
                 {showRaw && <pre className={s.rawErrorCode}>{job.errorMessage}</pre>}
               </div>

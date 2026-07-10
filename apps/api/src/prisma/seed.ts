@@ -24,40 +24,9 @@ async function main() {
     { key: 'roles:view',      module: 'roles',     action: 'view',   label: 'Xem vai trò' },
     { key: 'roles:create',    module: 'roles',     action: 'create', label: 'Tạo vai trò' },
     { key: 'roles:update',    module: 'roles',     action: 'update', label: 'Cập nhật vai trò' },
-    { key: 'modules:view',    module: 'modules',   action: 'view',   label: 'Xem danh sách quy trình' },
   ];
 
-  const initialWorkflowModules = [
-    {
-      key: 'bank_statement',
-      name: 'Sao kê ngân hàng',
-      description: 'Tự động lấy sao kê từ cổng ngân hàng điện tử và đồng bộ vào hệ thống.',
-      sortOrder: 1,
-    },
-    {
-      key: 'gmail_invoice',
-      name: 'Hóa đơn từ Gmail',
-      description: 'Tự động quét và trích xuất hóa đơn từ tài khoản Gmail được ủy quyền.',
-      sortOrder: 2,
-    },
-  ];
-
-  // Seed workflow modules first (permissions reference their names)
-  for (const wm of initialWorkflowModules) {
-    await prisma.workflowModule.upsert({
-      where: { key: wm.key },
-      create: { ...wm, isEnabled: false },
-      update: { name: wm.name, description: wm.description, sortOrder: wm.sortOrder },
-    });
-  }
-
-  // Core permissions + per-workflow-module permissions
-  const workflowModulePerms = initialWorkflowModules.flatMap(wm => [
-    { key: `${wm.key}:view`,   module: wm.key, action: 'view',   label: `Xem ${wm.name}` },
-    { key: `${wm.key}:manage`, module: wm.key, action: 'manage', label: `Quản lý ${wm.name}` },
-  ]);
-
-  for (const permission of [...corePermissions, ...workflowModulePerms]) {
+  for (const permission of corePermissions) {
     await prisma.permission.upsert({
       where: { key: permission.key },
       create: permission,
@@ -183,34 +152,7 @@ async function main() {
     update: {},
   });
 
-  const countryMappings = [
-    { companyName: 'INTREPID VIETNAM LTD',         countryCode: 'VN' },
-    { companyName: 'INTREPID MALAYSIA SDN. BHD',   countryCode: 'MY' },
-    { companyName: 'INTREPID DIGITAL I PT',        countryCode: 'ID' },
-    { companyName: 'INTREPID PHILIPPINES INC.',    countryCode: 'PH' },
-    { companyName: 'DATAMART VIET NAM CO., LTD',   countryCode: 'DM_VN' },
-    { companyName: 'INTREPID DIGITAL COMMERCE PL', countryCode: 'SG' },
-  ];
-  for (const cm of countryMappings) {
-    await prisma.bankCountryMapping.upsert({
-      where: { companyName: cm.companyName },
-      create: cm,
-      update: {},
-    });
-  }
   console.log('Bank statement defaults seeded');
-
-  // ─── Countries ──────────────────────────────────────────────────────────────
-  const countries = [
-    { code: 'HK', name: 'Hong Kong', currency: 'HKD' },
-    { code: 'ID', name: 'Indonesia',  currency: 'IDR' },
-    { code: 'MY', name: 'Malaysia',   currency: 'MYR' },
-    { code: 'PH', name: 'Philippines', currency: 'PHP' },
-  ];
-  for (const c of countries) {
-    await prisma.country.upsert({ where: { code: c.code }, create: c, update: {} });
-  }
-  console.log('Countries seeded: HK, ID, MY, PH');
 }
 
 main()

@@ -11,7 +11,6 @@ import { HasPermission } from '../../common/decorators/has-permission.decorator'
 import { BankStatementService, BankSyncJobDto } from './bank-statement.service';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
-import { CreateCountryMappingDto, UpdateCountryMappingDto } from './dto/country-mapping.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 import { RetryJobDto } from './dto/retry-job.dto';
 
@@ -61,36 +60,6 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Cập nhật template header download' })
   updateTemplate(@Body() body: UpdateTemplateDto) {
     return this.service.updateTemplate(body);
-  }
-
-  // ─── Country Mappings ────────────────────────────────────────────────────────
-
-  @Get('settings/countries')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Danh sách mapping công ty → quốc gia' })
-  listCountries() {
-    return this.service.listCountryMappings();
-  }
-
-  @Post('settings/countries')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Thêm mapping công ty → quốc gia' })
-  createCountry(@Body() body: CreateCountryMappingDto) {
-    return this.service.createCountryMapping(body);
-  }
-
-  @Put('settings/countries/:id')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Cập nhật mapping' })
-  updateCountry(@Param('id') id: string, @Body() body: UpdateCountryMappingDto) {
-    return this.service.updateCountryMapping(id, body);
-  }
-
-  @Delete('settings/countries/:id')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Xóa mapping' })
-  deleteCountry(@Param('id') id: string) {
-    return this.service.deleteCountryMapping(id);
   }
 
   // ─── GSheet Configs ──────────────────────────────────────────────────────────
@@ -158,6 +127,24 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Tóm tắt giao dịch theo tài khoản của một job' })
   getJobSummary(@Param('id') id: string) {
     return this.service.getJobSummary(id);
+  }
+
+  @Get('account-transactions')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách giao dịch theo tài khoản + khoảng ngày' })
+  getAccountTransactions(
+    @Query('accountId') accountId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.service.getAccountTransactions(accountId, new Date(from), new Date(to));
+  }
+
+  @Get('jobs/:id/account-transactions')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách giao dịch của một tài khoản trong job' })
+  getJobAccountTransactions(@Param('id') id: string, @Query('accountId') accountId: string) {
+    return this.service.getJobAccountTransactions(id, accountId);
   }
 
   @Post('jobs/:id/retry')

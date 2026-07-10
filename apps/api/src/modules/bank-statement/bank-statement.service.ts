@@ -6,7 +6,6 @@ import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
-import { CreateCountryMappingDto, UpdateCountryMappingDto } from './dto/country-mapping.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 
 const SETTINGS_ID = 'default';
@@ -134,29 +133,6 @@ export class BankStatementService implements OnModuleInit {
     });
   }
 
-  // ─── Country Mappings ────────────────────────────────────────────────────────
-
-  async listCountryMappings() {
-    return this.prisma.bankCountryMapping.findMany({ orderBy: { companyName: 'asc' } });
-  }
-
-  async createCountryMapping(dto: CreateCountryMappingDto) {
-    return this.prisma.bankCountryMapping.create({ data: dto });
-  }
-
-  async updateCountryMapping(id: string, dto: UpdateCountryMappingDto) {
-    const existing = await this.prisma.bankCountryMapping.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('COUNTRY_MAPPING_NOT_FOUND');
-    return this.prisma.bankCountryMapping.update({ where: { id }, data: dto });
-  }
-
-  async deleteCountryMapping(id: string) {
-    const existing = await this.prisma.bankCountryMapping.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('COUNTRY_MAPPING_NOT_FOUND');
-    await this.prisma.bankCountryMapping.delete({ where: { id } });
-    return { ok: true };
-  }
-
   // ─── GSheet Configs ──────────────────────────────────────────────────────────
 
   async listGsheetConfigs() {
@@ -251,6 +227,63 @@ export class BankStatementService implements OnModuleInit {
       },
       daily,
     };
+  }
+
+  async getAccountTransactions(accountId: string, from: Date, to: Date) {
+    const txns = await this.prisma.bankTransaction.findMany({
+      where: {
+        bankAccountId: accountId,
+        postDate: { gte: from, lte: to },
+      },
+      orderBy: { postDate: 'asc' },
+      select: {
+        id: true,
+        postDate: true,
+        narrative: true,
+        bankReference: true,
+        creditAmount: true,
+        debitAmount: true,
+        createdAt: true,
+      },
+    });
+    return txns.map(t => ({
+      id: t.id,
+      postDate: t.postDate,
+      narrative: t.narrative,
+      bankReference: t.bankReference,
+      creditAmount: t.creditAmount != null ? Number(t.creditAmount) : null,
+      debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
+      fetchedAt: t.createdAt,
+    }));
+  }
+
+  async getJobAccountTransactions(jobId: string, accountId: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const txns = await this.prisma.bankTransaction.findMany({
+      where: { jobId, bankAccountId: accountId },
+      orderBy: { postDate: 'asc' },
+      select: {
+        id: true,
+        postDate: true,
+        narrative: true,
+        bankReference: true,
+        creditAmount: true,
+        debitAmount: true,
+        createdAt: true,
+      },
+    });
+
+    return txns.map(t => ({
+      id: t.id,
+      postDate: t.postDate,
+      narrative: t.narrative,
+      bankReference: t.bankReference,
+      creditAmount: t.creditAmount != null ? Number(t.creditAmount) : null,
+      debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
+      fetchedAt: t.createdAt,
+    }));
   }
 
   async getJobSummary(jobId: string) {

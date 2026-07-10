@@ -10,9 +10,7 @@ const CORE_PERMISSIONS = [
   { key: 'roles:create',      module: 'roles',       action: 'create', label: 'Tạo vai trò' },
   { key: 'roles:update',      module: 'roles',       action: 'update', label: 'Cập nhật vai trò' },
   { key: 'permissions:view',  module: 'permissions', action: 'view',   label: 'Xem danh sách quyền hạn' },
-  { key: 'modules:view',    module: 'modules',   action: 'view',   label: 'Xem danh sách quy trình' },
-  { key: 'modules:manage', module: 'modules',   action: 'manage', label: 'Bật/tắt quy trình' },
-  { key: 'bank_statement:view',   module: 'bank_statement', action: 'view',   label: 'Xem sao kê ngân hàng' },
+{ key: 'bank_statement:view',   module: 'bank_statement', action: 'view',   label: 'Xem sao kê ngân hàng' },
   { key: 'bank_statement:run',    module: 'bank_statement', action: 'run',    label: 'Chạy đồng bộ sao kê' },
   { key: 'bank_statement:config', module: 'bank_statement', action: 'config', label: 'Cấu hình sao kê ngân hàng' },
   { key: 'report_ar:view',   module: 'report_ar', action: 'view',   label: 'Xem báo cáo AR' },
@@ -41,22 +39,7 @@ export class PermissionsService implements OnApplicationBootstrap {
       });
     }
 
-    // Upsert per-workflow-module permissions
-    const workflowModules = await this.prisma.workflowModule.findMany();
-    for (const wm of workflowModules) {
-      await this.prisma.permission.upsert({
-        where: { key: `${wm.key}:view` },
-        create: { key: `${wm.key}:view`,   module: wm.key, action: 'view',   label: `Xem ${wm.name}` },
-        update: { label: `Xem ${wm.name}` },
-      });
-      await this.prisma.permission.upsert({
-        where: { key: `${wm.key}:manage` },
-        create: { key: `${wm.key}:manage`, module: wm.key, action: 'manage', label: `Quản lý ${wm.name}` },
-        update: { label: `Quản lý ${wm.name}` },
-      });
-    }
-
-    this.logger.log(`Permissions synced: ${CORE_PERMISSIONS.length} core + ${workflowModules.length * 2} workflow`);
+    this.logger.log(`Permissions synced: ${CORE_PERMISSIONS.length} core`);
 
     // Auto-assign mọi permission mới vào admin role (skipDuplicates = idempotent)
     const adminRole = await this.prisma.role.findUnique({ where: { key: 'admin' } });

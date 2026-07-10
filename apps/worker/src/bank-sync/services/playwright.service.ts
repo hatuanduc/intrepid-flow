@@ -486,8 +486,8 @@ export function formatDate(d: Date): string {
 
 /** Compute the sync date range based on settings. */
 export function computeDateRange(mode: string, customDays: number): { from: Date; to: Date } {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
   switch (mode) {
     case 'today':
@@ -495,20 +495,20 @@ export function computeDateRange(mode: string, customDays: number): { from: Date
 
     case 'last_7_days': {
       const from = new Date(today);
-      from.setDate(today.getDate() - 6);
+      from.setUTCDate(today.getUTCDate() - 6);
       return { from, to: today };
     }
 
     case 'custom': {
       const from = new Date(today);
-      from.setDate(today.getDate() - (customDays > 0 ? customDays : 1));
+      from.setUTCDate(today.getUTCDate() - (customDays > 0 ? customDays : 1));
       return { from, to: today };
     }
 
     case 'yesterday':
     default: {
       const yesterday = new Date(today);
-      yesterday.setDate(today.getDate() - 1);
+      yesterday.setUTCDate(today.getUTCDate() - 1);
       return { from: yesterday, to: yesterday };
     }
   }

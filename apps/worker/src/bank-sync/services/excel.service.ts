@@ -181,6 +181,7 @@ export class ExcelService {
       row.bankReference ?? '',
       row.creditAmount ?? '',
       row.debitAmount ?? '',
+      row.balance ?? '',       // balance thay đổi sau mỗi giao dịch — phân biệt 2 tx giống hệt nhau
     ].join('|');
     return crypto.createHash('sha256').update(key).digest('hex');
   }
@@ -199,27 +200,31 @@ export class ExcelService {
 function parseDate(value: ExcelJS.CellValue | undefined): Date | undefined {
   if (value == null) return undefined;
 
-  if (value instanceof Date) return value;
+  // ExcelJS may return a native Date (local midnight) — normalize to UTC midnight
+  if (value instanceof Date) {
+    return new Date(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()));
+  }
 
   // exceljs sometimes returns a number (Excel date serial)
   if (typeof value === 'number') {
     // Excel epoch: 1 Jan 1900 = serial 1 (with the Lotus 1-2-3 leap-year bug)
-    const excelEpoch = new Date(1899, 11, 30);
-    const ms = excelEpoch.getTime() + value * 86_400_000;
+    // Use UTC to avoid server-timezone drift
+    const excelEpochMs = Date.UTC(1899, 11, 30);
+    const ms = excelEpochMs + value * 86_400_000;
     return new Date(ms);
   }
 
   const str = String(value).trim();
   if (!str) return undefined;
 
-  // DD/MM/YYYY
+  // DD/MM/YYYY — always store as UTC midnight to keep date as-is
   const ddmmyyyy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(str);
   if (ddmmyyyy) {
-    return new Date(
+    return new Date(Date.UTC(
       parseInt(ddmmyyyy[3], 10),
       parseInt(ddmmyyyy[2], 10) - 1,
       parseInt(ddmmyyyy[1], 10),
-    );
+    ));
   }
 
   // Fallback: let JS Date parse it

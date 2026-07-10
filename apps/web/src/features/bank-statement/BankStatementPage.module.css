@@ -125,6 +125,7 @@
 .stepDotRunning { background: #7c3aed; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
 .stepDotOk      { background: #059669; border-color: #059669; }
 .stepDotErr     { background: #df1b41; border-color: #df1b41; }
+.stepDotSkipped { background: var(--color-border); border-color: var(--color-border-strong); }
 
 .stepLine {
   width: 2px; flex: 1; min-height: 20px; margin-top: 4px;

@@ -83,19 +83,6 @@ model RolePermission {
   @@map("role_permissions")
 }
 
-model WorkflowModule {
-  id          String   @id @default(uuid())
-  key         String   @unique
-  name        String
-  description String?
-  isEnabled   Boolean  @default(false) @map("is_enabled")
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
-
-  @@map("workflow_modules")
-}
-
 // ─── Bank Statement Module ────────────────────────────────────────────────────
 
 model BankAccount {
@@ -104,7 +91,7 @@ model BankAccount {
   accountName   String   @map("account_name")
   bankName      String   @map("bank_name")
   currency      String
-  accountCode   String   @map("country_code")
+  accountCode   String   @map("account_code")
   isActive      Boolean  @default(true) @map("is_active")
   createdAt     DateTime @default(now()) @map("created_at")
 
@@ -185,19 +172,9 @@ model BankDownloadTemplate {
   @@map("bank_download_templates")
 }
 
-model BankCountryMapping {
-  id          String   @id @default(uuid())
-  companyName String   @unique @map("company_name")
-  accountCode String   @map("country_code")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  @@map("bank_country_mappings")
-}
-
 model BankGsheetConfig {
   id                String   @id @default(uuid())
-  accountCode       String   @unique @map("country_code")
+  accountCode       String   @unique @map("account_code")
   spreadsheetId     String   @map("spreadsheet_id")
   spreadsheetUrl    String?  @map("spreadsheet_url")
   templateSheetName String?  @map("template_sheet_name")
@@ -245,16 +222,6 @@ model ArReportSettings {
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("ar_report_settings")
-}
-
-model Country {
-  id       String  @id @default(uuid())
-  code     String  @unique
-  name     String
-  currency String
-  isActive Boolean @default(true) @map("is_active")
-
-  @@map("countries")
 }
 
 model CurrencyRate {

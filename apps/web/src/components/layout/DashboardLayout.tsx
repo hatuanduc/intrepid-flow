@@ -7,6 +7,7 @@ import { clearToken, isImpersonating } from '../../lib/auth';
 import ImpersonationBanner from '../common/ImpersonationBanner';
 import s from './DashboardLayout.module.css';
 import { BellIcon, ChevronDownIcon, GearIcon, PinIcon } from '../icons';
+import { useT } from '../../lib/i18n';
 import {
   MAIN_NAV, FEATURE_NAV, NAV_GROUPS, MORE_NAV, ALL_PINNABLE, ALL_SEARCH_ITEMS,
   type NavItem, type NavGroupDef, type SearchEntry,
@@ -66,6 +67,7 @@ const SignOutMenuIcon = (
 /* ── Inline search bar with dropdown ── */
 function SearchBar() {
   const router  = useRouter();
+  const { t }   = useT();
   const [query, setQuery]   = useState('');
   const [open,  setOpen]    = useState(false);
   const [active, setActive] = useState(0);
@@ -77,8 +79,8 @@ function SearchBar() {
 
   const filtered: SearchEntry[] = query.trim()
     ? ALL_SEARCH_ITEMS.filter(item =>
-        norm(item.label).includes(norm(query)) ||
-        (item.breadcrumb && norm(item.breadcrumb).includes(norm(query)))
+        norm(t(item.label)).includes(norm(query)) ||
+        (item.breadcrumb && norm(t(item.breadcrumb)).includes(norm(query)))
       )
     : ALL_SEARCH_ITEMS;
 
@@ -136,7 +138,7 @@ function SearchBar() {
         <input
           ref={inputRef}
           className={s.search}
-          placeholder="Tìm kiếm..."
+          placeholder={t('layout.searchPlaceholder')}
           value={query}
           onChange={e => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
@@ -153,10 +155,10 @@ function SearchBar() {
       {open && (
         <div className={s.searchDropdown}>
           {filtered.length === 0 ? (
-            <div className={s.searchEmpty}>Không tìm thấy &ldquo;{query}&rdquo;</div>
+            <div className={s.searchEmpty}>{t('layout.searchNotFound', { query })}</div>
           ) : (
             <>
-              <div className={s.searchDropdownLabel}>{query ? 'Kết quả' : 'Điều hướng'}</div>
+              <div className={s.searchDropdownLabel}>{query ? t('layout.searchResults') : t('layout.searchNavigate')}</div>
               {filtered.map((item, i) => (
                 <button
                   key={item.href}
@@ -168,9 +170,9 @@ function SearchBar() {
                   <span className={s.searchResultIcon}>{item.icon}</span>
                   <span className={s.searchResultLabel}>
                     {item.breadcrumb && (
-                      <span className={s.searchResultBreadcrumb}>{item.breadcrumb} &rsaquo;</span>
+                      <span className={s.searchResultBreadcrumb}>{t(item.breadcrumb)} &rsaquo;</span>
                     )}
-                    {item.label}
+                    {t(item.label)}
                   </span>
                 </button>
               ))}
@@ -261,6 +263,7 @@ function initials(name: string | null, email: string) {
 export default function DashboardLayout({ user, children }: { user: User; children: React.ReactNode }) {
   const router   = useRouter();
   const pathname = usePathname();
+  const { t }    = useT();
   const account  = useDropdown();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen]       = useState(false);
@@ -313,7 +316,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
         <button
           className={`${s.pinBtn} ${isPinned(item.href) ? s.pinBtnActive : ''}`}
           onClick={e => togglePin(item, e)}
-          title={isPinned(item.href) ? 'Bỏ ghim' : 'Ghim vào phím tắt'}
+          title={isPinned(item.href) ? t('layout.unpin') : t('layout.pin')}
         >
           <PinIcon />
         </button>
@@ -334,7 +337,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
           onClick={() => setOpen(v => !v)}
         >
           <span className={s.navIcon}>{group.icon}</span>
-          <span style={{ flex: 1, textAlign: 'left' }}>{group.label}</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>{t(group.label)}</span>
           <span className={`${s.moreChevron} ${open ? s.moreChevronOpen : ''}`}>
             {ChevronRightSmIcon}
           </span>
@@ -349,7 +352,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
                 onClick={closeSidebar}
               >
                 <span className={s.navIcon}>{item.icon}</span>
-                {item.label}
+                {t(item.label)}
               </Link>
             ))}
           </div>
@@ -385,14 +388,14 @@ export default function DashboardLayout({ user, children }: { user: User; childr
               </div>
               <div className={s.dropdownDivider} />
               <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/account'); }}>
-                <span className={s.dropdownItemIcon}>{AccountMenuIcon}</span>Tài khoản
+                <span className={s.dropdownItemIcon}>{AccountMenuIcon}</span>{t('layout.account')}
               </button>
               <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/settings'); }}>
-                <span className={s.dropdownItemIcon}>{SettingsMenuIcon}</span>Cài đặt
+                <span className={s.dropdownItemIcon}>{SettingsMenuIcon}</span>{t('layout.settings')}
               </button>
               <div className={s.dropdownDivider} />
               <button className={s.dropdownItem} onClick={handleLogout}>
-                <span className={s.dropdownItemIcon}>{SignOutMenuIcon}</span>Đăng xuất
+                <span className={s.dropdownItemIcon}>{SignOutMenuIcon}</span>{t('layout.signOut')}
               </button>
             </div>
           )}
@@ -401,8 +404,8 @@ export default function DashboardLayout({ user, children }: { user: User; childr
         <SearchBar />
 
         <div className={s.rightActions}>
-          <button className={s.iconBtn} title="Thông báo"><BellIcon /></button>
-          <button className={s.iconBtn} title="Cài đặt" onClick={() => router.push('/settings')}><GearIcon /></button>
+          <button className={s.iconBtn} title={t('layout.notifications')}><BellIcon /></button>
+          <button className={s.iconBtn} title={t('layout.settings')} onClick={() => router.push('/settings')}><GearIcon /></button>
         </div>
       </header>
 
@@ -416,26 +419,26 @@ export default function DashboardLayout({ user, children }: { user: User; childr
             {MAIN_NAV.map(item => (
               <Link key={item.href} href={item.href} className={navClass(item.href)} onClick={closeSidebar}>
                 <span className={s.navIcon}>{item.icon}</span>
-                {item.label}
+                {t(item.label)}
               </Link>
             ))}
           </div>
 
           <div className={s.navGroup}>
-            <span className={s.navGroupLabel}>Phím tắt</span>
+            <span className={s.navGroupLabel}>{t('layout.shortcuts')}</span>
             {shortcuts.length === 0 ? (
-              <span className={s.navHint}>Truy cập chức năng để tạo phím tắt</span>
+              <span className={s.navHint}>{t('layout.shortcutsHint')}</span>
             ) : (
               shortcuts.map(item => (
                 <div key={item.href} className={s.navItemWrap}>
                   <Link href={item.href} className={s.navItem} onClick={closeSidebar}>
                     <span className={s.navIcon}>{item.icon}</span>
-                    {item.label}
+                    {t(item.label)}
                   </Link>
                   <button
                     className={`${s.pinBtn} ${isPinned(item.href) ? s.pinBtnActive : ''}`}
                     onClick={e => togglePin(item, e)}
-                    title={isPinned(item.href) ? 'Bỏ ghim' : 'Ghim vào phím tắt'}
+                    title={isPinned(item.href) ? t('layout.unpin') : t('layout.pin')}
                   >
                     <PinIcon />
                   </button>
@@ -447,12 +450,12 @@ export default function DashboardLayout({ user, children }: { user: User; childr
           <div className={s.sidebarDivider} />
 
           <div className={s.navGroup}>
-            <span className={s.navGroupLabel}>Chức năng</span>
+            <span className={s.navGroupLabel}>{t('layout.features')}</span>
 
             {FEATURE_NAV.map(item => (
               <Link key={item.href} href={item.href} className={navClass(item.href)} onClick={closeSidebar}>
                 <span className={s.navIcon}>{item.icon}</span>
-                {item.label}
+                {t(item.label)}
               </Link>
             ))}
 
@@ -465,7 +468,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
               onClick={() => setMoreOpen(v => !v)}
             >
               <span className={s.navIcon}>{DotsHIcon}</span>
-              <span>Xem thêm</span>
+              <span>{t('layout.showMore')}</span>
               <span className={`${s.moreChevron} ${moreOpen ? s.moreChevronOpen : ''}`}>
                 {ChevronRightSmIcon}
               </span>
@@ -476,7 +479,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
                 ? <div className={s.moreExpandItems}>
                     {MORE_NAV.map(item => <FeatureNavItem key={item.href} item={item} />)}
                   </div>
-                : <div className={s.moreEmpty}>Chưa có tính năng nào</div>
+                : <div className={s.moreEmpty}>{t('layout.moreFeaturesEmpty')}</div>
             )}
           </div>
 

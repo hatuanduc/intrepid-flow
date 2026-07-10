@@ -102,3 +102,33 @@
 .loadingWrap { display: flex; justify-content: center; padding: 60px 0; }
 .empty { font-size: 13px; color: var(--color-subtle); text-align: center; padding: 48px 0; }
 .error { font-size: 13px; color: #df1b41; background: #fff0f3; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; }
+
+/* ── Transaction detail panel ── */
+.txPanel { display: flex; flex-direction: column; gap: 16px; }
+.txPanelMeta { display: flex; align-items: center; gap: 8px; padding-bottom: 12px; border-bottom: 1px solid var(--color-border); }
+.txPanelAccNum { font-size: 12px; font-family: monospace; color: var(--color-muted); }
+.txPanelRange { font-size: 12px; color: var(--color-muted); margin-left: auto; }
+.txPanelLoading { display: flex; justify-content: center; padding: 40px 0; }
+
+.txTableWrap { overflow-x: auto; margin: 0 -24px; }
+.txTable { width: 100%; border-collapse: collapse; min-width: 500px; }
+.txTh {
+  font-size: 11px; font-weight: 600; color: var(--color-secondary);
+  padding: 8px 12px; background: var(--bg-table-head);
+  border-bottom: 1px solid var(--color-border); text-align: left; white-space: nowrap;
+}
+.txTd { font-size: 12px; color: var(--color-secondary); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; }
+.txTdNarrative { font-size: 12px; color: var(--color-secondary); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); max-width: 180px; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.txTdMono { font-size: 11px; font-family: monospace; color: var(--color-muted); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; }
+.txTdCredit { font-size: 12px; font-weight: 600; color: #059669; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; }
+.txTdDebit  { font-size: 12px; font-weight: 600; color: #df1b41; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; }
+.txRow:last-child .txTd,
+.txRow:last-child .txTdNarrative,
+.txRow:last-child .txTdMono,
+.txRow:last-child .txTdCredit,
+.txRow:last-child .txTdDebit { border-bottom: none; }
+.txRow:hover .txTd,
+.txRow:hover .txTdNarrative,
+.txRow:hover .txTdMono,
+.txRow:hover .txTdCredit,
+.txRow:hover .txTdDebit { background: var(--bg-hover); }

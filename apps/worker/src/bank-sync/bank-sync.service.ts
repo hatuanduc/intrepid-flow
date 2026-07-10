@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { JOB_STATUS, FAIL_REASON } from './constants';
-import { PlaywrightService, computeDateRange, type DiscoveredAccount } from './services/playwright.service';
+import { PlaywrightService, computeDateRange } from './services/playwright.service';
 import { ExcelService, type TransactionRow } from './services/excel.service';
 import { SheetsService } from './services/sheets.service';
 
@@ -63,22 +63,31 @@ export class BankSyncService {
         accountRows = await this.runBankSync(jobId);
         await this.updateStep(jobId, 'bank_sync', { status: 'completed', completedAt: new Date().toISOString() });
       } else {
-        await this.log(jobId, 'Bước 1 đã hoàn thành trước đó — nạp dữ liệu từ DB.', 'sheets_sync', 'success');
+        await this.log(jobId, 'Bank sync already completed — loading transactions from DB.', 'sheets_sync', 'success');
         accountRows = await this.loadTransactionsForJob(jobId);
-        await this.log(jobId, `Nạp ${accountRows.size} tài khoản từ DB.`, 'sheets_sync');
+        await this.log(jobId, `Loaded ${pl(accountRows.size, 'account number')} from DB.`, 'sheets_sync');
       }
 
       // ── Step 2: Đồng bộ Google Sheets ─────────────────────────────────────
       if (!step2Done) {
-        await this.updateStep(jobId, 'sheets_sync', { status: 'running', startedAt: new Date().toISOString() });
-        await this.updateJob(jobId, JOB_STATUS.SYNCING_SHEETS);
-        await this.log(jobId, `Bắt đầu đồng bộ ${accountRows.size} tài khoản lên Google Sheets...`, 'sheets_sync');
-        await this.runSheetsSync(jobId, accountRows);
-        await this.updateStep(jobId, 'sheets_sync', { status: 'completed', completedAt: new Date().toISOString() });
+        if (accountRows.size === 0) {
+          await this.log(jobId, 'No new transactions — GSheets sync not needed.', 'sheets_sync', 'success');
+          await this.updateStep(jobId, 'sheets_sync', {
+            status: 'completed',
+            startedAt: new Date().toISOString(),
+            completedAt: new Date().toISOString(),
+          });
+        } else {
+          await this.updateStep(jobId, 'sheets_sync', { status: 'running', startedAt: new Date().toISOString() });
+          await this.updateJob(jobId, JOB_STATUS.SYNCING_SHEETS);
+          await this.log(jobId, `Syncing ${pl(accountRows.size, 'account number')} to Google Sheets...`, 'sheets_sync');
+          await this.runSheetsSync(jobId, accountRows);
+          await this.updateStep(jobId, 'sheets_sync', { status: 'completed', completedAt: new Date().toISOString() });
+        }
       }
 
       await this.updateJob(jobId, JOB_STATUS.COMPLETED);
-      await this.log(jobId, 'Job hoàn thành thành công.', undefined, 'success');
+      await this.log(jobId, 'Job completed successfully.', undefined, 'success');
     } catch (err) {
       try { await this.playwright.close(); } catch { /* ignore */ }
 
@@ -111,160 +120,126 @@ export class BankSyncService {
 
     // ── 1a. Browser + auth ────────────────────────────────────────────────────
     await this.playwright.init();
-    await this.log(jobId, 'Trình duyệt đã sẵn sàng — đang kiểm tra phiên đăng nhập...', 'bank_sync');
+    await this.log(jobId, 'Browser ready — checking session...', 'bank_sync');
     await this.updateJob(jobId, JOB_STATUS.CHECKING_SESSION);
 
     const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
 
     if (!(await this.playwright.isLoggedIn())) {
-      await this.log(jobId, 'Phiên đăng nhập hết hạn — bắt đầu đăng nhập lại.', 'bank_sync', 'warn');
+      await this.log(jobId, 'Session expired — logging in.', 'bank_sync');
       await this.updateJob(jobId, JOB_STATUS.LOGGING_IN);
       const username = settings?.hsbcnetUsername ?? '';
       if (!username) {
         throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
       }
       await this.playwright.login(username);
-      await this.log(jobId, `Đã nhập tên đăng nhập (${username}) — chờ xác thực 2FA trên điện thoại...`, 'bank_sync');
+      await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, 'bank_sync');
       await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
       await this.playwright.wait2FA();
-      await this.log(jobId, '2FA xác nhận thành công.', 'bank_sync', 'success');
+      await this.log(jobId, '2FA confirmed.', 'bank_sync', 'success');
       await this.playwright.saveSession();
-      await this.log(jobId, 'Phiên đăng nhập đã được lưu để dùng lại lần sau.', 'bank_sync', 'success');
+      await this.log(jobId, 'Session saved for reuse.', 'bank_sync', 'success');
     } else {
-      await this.log(jobId, 'Phiên đăng nhập còn hiệu lực — bỏ qua bước xác thực.', 'bank_sync', 'success');
+      await this.log(jobId, 'Session still valid — skipping authentication.', 'bank_sync', 'success');
     }
 
     await this.updateJob(jobId, JOB_STATUS.AUTHENTICATED);
-    await this.log(jobId, 'Đã xác thực thành công.', 'bank_sync', 'success');
+    await this.log(jobId, 'Authenticated successfully.', 'bank_sync', 'success');
 
-    // ── 1b. Account discovery ─────────────────────────────────────────────────
-    await this.log(jobId, 'Đang quét danh sách tài khoản từ HSBCnet...', 'bank_sync');
-    let discovered: DiscoveredAccount[] = [];
-    try {
-      discovered = await this.playwright.discoverAccounts();
-      await this.log(jobId, `Phát hiện ${discovered.length} tài khoản trên HSBCnet.`, 'bank_sync');
-    } catch (err) {
-      const msg = (err as Error).message ?? 'Discovery error';
-      await this.log(jobId, `Cảnh báo: không thể quét danh sách tài khoản — ${msg}. Tiếp tục với tài khoản trong DB.`, 'bank_sync', 'warn');
-    }
-
-    // ── 1b-2. Sync discovered accounts (filter by country mapping) ───────────
-    const mappings = await this.prisma.bankCountryMapping.findMany({ where: { isActive: true } });
-    const companyToCountry = new Map(mappings.map(m => [m.companyName, m.accountCode]));
-    const mappedAccountCodes = new Set(mappings.map(m => m.accountCode));
-
-    if (discovered.length > 0) {
-      const newAccounts = await this.syncDiscoveredAccounts(jobId, discovered, companyToCountry);
-      if (newAccounts > 0) {
-        await this.log(jobId, `★ ${newAccounts} tài khoản mới được phát hiện và thêm vào hệ thống.`, 'bank_sync', 'success');
-      }
-    }
-
-    // ── 1c. Compute date range from settings ──────────────────────────────────
+    // ── 1b. Compute date range from settings ─────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anySettings = settings as any;
     const dateMode: string = anySettings?.syncDateMode ?? 'yesterday';
     const customDays: number = anySettings?.syncCustomDays ?? 1;
     const { from: dateFrom, to: dateTo } = computeDateRange(dateMode, customDays);
     const rangeLabel = `${formatDateLabel(dateFrom)} → ${formatDateLabel(dateTo)}`;
-    await this.log(jobId, `Khoảng ngày đồng bộ: ${rangeLabel} (chế độ: ${dateMode}).`, 'bank_sync');
+    await this.log(jobId, `Date range: ${rangeLabel} (mode: ${dateMode}).`, 'bank_sync');
 
-    // ── 1d. Download per active account (only mapped account codes) ──────────────
-    const accountFilter = mappedAccountCodes.size > 0
-      ? { isActive: true, accountCode: { in: [...mappedAccountCodes] } }
-      : { isActive: true };
-    const accounts = await this.prisma.bankAccount.findMany({ where: accountFilter });
-    await this.log(jobId, `Bắt đầu tải sao kê cho ${accounts.length} tài khoản (${mappedAccountCodes.size} account code đã mapping)...`, 'bank_sync');
+    // ── 1c. Download per active account (grouped by accountName) ─────────────
+    const accounts = await this.prisma.bankAccount.findMany({
+      where: { isActive: true },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
+    });
+
+    // Group by accountName
+    const groups = new Map<string, typeof accounts>();
+    for (const account of accounts) {
+      if (!groups.has(account.accountName)) groups.set(account.accountName, []);
+      groups.get(account.accountName)!.push(account);
+    }
+
+    await this.log(jobId, `Starting fetch — ${pl(groups.size, 'account name')}, ${pl(accounts.length, 'account number')}, range ${rangeLabel}.`, 'bank_sync');
     await this.updateJob(jobId, JOB_STATUS.DOWNLOADING);
 
-    for (const account of accounts) {
-      await this.log(jobId, `Đang tải ${account.accountNumber}...`, 'bank_sync');
+    let withNew = 0;
+    let alreadyUpToDate = 0;
 
-      let excelBuffer: Buffer | null;
-      try {
-        excelBuffer = await this.playwright.downloadStatement(account.accountNumber, dateFrom, dateTo);
-      } catch (err) {
-        const msg = (err as Error).message ?? 'Download error';
-        await this.log(jobId, `${account.accountNumber}: lỗi tải file — ${msg} [${FAIL_REASON.DOWNLOAD_ERROR}]`, 'bank_sync', 'error');
-        continue;
+    for (const [groupName, groupAccounts] of groups) {
+      await this.log(jobId, `${groupName} (${pl(groupAccounts.length, 'account number')}):`, 'bank_sync');
+
+      for (const account of groupAccounts) {
+        await this.log(jobId, `  → Fetching ${account.accountNumber}...`, 'bank_sync');
+
+        let excelBuffer: Buffer | null;
+        try {
+          excelBuffer = await this.playwright.downloadStatement(account.accountNumber, dateFrom, dateTo);
+        } catch (err) {
+          const msg = (err as Error).message ?? 'Download error';
+          await this.log(jobId, `  → ${account.accountNumber}: fetch failed — ${msg} [${FAIL_REASON.DOWNLOAD_ERROR}]`, 'bank_sync', 'error');
+          continue;
+        }
+
+        if (excelBuffer === null) {
+          await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
+          continue;
+        }
+
+        await this.log(jobId, `  → ${account.accountNumber}: Excel statement fetched.`, 'bank_sync', 'success');
+
+        await this.updateJob(jobId, JOB_STATUS.STORING);
+        const { rows, validation } = await this.excel.parse(excelBuffer);
+        await this.log(jobId, `  → ${account.accountNumber}: parsed ${pl(rows.length, 'transaction row')}.`, 'bank_sync');
+
+        if (!validation.valid) {
+          await this.log(jobId, `  → ${account.accountNumber}: missing required columns — ${validation.missingRequired.join(', ')} [${FAIL_REASON.MISSING_REQUIRED_COLUMNS}]`, 'bank_sync', 'error');
+          continue;
+        }
+        if (validation.missingOptional.length > 0) {
+          await this.log(jobId, `  → ${account.accountNumber}: missing optional columns — ${validation.missingOptional.join(', ')}`, 'bank_sync', 'warn');
+        }
+
+        const { inserted, duplicates } = await this.storeTransactions(jobId, account.id, account.accountNumber, rows);
+        await this.log(jobId, `  → ${account.accountNumber}: stored — ${inserted} new, ${pl(duplicates, 'duplicate')}.`, 'bank_sync', inserted > 0 ? 'success' : 'warn');
+
+        if (inserted > 0) {
+          result.set(account.accountNumber, rows);
+          withNew++;
+        } else {
+          alreadyUpToDate++;
+        }
       }
-
-      if (excelBuffer === null) {
-        await this.log(jobId, `${account.accountNumber}: không có giao dịch trong khoảng ${rangeLabel} — bỏ qua.`, 'bank_sync', 'warn');
-        continue;
-      }
-
-      await this.log(jobId, `${account.accountNumber}: tải file thành công (${(excelBuffer.length / 1024).toFixed(1)} KB).`, 'bank_sync', 'success');
-
-      await this.updateJob(jobId, JOB_STATUS.STORING);
-      const { rows, validation } = await this.excel.parse(excelBuffer);
-      await this.log(jobId, `${account.accountNumber}: đọc được ${rows.length} dòng giao dịch.`, 'bank_sync');
-
-      if (!validation.valid) {
-        await this.log(jobId, `${account.accountNumber}: thiếu cột bắt buộc — ${validation.missingRequired.join(', ')} [${FAIL_REASON.MISSING_REQUIRED_COLUMNS}]`, 'bank_sync', 'error');
-        continue;
-      }
-      if (validation.missingOptional.length > 0) {
-        await this.log(jobId, `${account.accountNumber}: cảnh báo — thiếu cột optional: ${validation.missingOptional.join(', ')}`, 'bank_sync', 'warn');
-      }
-
-      const { inserted, duplicates } = await this.storeTransactions(jobId, account.id, account.accountNumber, rows);
-      await this.log(jobId, `${account.accountNumber}: lưu xong — ${inserted} giao dịch mới, ${duplicates} trùng (bỏ qua).`, 'bank_sync', 'success');
-
-      result.set(account.accountNumber, rows);
     }
 
-    await this.log(jobId, `Hoàn thành bước 1 — đã xử lý ${result.size}/${accounts.length} tài khoản.`, 'bank_sync', 'success');
+    let summaryMsg: string;
+    if (withNew === 0 && alreadyUpToDate === 0) {
+      summaryMsg = `Done — ${pl(accounts.length, 'account number')} checked, no transactions in range ${rangeLabel}.`;
+    } else if (withNew === 0) {
+      summaryMsg = `Done — ${pl(accounts.length, 'account number')} checked, all already up to date.`;
+    } else if (alreadyUpToDate === 0) {
+      summaryMsg = `Done — ${pl(accounts.length, 'account number')} checked, ${pl(withNew, 'account number')} had new transactions.`;
+    } else {
+      summaryMsg = `Done — ${pl(accounts.length, 'account number')} checked, ${withNew} had new transactions, ${alreadyUpToDate} already up to date.`;
+    }
+    await this.log(jobId, summaryMsg, 'bank_sync', 'success');
     // Browser stays open — session reused by next job run
     return result;
-  }
-
-  /**
-   * Upsert discovered accounts into bank_accounts table.
-   * Returns count of newly inserted accounts.
-   */
-  private async syncDiscoveredAccounts(
-    jobId: string,
-    discovered: DiscoveredAccount[],
-    companyToCountry: Map<string, string>,
-  ): Promise<number> {
-    let newCount = 0;
-    for (const acc of discovered) {
-      const mappedAccountCode = companyToCountry.get(acc.companyName);
-      if (!mappedAccountCode) {
-        await this.log(
-          jobId,
-          `⚠ Công ty "${acc.companyName}" chưa có trong mapping — bỏ qua. Vào Cài đặt → Sao kê NH → Tài khoản để thêm.`,
-          'bank_sync', 'warn',
-        );
-        continue;
-      }
-
-      const existing = await this.prisma.bankAccount.findUnique({ where: { accountNumber: acc.accountNumber } });
-      if (existing) continue;
-
-      await this.prisma.bankAccount.create({
-        data: {
-          accountNumber: acc.accountNumber,
-          accountName: acc.companyName || acc.accountNumber,
-          bankName: 'HSBC',
-          currency: acc.currency,
-          accountCode: mappedAccountCode,
-          isActive: true,
-        },
-      });
-      await this.log(jobId, `[NEW_ACCOUNT] ${acc.accountNumber}`, 'bank_sync', 'success');
-      await this.log(jobId, `Tài khoản mới: ${acc.accountNumber} (${acc.companyName}, ${acc.currency}) — đã thêm vào hệ thống.`, 'bank_sync', 'success');
-      newCount++;
-    }
-    return newCount;
   }
 
   // ─── Step 2: Sheets sync (read DB → push GSheets) ───────────────────────────
 
   private async runSheetsSync(jobId: string, accountRows: Map<string, TransactionRow[]>): Promise<void> {
     if (accountRows.size === 0) {
-      await this.log(jobId, 'Không có tài khoản nào để đồng bộ lên GSheets.', 'sheets_sync');
+      await this.log(jobId, 'No account numbers to sync to GSheets.', 'sheets_sync');
       return;
     }
 
@@ -278,25 +253,25 @@ export class BankSyncService {
           skipped++;
           const reason = result.reason ?? 'unknown';
           const msg = reason.startsWith('no_gsheet_config_for_')
-            ? `chưa cấu hình GSheet cho quốc gia ${reason.replace('no_gsheet_config_for_', '')}`
-            : reason === 'no_service_key' ? 'chưa cấu hình Google service key'
-            : reason === 'all_duplicates' ? 'tất cả đã tồn tại (trùng lặp)'
+            ? `no GSheet config for account code ${reason.replace('no_gsheet_config_for_', '')}`
+            : reason === 'no_service_key' ? 'no Google service key configured'
+            : reason === 'all_duplicates' ? 'all rows already exist (duplicates)'
             : reason;
-          await this.log(jobId, `${accountNumber}: bỏ qua GSheets — ${msg}`, 'sheets_sync', 'warn');
+          await this.log(jobId, `${accountNumber}: skipped — ${msg}`, 'sheets_sync', 'warn');
         } else {
           synced++;
-          await this.log(jobId, `${accountNumber}: đã sync ${result.rowsSynced ?? 0} dòng lên GSheets`, 'sheets_sync', 'success');
+          await this.log(jobId, `${accountNumber}: synced ${pl(result.rowsSynced ?? 0, 'row')} to GSheets.`, 'sheets_sync', 'success');
         }
       } catch (err) {
         skipped++;
         const msg = (err as Error).message ?? 'Sheets error';
-        await this.log(jobId, `${accountNumber}: lỗi GSheets — ${msg} [${FAIL_REASON.SHEET_ERROR}]`, 'sheets_sync', 'error');
+        await this.log(jobId, `${accountNumber}: GSheets error — ${msg} [${FAIL_REASON.SHEET_ERROR}]`, 'sheets_sync', 'error');
       }
     }
 
     await this.log(
       jobId,
-      `Hoàn thành bước 2 — ${synced} tài khoản đã sync, ${skipped} bỏ qua.`,
+      `Done — ${pl(synced, 'account number')} synced, ${skipped} skipped.`,
       'sheets_sync',
       synced > 0 ? 'success' : 'warn',
     );
@@ -423,4 +398,8 @@ export class BankSyncService {
 
 function formatDateLabel(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function pl(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
 }

@@ -11,24 +11,13 @@ import { useHasPermission } from '../../hooks/useHasPermission';
 import AccessDenied from '../../components/common/AccessDenied';
 import PageLoader from '../../components/common/PageLoader';
 import { useToast } from '../../components/common/Toast';
+import { useT } from '../../lib/i18n';
 import s from './BankStatementPage.module.css';
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
-const STATUS_LABEL: Record<string, string> = {
-  pending:           'Chờ xử lý',
-  checking_session:  'Kiểm tra phiên',
-  logging_in:        'Đang đăng nhập',
-  waiting_2fa:       'Chờ 2FA',
-  authenticated:     'Đã xác thực',
-  downloading:       'Đang tải',
-  storing:           'Đang lưu',
-  syncing_sheets:    'Sync GSheets',
-  completed:         'Hoàn thành',
-  failed:            'Thất bại',
-};
-
 function StatusBadge({ status }: { status: string }) {
+  const { t } = useT();
   const cls = status === 'completed' ? s.badgeSuccess
     : status === 'failed'           ? s.badgeError
     : status === 'waiting_2fa'      ? s.badgeWarn
@@ -36,15 +25,12 @@ function StatusBadge({ status }: { status: string }) {
     : ['checking_session', 'logging_in', 'authenticated',
        'downloading', 'storing', 'syncing_sheets'].includes(status) ? s.badgeRunning
     : s.badgeDefault;
-  return <span className={`${s.badge} ${cls}`}>{STATUS_LABEL[status] ?? status}</span>;
+  const label = t(`bankStatement.status_${status}`);
+  return <span className={`${s.badge} ${cls}`}>{label !== `bankStatement.status_${status}` ? label : status}</span>;
 }
 
 function isActive(status: string) {
   return !['completed', 'failed'].includes(status);
-}
-
-function isRunning(status: string) {
-  return !['completed', 'failed', 'pending'].includes(status);
 }
 
 function formatDuration(ms: number | null): string {
@@ -70,6 +56,7 @@ export default function BankStatementPage() {
   const canRun     = useHasPermission('bank_statement:run');
   const toast      = useToast();
   const router     = useRouter();
+  const { t }      = useT();
 
   const [jobs, setJobs] = useState<BankSyncJob[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,7 +97,7 @@ export default function BankStatementPage() {
       const job = await triggerBankSync();
       router.push('/bank-statement/jobs/' + job.id);
     } catch {
-      toast.error('Kích hoạt thất bại. Kiểm tra lại cấu hình.');
+      toast.error(t('bankStatement.triggerFailed'));
     } finally {
       setTriggering(false);
     }
@@ -123,7 +110,7 @@ export default function BankStatementPage() {
       const updated = await retryBankJob(id, stepKey);
       router.push('/bank-statement/jobs/' + updated.id);
     } catch {
-      toast.error('Chạy lại thất bại. Vui lòng thử lại.');
+      toast.error(t('bankStatement.retryFailed'));
     } finally {
       setRetryingId(null);
     }
@@ -135,7 +122,7 @@ export default function BankStatementPage() {
       await deleteBankJob(id);
       setJobs(prev => prev.filter(j => j.id !== id));
     } catch {
-      toast.error('Xóa thất bại. Vui lòng thử lại.');
+      toast.error(t('bankStatement.deleteFailed'));
     } finally {
       setDeletingId(null);
       setOpenMenu(null);
@@ -148,16 +135,16 @@ export default function BankStatementPage() {
         <>
           <div className={s.pageHeader}>
             <div>
-              <h1 className={s.pageTitle}>Sao kê ngân hàng</h1>
+              <h1 className={s.pageTitle}>{t('bankStatement.title')}</h1>
               {jobs[0] && (
                 <p className={s.pageSubtitle}>
-                  Lần cuối: {formatDateTime(jobs[0].createdAt)} · <StatusBadge status={jobs[0].status} />
+                  {t('bankStatement.lastRun')}: {formatDateTime(jobs[0].createdAt)} · <StatusBadge status={jobs[0].status} />
                 </p>
               )}
             </div>
             {canRun && (
-              <button className={s.btnPrimary} onClick={trigger} disabled={triggering || missingConfig} title={missingConfig ? 'Cần cấu hình HSBC trước' : undefined}>
-                {triggering ? 'Đang kích hoạt...' : '▶ Chạy đồng bộ'}
+              <button className={s.btnPrimary} onClick={trigger} disabled={triggering || missingConfig} title={missingConfig ? t('bankStatement.missingConfig') : undefined}>
+                {triggering ? t('bankStatement.triggering') : t('bankStatement.runSync')}
               </button>
             )}
           </div>
@@ -165,22 +152,22 @@ export default function BankStatementPage() {
           {missingConfig && (
             <div className={s.setupBanner}>
               <span className={s.setupBannerIcon}>⚠</span>
-              <span>Chưa cấu hình tài khoản HSBC. Vui lòng thiết lập trước khi chạy đồng bộ.</span>
-              <Link href="/bank-statement/settings" className={s.setupBannerLink}>Vào Cài đặt →</Link>
+              <span>{t('bankStatement.missingConfig')}</span>
+              <Link href="/bank-statement/settings" className={s.setupBannerLink}>{t('bankStatement.goToSettings')}</Link>
             </div>
           )}
 
           {jobs.length === 0 ? (
-            <div className={s.empty}>Chưa có job nào. Nhấn "Chạy đồng bộ" để bắt đầu.</div>
+            <div className={s.empty}>{t('bankStatement.noJobs')}</div>
           ) : (
             <div className={s.tableWrap}>
               <table className={s.table}>
                 <thead>
                   <tr>
-                    <th className={s.th}>Thời gian</th>
-                    <th className={s.th}>Kích hoạt bởi</th>
-                    <th className={s.th}>Trạng thái</th>
-                    <th className={s.th}>Thời lượng</th>
+                    <th className={s.th}>{t('bankStatement.time')}</th>
+                    <th className={s.th}>{t('bankStatement.triggeredBy')}</th>
+                    <th className={s.th}>{t('bankStatement.status')}</th>
+                    <th className={s.th}>{t('bankStatement.duration')}</th>
                     <th className={s.th} style={{ width: 40 }} />
                   </tr>
                 </thead>
@@ -192,7 +179,7 @@ export default function BankStatementPage() {
                       <td className={s.td}>{formatDateTime(job.createdAt)}</td>
                       <td className={s.td}>
                         <span className={s.triggerLabel}>
-                          {job.triggeredBy ? 'Thủ công' : 'Tự động'}
+                          {job.triggeredBy ? t('bankStatement.manual') : t('bankStatement.automatic')}
                         </span>
                       </td>
                       <td className={s.td}><StatusBadge status={job.status} /></td>
@@ -212,7 +199,7 @@ export default function BankStatementPage() {
                                     disabled={retryingId === job.id}
                                     onClick={() => handleRetry(job.id)}
                                   >
-                                    {retryingId === job.id ? 'Đang chạy...' : '↺ Chạy lại'}
+                                    {retryingId === job.id ? t('bankStatement.retrying') : t('bankStatement.retry')}
                                   </button>
                                 )}
                                 <button
@@ -220,7 +207,7 @@ export default function BankStatementPage() {
                                   disabled={deletingId === job.id}
                                   onClick={() => handleDelete(job.id)}
                                 >
-                                  {deletingId === job.id ? 'Đang xóa...' : 'Xóa'}
+                                  {deletingId === job.id ? t('bankStatement.deleting') : t('common.delete')}
                                 </button>
                               </div>
                             )}

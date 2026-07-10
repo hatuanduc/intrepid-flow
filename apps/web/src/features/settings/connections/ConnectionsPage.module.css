@@ -202,3 +202,24 @@
 .textareaError { border-color: #df1b41 !important; }
 .textareaError:focus { box-shadow: 0 0 0 3px rgba(223,27,65,.10) !important; }
 .fieldError { font-size: 12px; color: #df1b41; }
+
+/* ── Service account email display ── */
+.emailRow {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-radius: 6px;
+  border: 1.5px solid var(--color-border); background: var(--bg-subtle);
+}
+.emailValue {
+  flex: 1; font-size: 13px; color: var(--color-secondary);
+  font-family: 'Consolas', 'Monaco', monospace;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.btnCopy {
+  flex-shrink: 0; width: 26px; height: 26px;
+  border: none; background: none; color: var(--color-muted);
+  cursor: pointer; border-radius: 4px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+.btnCopy:hover { background: var(--color-border); color: var(--color-ink); }
+.btnCopied { color: #059669 !important; }

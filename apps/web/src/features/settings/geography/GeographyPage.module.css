@@ -47,6 +47,13 @@
 }
 .rateValue { font-size: 13px; font-weight: 500; color: var(--color-ink); font-family: monospace; }
 .metaText  { font-size: 12px; color: var(--color-muted); }
+.currencyCell { display: flex; align-items: center; gap: 8px; }
+.currencyName { font-size: 12px; color: var(--color-muted); }
+.flagImg {
+  width: 22px; height: 22px; border-radius: 50%;
+  object-fit: cover; flex-shrink: 0;
+  border: 1px solid var(--color-border-light);
+}
 
 /* Badges */
 .badgeActive   { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 20px; background: #d1fae5; color: #0e6245; }
@@ -128,6 +135,51 @@
 .inputError { border-color: #df1b41 !important; }
 .inputError:focus { box-shadow: 0 0 0 3px rgba(223,27,65,.10) !important; }
 .fieldError { font-size: 12px; color: #df1b41; margin-top: -2px; }
+
+/* ── Currency Picker ── */
+.ratesActions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+.addCurrencyWrap { position: relative; }
+
+.pickerBackdrop { position: fixed; inset: 0; z-index: 20; }
+
+.currencyPickerDropdown {
+  position: absolute; right: 0; top: calc(100% + 6px);
+  background: var(--bg-surface); border: 1px solid var(--color-border);
+  border-radius: 8px; box-shadow: 0 4px 20px rgba(0,0,0,.12);
+  min-width: 240px; z-index: 21; overflow: hidden;
+}
+
+.pickerSearch { padding: 8px; border-bottom: 1px solid var(--color-border); }
+
+.pickerSearchInput {
+  width: 100%; box-sizing: border-box; padding: 6px 10px;
+  font-size: 13px; border: 1.5px solid var(--color-border);
+  border-radius: 6px; background: var(--bg-surface); color: var(--color-ink);
+  outline: none; transition: border-color 0.15s;
+}
+.pickerSearchInput:focus { border-color: var(--color-accent-active); }
+
+.pickerList { max-height: 240px; overflow-y: auto; }
+
+.pickerOption {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 12px; border: none; background: none;
+  font-size: 13px; color: var(--color-ink); text-align: left; cursor: pointer;
+}
+.pickerOption:hover { background: var(--bg-hover); }
+
+.pickerFlag { font-size: 16px; flex-shrink: 0; line-height: 1; }
+
+.pickerCode {
+  font-size: 12px; font-weight: 600; padding: 1px 6px;
+  border-radius: 4px; background: var(--bg-subtle); color: var(--color-secondary);
+  font-family: monospace; flex-shrink: 0;
+}
+
+.pickerName { font-size: 12px; color: var(--color-muted); }
+
+.pickerEmpty { font-size: 13px; color: var(--color-subtle); padding: 16px 12px; }
 
 /* ── Confirm modal ── */
 .overlay {

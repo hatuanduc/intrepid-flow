@@ -566,7 +566,6 @@ function GsheetsTab({
 
   return (
     <div className={s.section}>
-      {/* Per-country first */}
       <div>
         <p className={s.sectionTitle}>Spreadsheet theo account</p>
         <p className={s.sectionDesc}>
@@ -590,7 +589,6 @@ function GsheetsTab({
         ))}
       </div>
 
-      {/* Global config at bottom — changes rarely */}
       <div className={s.globalConfigSection}>
         <div className={s.globalConfigDivider} />
         <GlobalGsheetConfig settings={settings} onSaved={onSaved} toast={toast} />
@@ -640,7 +638,6 @@ function GlobalGsheetConfig({
     <div className={s.card}>
       <p className={s.sectionTitle} style={{ marginBottom: 16 }}>Cấu hình chung</p>
 
-      {/* Row 1: Template source — spreadsheet ID + sheet name are a pair */}
       <div className={s.globalRow}>
         <div className={s.field} style={{ flex: 3 }}>
           <label className={s.label}>
@@ -672,7 +669,6 @@ function GlobalGsheetConfig({
         </div>
       </div>
 
-      {/* Row 2: Service account key — full width */}
       <div className={s.field} style={{ marginTop: 14 }}>
         <label className={s.label}>
           Service Account JSON
@@ -882,4 +878,3 @@ function CountryBadge({ code }: { code: string }) {
     </span>
   );
 }
-

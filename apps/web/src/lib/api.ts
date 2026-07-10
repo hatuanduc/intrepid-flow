@@ -228,32 +228,6 @@ export async function listPermissions() {
   });
 }
 
-// --- Workflow Modules ---
-
-export type WorkflowModuleItem = {
-  id: string;
-  key: string;
-  name: string;
-  description?: string | null;
-  isEnabled: boolean;
-  sortOrder: number;
-};
-
-export async function listWorkflowModules() {
-  return request<{ items: WorkflowModuleItem[] }>('/management/modules', {
-    method: 'GET',
-    auth: true,
-  });
-}
-
-export async function updateWorkflowModule(key: string, input: { isEnabled?: boolean }) {
-  return request<{ item: WorkflowModuleItem }>(`/management/modules/${key}`, {
-    method: 'PUT',
-    auth: true,
-    body: JSON.stringify(input),
-  });
-}
-
 // --- Bank Statement Settings ---
 
 export type SyncDateMode = 'today' | 'yesterday' | 'last_7_days' | 'custom';
@@ -275,14 +249,6 @@ export type BankDownloadTemplate = {
   headers: string[];
   headerHash: string;
   updatedAt: string;
-};
-
-export type BankCountryMapping = {
-  id: string;
-  companyName: string;
-  accountCode: string;
-  isActive: boolean;
-  createdAt: string;
 };
 
 export type BankGsheetConfig = {
@@ -322,28 +288,6 @@ export async function getBankTemplate() {
 export async function updateBankTemplate(headers: string[]) {
   return request<BankDownloadTemplate>('/management/bank-statement/settings/template', {
     method: 'PUT', auth: true, body: JSON.stringify({ headers }),
-  });
-}
-
-export async function listBankCountries() {
-  return request<BankCountryMapping[]>('/management/bank-statement/settings/countries', { auth: true });
-}
-
-export async function createBankCountry(input: { companyName: string; accountCode: string }) {
-  return request<BankCountryMapping>('/management/bank-statement/settings/countries', {
-    method: 'POST', auth: true, body: JSON.stringify(input),
-  });
-}
-
-export async function updateBankCountry(id: string, input: { companyName?: string; accountCode?: string; isActive?: boolean }) {
-  return request<BankCountryMapping>(`/management/bank-statement/settings/countries/${id}`, {
-    method: 'PUT', auth: true, body: JSON.stringify(input),
-  });
-}
-
-export async function deleteBankCountry(id: string) {
-  return request<{ ok: boolean }>(`/management/bank-statement/settings/countries/${id}`, {
-    method: 'DELETE', auth: true,
   });
 }
 
@@ -466,6 +410,30 @@ export async function getBankJobSummary(jobId: string) {
   return request<JobAccountSummary[]>(`/management/bank-statement/jobs/${jobId}/summary`, { auth: true });
 }
 
+export type JobTransaction = {
+  id: string;
+  postDate: string;
+  narrative: string | null;
+  bankReference: string | null;
+  creditAmount: number | null;
+  debitAmount: number | null;
+  fetchedAt: string;
+};
+
+export async function getJobAccountTransactions(jobId: string, accountId: string) {
+  return request<JobTransaction[]>(
+    `/management/bank-statement/jobs/${jobId}/account-transactions?accountId=${accountId}`,
+    { auth: true },
+  );
+}
+
+export async function getAccountTransactions(accountId: string, from: string, to: string) {
+  return request<JobTransaction[]>(
+    `/management/bank-statement/account-transactions?accountId=${accountId}&from=${from}&to=${to}`,
+    { auth: true },
+  );
+}
+
 // --- Report AR ---
 
 export type ArSettings = {
@@ -552,6 +520,8 @@ export async function getArData(country: string = 'TH', bizClass?: string) {
 export type SystemSettingsStatus = {
   hasServiceKey: boolean;
   updatedAt: string | null;
+  serviceKeyJson: string | null;
+  clientEmail: string | null;
 };
 
 export async function getSystemSettings() {
@@ -568,43 +538,6 @@ export async function updateSystemServiceAccount(serviceKeyJson: string | null) 
 
 export async function getBankCurrencyRates() {
   return request<CurrencyRate[]>('/management/bank-statement/currency-rates', { auth: true });
-}
-
-// ─── Countries ────────────────────────────────────────────────────────────────
-
-export type Country = {
-  id: string;
-  code: string;
-  name: string;
-  currency: string;
-  isActive: boolean;
-};
-
-export async function listCountries() {
-  return request<Country[]>('/management/settings/system/countries', { auth: true });
-}
-
-export async function createCountry(body: { code: string; name: string; currency: string }) {
-  return request<Country>('/management/settings/system/countries', {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify(body),
-  });
-}
-
-export async function updateCountry(code: string, body: Partial<{ name: string; currency: string; isActive: boolean }>) {
-  return request<Country>(`/management/settings/system/countries/${code}`, {
-    method: 'PUT',
-    auth: true,
-    body: JSON.stringify(body),
-  });
-}
-
-export async function deleteCountry(code: string) {
-  return request<{ ok: boolean }>(`/management/settings/system/countries/${code}`, {
-    method: 'DELETE',
-    auth: true,
-  });
 }
 
 // ─── Currency Rates ───────────────────────────────────────────────────────────
@@ -635,6 +568,21 @@ export async function updateCurrencySettings(body: { autoUpdateDay: number }) {
     method: 'PUT',
     auth: true,
     body: JSON.stringify(body),
+  });
+}
+
+export async function addCurrencyRate(currency: string) {
+  return request<CurrencyData>('/management/settings/system/currency-rates', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ currency }),
+  });
+}
+
+export async function deleteCurrencyRate(currency: string) {
+  return request<CurrencyData>(`/management/settings/system/currency-rates/${currency}`, {
+    method: 'DELETE',
+    auth: true,
   });
 }
 

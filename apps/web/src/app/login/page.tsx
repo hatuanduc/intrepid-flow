@@ -5,11 +5,13 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { login } from '../../lib/api';
 import { getToken, setToken } from '../../lib/auth';
+import { useT } from '../../lib/i18n';
 
 import styles from './page.module.css';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { t } = useT();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -29,8 +31,8 @@ export default function LoginPage() {
 
   async function doLogin() {
     const errs: Record<string, string> = {};
-    if (!username.trim()) errs.username = 'Vui lòng nhập tên đăng nhập.';
-    if (!password) errs.password = 'Vui lòng nhập mật khẩu.';
+    if (!username.trim()) errs.username = t('login.usernameRequired');
+    if (!password) errs.password = t('login.passwordRequired');
     if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
     setFieldErrors({});
     setError(null);
@@ -40,7 +42,7 @@ export default function LoginPage() {
       setToken(result.token);
       router.replace('/');
     } catch {
-      setError('Tên đăng nhập hoặc mật khẩu không đúng.');
+      setError(t('login.invalidCredentials'));
       setLoading(false);
     }
   }
@@ -65,20 +67,20 @@ export default function LoginPage() {
 
       <div className={styles.cardWrap}>
         <div className={styles.card}>
-          <h1 className={styles.title}>Đăng nhập</h1>
+          <h1 className={styles.title}>{t('login.title')}</h1>
 
           {/* Loading overlay */}
           {loading && (
             <div className={styles.loadingOverlay}>
               <div className={styles.loadingSpinner} />
-              <span>Đang đăng nhập...</span>
+              <span>{t('login.loggingIn')}</span>
             </div>
           )}
 
           {/* Dùng div thay form để tránh native form submission */}
           <div className={styles.form}>
             <div className={styles.field}>
-              <span className={styles.label}>Tên đăng nhập</span>
+              <span className={styles.label}>{t('login.username')}</span>
               <input
                 className={`${styles.input} ${fieldErrors.username ? styles.inputError : ''}`}
                 value={username}
@@ -93,7 +95,7 @@ export default function LoginPage() {
             </div>
 
             <div className={styles.field}>
-              <span className={styles.label}>Mật khẩu</span>
+              <span className={styles.label}>{t('login.password')}</span>
               <div className={styles.passwordWrap}>
                 <input
                   className={`${styles.input} ${fieldErrors.password ? styles.inputError : ''}`}
@@ -110,7 +112,7 @@ export default function LoginPage() {
                   className={styles.eyeBtn}
                   onClick={() => setShowPassword((v) => !v)}
                   tabIndex={-1}
-                  aria-label={showPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                  aria-label={showPassword ? t('login.hidePassword') : t('login.showPassword')}
                 >
                   {showPassword ? (
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -141,7 +143,7 @@ export default function LoginPage() {
               disabled={loading}
               onClick={() => void doLogin()}
             >
-              Đăng nhập
+              {t('login.submit')}
             </button>
           </div>
         </div>

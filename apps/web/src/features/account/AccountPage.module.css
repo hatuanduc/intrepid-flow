@@ -129,6 +129,22 @@
 .roleEditor { background: #dbeafe; color: #1e40af; }
 .roleViewer { background: var(--bg-subtle); color: var(--color-secondary); }
 
+/* ── Language card ── */
+.cardGap { margin-top: 16px; }
+
+.langOptions { display: flex; gap: 8px; }
+
+.langBtn {
+  padding: 5px 14px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: 1.5px solid var(--color-border); background: var(--bg-surface);
+  color: var(--color-secondary); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.langBtn:hover { background: var(--bg-page); }
+.langBtnActive {
+  border-color: var(--color-accent-active); background: var(--color-accent-light);
+  color: var(--color-accent-active);
+}
+
 @media (max-width: 768px) {
   .page { padding: 16px; max-width: 100%; }
   .infoLabel { width: 100px; }

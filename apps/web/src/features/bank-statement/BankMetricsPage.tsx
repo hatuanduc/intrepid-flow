@@ -7,13 +7,16 @@ import {
 } from 'recharts';
 import {
   listBankAccounts, getBankMetrics, getBankCurrencyRates, refreshCurrencyRates,
-  type BankAccount, type MetricsResponse, type DailyMetricsRow, type CurrencyRate,
+  getAccountTransactions,
+  type BankAccount, type MetricsResponse, type DailyMetricsRow, type CurrencyRate, type JobTransaction,
 } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import { useToast } from '../../components/common/Toast';
+import { useT } from '../../lib/i18n';
 import AccessDenied from '../../components/common/AccessDenied';
-import PageLoader from '../../components/common/PageLoader';
+import PageLoader, { Spinner } from '../../components/common/PageLoader';
 import Pagination from '../../components/common/Pagination';
+import RightPanel from '../../components/common/RightPanel';
 import s from './BankMetricsPage.module.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -152,6 +155,7 @@ export default function BankMetricsPage() {
   const canView   = useHasPermission('bank_statement:view');
   const canConfig = useHasPermission('system:config');
   const toast = useToast();
+  const { t } = useT();
   const searchParams = useSearchParams();
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
@@ -168,6 +172,8 @@ export default function BankMetricsPage() {
   const [error, setError] = useState<string | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [ratesRefreshing, setRatesRefreshing] = useState(false);
+  const [txPanel, setTxPanel] = useState<{ row: AccountRow; txRows: JobTransaction[] } | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
 
   useEffect(() => {
     getBankCurrencyRates().then(setCurrencyRates).catch(() => {});
@@ -182,7 +188,7 @@ export default function BankMetricsPage() {
     setLoading(true); setError(null); setPage(1);
     getBankMetrics(fromDate, toDate, codeFilter || undefined, accountFilter || undefined)
       .then(data => setMetrics(data))
-      .catch(() => setError('Không tải được dữ liệu. Vui lòng thử lại.'))
+      .catch(() => setError(t('bankMetrics.loadFailed')))
       .finally(() => setLoading(false));
   }, [fromDate, toDate, codeFilter, accountFilter]);
 
@@ -191,9 +197,23 @@ export default function BankMetricsPage() {
     try {
       const data = await refreshCurrencyRates();
       setCurrencyRates(data.rates);
-      toast.success('Tỉ giá đã được cập nhật.');
-    } catch { toast.error('Cập nhật tỉ giá thất bại.'); }
+      toast.success(t('bankMetrics.rateRefreshed'));
+    } catch { toast.error(t('bankMetrics.rateRefreshFailed')); }
     finally { setRatesRefreshing(false); }
+  }
+
+  async function openTxPanel(row: AccountRow) {
+    setTxPanel({ row, txRows: [] });
+    setTxLoading(true);
+    try {
+      const txRows = await getAccountTransactions(row.accountId, fromDate, toDate);
+      setTxPanel({ row, txRows });
+    } catch {
+      toast.error(t('bankMetrics.txLoadFailed'));
+      setTxPanel(null);
+    } finally {
+      setTxLoading(false);
+    }
   }
 
   if (!canView) return <AccessDenied />;
@@ -231,35 +251,39 @@ export default function BankMetricsPage() {
     return buildCountryChart(accountGroups);
   }, [metrics, hasRates, accountFilter, codeFilter, accountGroups, rateMap]);
 
-  const chartLabel = accountFilter ? 'Theo ngày (USD)' : codeFilter ? `${codeFilter} — theo tài khoản (USD)` : 'Theo account code (USD)';
+  const chartLabel = accountFilter
+    ? t('bankMetrics.chartByDay')
+    : codeFilter
+      ? t('bankMetrics.chartByAccount', { code: codeFilter })
+      : t('bankMetrics.chartByCode');
 
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <h1 className={s.pageTitle}>Metrics — Sao kê NH</h1>
+        <h1 className={s.pageTitle}>{t('bankMetrics.title')}</h1>
       </div>
 
       {/* ── Filters ── */}
       <div className={s.filterBar}>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Từ ngày</label>
+          <label className={s.filterLabel}>{t('bankMetrics.fromDate')}</label>
           <input type="date" className={s.dateInput} value={fromDate} onChange={e => setFromDate(e.target.value)} />
         </div>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Đến ngày</label>
+          <label className={s.filterLabel}>{t('bankMetrics.toDate')}</label>
           <input type="date" className={s.dateInput} value={toDate} onChange={e => setToDate(e.target.value)} />
         </div>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Account code</label>
+          <label className={s.filterLabel}>{t('bankMetrics.accountCode')}</label>
           <select className={s.select} value={codeFilter} onChange={e => { setCodeFilter(e.target.value); setAccountFilter(''); }}>
-            <option value="">Tất cả</option>
+            <option value="">{t('bankMetrics.all')}</option>
             {accountCodes.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Tài khoản</label>
+          <label className={s.filterLabel}>{t('bankMetrics.account')}</label>
           <select className={s.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)} disabled={accountsLoading}>
-            <option value="">Tất cả</option>
+            <option value="">{t('bankMetrics.all')}</option>
             {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountName}</option>)}
           </select>
         </div>
@@ -270,46 +294,46 @@ export default function BankMetricsPage() {
       {loading ? (
         <div className={s.loadingWrap}><PageLoader /></div>
       ) : !metrics || flatAccounts.length === 0 ? (
-        !loading && <div className={s.empty}>Không có dữ liệu trong khoảng thời gian này.</div>
+        !loading && <div className={s.empty}>{t('bankMetrics.noData')}</div>
       ) : (
         <>
           {/* ── USD Total ── */}
           <div className={s.usdBlock}>
             {!hasRates ? (
               <div className={s.usdNoRates}>
-                <span className={s.usdNoRatesText}>Chưa có tỉ giá — không thể quy đổi về USD.</span>
+                <span className={s.usdNoRatesText}>{t('bankMetrics.noRatesAvailable')}</span>
                 {canConfig ? (
                   <button className={s.usdRefreshBtn} onClick={handleRefreshRates} disabled={ratesRefreshing}>
-                    {ratesRefreshing ? 'Đang lấy...' : 'Cập nhật tỉ giá'}
+                    {ratesRefreshing ? t('bankMetrics.fetchingRates') : t('bankMetrics.fetchRates')}
                   </button>
                 ) : (
-                  <span className={s.usdNoRatesMeta}>Liên hệ admin để cập nhật trong Cài đặt.</span>
+                  <span className={s.usdNoRatesMeta}>{t('bankMetrics.contactAdmin')}</span>
                 )}
               </div>
             ) : (
               <>
                 <div className={s.usdTitle}>
-                  Tổng quy đổi (USD)
+                  {t('bankMetrics.usdTotal')}
                   {ratesUpdatedAt && (
-                    <span className={s.usdMeta}>· tỉ giá {new Date(ratesUpdatedAt).toLocaleDateString('vi-VN')}</span>
+                    <span className={s.usdMeta}>· {t('bankMetrics.exchangeRate')} {new Date(ratesUpdatedAt).toLocaleDateString('vi-VN')}</span>
                   )}
                   {usdTotal.missing.length > 0 && (
-                    <span className={s.usdWarn}>· {usdTotal.missing.join(', ')} chưa có tỉ giá</span>
+                    <span className={s.usdWarn}>· {usdTotal.missing.join(', ')} {t('bankMetrics.noRate')}</span>
                   )}
                 </div>
                 <div className={s.usdStats}>
                   <div className={s.usdStat}>
-                    <span className={s.usdLabel}>Tiền vào</span>
+                    <span className={s.usdLabel}>{t('bankMetrics.creditIn')}</span>
                     <span className={`${s.usdValue} ${s.credit}`}>${fmtAmount(usdTotal.credit)}</span>
                   </div>
                   <div className={s.usdDivider} />
                   <div className={s.usdStat}>
-                    <span className={s.usdLabel}>Tiền ra</span>
+                    <span className={s.usdLabel}>{t('bankMetrics.debitOut')}</span>
                     <span className={`${s.usdValue} ${s.debit}`}>${fmtAmount(usdTotal.debit)}</span>
                   </div>
                   <div className={s.usdDivider} />
                   <div className={s.usdStat}>
-                    <span className={s.usdLabel}>Net</span>
+                    <span className={s.usdLabel}>{t('bankMetrics.net')}</span>
                     <span className={`${s.usdValue} ${usdTotal.net >= 0 ? s.credit : s.debit}`}>
                       {usdTotal.net >= 0 ? '+' : ''}${fmtAmount(usdTotal.net)}
                     </span>
@@ -332,8 +356,8 @@ export default function BankMetricsPage() {
                   <YAxis tick={{ fontSize: 11, fill: '#697386' }} axisLine={false} tickLine={false} tickFormatter={v => '$' + fmtNumber(v as number)} width={84} />
                   <Tooltip content={<ChartTooltip />} />
                   <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="credit" name="Tiền vào" fill="#059669" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="debit"  name="Tiền ra"  fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="credit" name={t('bankMetrics.tableCredit')} fill="#059669" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="debit"  name={t('bankMetrics.tableDebit')}  fill="#f59e0b" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -344,13 +368,13 @@ export default function BankMetricsPage() {
             <table className={s.table}>
               <thead>
                 <tr>
-                  <th className={s.th}>Tài khoản</th>
-                  <th className={s.th}>Code</th>
-                  <th className={s.th}>Tiền tệ</th>
-                  <th className={`${s.th} ${s.thRight}`}>Giao dịch</th>
-                  <th className={`${s.th} ${s.thRight}`}>Tiền vào</th>
-                  <th className={`${s.th} ${s.thRight}`}>Tiền ra</th>
-                  <th className={`${s.th} ${s.thRight}`}>Net</th>
+                  <th className={s.th}>{t('bankMetrics.tableAccount')}</th>
+                  <th className={s.th}>{t('bankMetrics.tableCode')}</th>
+                  <th className={s.th}>{t('bankMetrics.tableCurrency')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableTransactions')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableCredit')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableDebit')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableNet')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -359,7 +383,7 @@ export default function BankMetricsPage() {
                   const netUsd = row.creditUsd !== null ? row.creditUsd - (row.debitUsd ?? 0) : null;
                   const showUsd = row.creditUsd !== null && row.currency !== 'USD';
                   return (
-                    <tr key={`${row.accountId}__${row.currency}`} className={s.tr}>
+                    <tr key={`${row.accountId}__${row.currency}`} className={s.tr} onClick={() => openTxPanel(row)} style={{ cursor: 'pointer' }}>
                       <td className={s.td}>
                         <div className={s.nameCell}>
                           <span className={s.avatar} style={{ background: codeColor(row.accountCode) }}>
@@ -412,6 +436,84 @@ export default function BankMetricsPage() {
             />
           </div>
         </>
+      )}
+
+      <RightPanel
+        title={txPanel?.row.accountName ?? ''}
+        open={txPanel !== null}
+        onClose={() => setTxPanel(null)}
+        width={640}
+      >
+        {txPanel && (
+          <MetricsTxPanel
+            row={txPanel.row}
+            txRows={txPanel.txRows}
+            loading={txLoading}
+            fromDate={fromDate}
+            toDate={toDate}
+          />
+        )}
+      </RightPanel>
+    </div>
+  );
+}
+
+// ─── Transaction detail panel ─────────────────────────────────────────────────
+
+function txFmtDate(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
+  row: AccountRow;
+  txRows: JobTransaction[];
+  loading: boolean;
+  fromDate: string;
+  toDate: string;
+}) {
+  const { t } = useT();
+  return (
+    <div className={s.txPanel}>
+      <div className={s.txPanelMeta}>
+        <span className={s.txPanelAccNum}>{row.accountNumber}</span>
+        <span className={s.currencyTag}>{row.currency}</span>
+        <span className={s.txPanelRange}>{fromDate} → {toDate}</span>
+      </div>
+
+      {loading ? (
+        <div className={s.txPanelLoading}><Spinner size={20} /></div>
+      ) : txRows.length === 0 ? (
+        <div className={s.empty}>{t('bankMetrics.txNoData')}</div>
+      ) : (
+        <div className={s.txTableWrap}>
+          <table className={s.txTable}>
+            <thead>
+              <tr>
+                <th className={s.txTh}>Post date</th>
+                <th className={s.txTh}>Narrative</th>
+                <th className={s.txTh}>Bank reference</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txCredit')}</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txDebit')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {txRows.map(tx => (
+                <tr key={tx.id} className={s.txRow}>
+                  <td className={s.txTd}>{txFmtDate(tx.postDate)}</td>
+                  <td className={s.txTdNarrative}>{tx.narrative ?? '—'}</td>
+                  <td className={s.txTdMono}>{tx.bankReference ?? '—'}</td>
+                  <td className={s.txTdCredit}>
+                    {tx.creditAmount ? fmtAmount(tx.creditAmount) : '—'}
+                  </td>
+                  <td className={s.txTdDebit}>
+                    {tx.debitAmount ? fmtAmount(tx.debitAmount) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

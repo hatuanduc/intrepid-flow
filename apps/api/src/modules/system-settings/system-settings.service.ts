@@ -1,7 +1,6 @@
-import { Injectable, OnModuleInit, NotFoundException, ConflictException, Logger } from '@nestjs/common';
+import { Injectable, OnModuleInit, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JobSchedulerService } from '../../common/job-scheduler.service';
-import { CreateCountryDto, UpdateCountryDto } from './dto/country.dto';
 import { UpdateCurrencySettingsDto } from './dto/currency.dto';
 
 const SETTINGS_ID = 'default';
@@ -25,7 +24,7 @@ export class SystemSettingsService implements OnModuleInit {
 
   async getSettings() {
     const s = await this.prisma.systemSettings.findUnique({ where: { id: SETTINGS_ID } });
-    return { hasServiceKey: !!s?.googleServiceKeyJson, updatedAt: s?.updatedAt ?? null };
+    return this._toSettingsDto(s);
   }
 
   async updateServiceAccount(serviceKeyJson: string | null) {
@@ -34,52 +33,28 @@ export class SystemSettingsService implements OnModuleInit {
       create: { id: SETTINGS_ID, googleServiceKeyJson: serviceKeyJson },
       update: { googleServiceKeyJson: serviceKeyJson },
     });
-    return { hasServiceKey: !!s.googleServiceKeyJson, updatedAt: s.updatedAt };
+    return this._toSettingsDto(s);
+  }
+
+  private _toSettingsDto(s: { googleServiceKeyJson: string | null; updatedAt: Date } | null) {
+    let clientEmail: string | null = null;
+    if (s?.googleServiceKeyJson) {
+      try {
+        const parsed = JSON.parse(s.googleServiceKeyJson) as Record<string, unknown>;
+        if (typeof parsed.client_email === 'string') clientEmail = parsed.client_email;
+      } catch {}
+    }
+    return {
+      hasServiceKey: !!s?.googleServiceKeyJson,
+      updatedAt: s?.updatedAt ?? null,
+      serviceKeyJson: s?.googleServiceKeyJson ?? null,
+      clientEmail,
+    };
   }
 
   async getServiceKeyJson(): Promise<string | null> {
     const s = await this.prisma.systemSettings.findUnique({ where: { id: SETTINGS_ID } });
     return s?.googleServiceKeyJson ?? null;
-  }
-
-  // ─── Countries ────────────────────────────────────────────────────────────────
-
-  async listCountries() {
-    return this.prisma.country.findMany({ orderBy: { code: 'asc' } });
-  }
-
-  async createCountry(dto: CreateCountryDto) {
-    const code = dto.code.toUpperCase();
-    const existing = await this.prisma.country.findUnique({ where: { code } });
-    if (existing) throw new ConflictException('COUNTRY_EXISTS');
-    const created = await this.prisma.country.create({
-      data: { code, name: dto.name, currency: dto.currency.toUpperCase() },
-    });
-    // Auto-fetch rate for the new currency
-    await this._fetchAndUpsertRate(created.currency);
-    return created;
-  }
-
-  async updateCountry(code: string, dto: UpdateCountryDto) {
-    const upper = code.toUpperCase();
-    const existing = await this.prisma.country.findUnique({ where: { code: upper } });
-    if (!existing) throw new NotFoundException('COUNTRY_NOT_FOUND');
-    return this.prisma.country.update({
-      where: { code: upper },
-      data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.currency !== undefined && { currency: dto.currency.toUpperCase() }),
-        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
-      },
-    });
-  }
-
-  async deleteCountry(code: string) {
-    const upper = code.toUpperCase();
-    const existing = await this.prisma.country.findUnique({ where: { code: upper } });
-    if (!existing) throw new NotFoundException('COUNTRY_NOT_FOUND');
-    await this.prisma.country.delete({ where: { code: upper } });
-    return { ok: true };
   }
 
   // ─── Currency Rates ───────────────────────────────────────────────────────────
@@ -93,8 +68,15 @@ export class SystemSettingsService implements OnModuleInit {
   }
 
   async refreshCurrencyRates() {
-    const countries = await this.prisma.country.findMany({ where: { isActive: true } });
-    const currencies = [...new Set(countries.map(c => c.currency))];
+    const [bankAccounts, existingRates] = await Promise.all([
+      this.prisma.bankAccount.findMany({ distinct: ['currency'], select: { currency: true } }),
+      this.prisma.currencyRate.findMany({ select: { currency: true } }),
+    ]);
+    const currencies = [...new Set([
+      ...bankAccounts.map(a => a.currency),
+      ...existingRates.map(r => r.currency),
+      'USD',
+    ])];
 
     await Promise.all(currencies.map(c => this._fetchAndUpsertRate(c)));
 
@@ -105,6 +87,16 @@ export class SystemSettingsService implements OnModuleInit {
     });
 
     this.logger.log(`Currency rates refreshed: ${currencies.join(', ')}`);
+    return this.getCurrencyData();
+  }
+
+  async addCurrencyRate(currency: string) {
+    await this._fetchAndUpsertRate(currency.toUpperCase());
+    return this.getCurrencyData();
+  }
+
+  async deleteCurrencyRate(currency: string) {
+    await this.prisma.currencyRate.deleteMany({ where: { currency: currency.toUpperCase() } });
     return this.getCurrencyData();
   }
 
