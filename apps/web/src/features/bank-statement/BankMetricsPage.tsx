@@ -161,7 +161,7 @@ export default function BankMetricsPage() {
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [fromDate, setFromDate] = useState(iso30DaysAgo());
   const [toDate, setToDate] = useState(isoToday());
-  const [codeFilter, setCodeFilter] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
   const [accountFilter, setAccountFilter] = useState(searchParams.get('accountId') ?? '');
   const [currencyRates, setCurrencyRates] = useState<CurrencyRate[]>([]);
   const [page, setPage] = useState(1);
@@ -186,11 +186,11 @@ export default function BankMetricsPage() {
   useEffect(() => {
     if (!fromDate || !toDate) return;
     setLoading(true); setError(null); setPage(1);
-    getBankMetrics(fromDate, toDate, codeFilter || undefined, accountFilter || undefined)
+    getBankMetrics(fromDate, toDate, undefined, accountFilter || undefined)
       .then(data => setMetrics(data))
       .catch(() => setError(t('bankMetrics.loadFailed')))
       .finally(() => setLoading(false));
-  }, [fromDate, toDate, codeFilter, accountFilter]);
+  }, [fromDate, toDate, accountFilter]);
 
   async function handleRefreshRates() {
     setRatesRefreshing(true);
@@ -218,10 +218,10 @@ export default function BankMetricsPage() {
 
   if (!canView) return <AccessDenied />;
 
-  const accountCodes = useMemo(() => [...new Set(accounts.map(a => a.accountCode))].sort(), [accounts]);
+  const accountNames = useMemo(() => [...new Set(accounts.map(a => a.accountName))].sort(), [accounts]);
   const filteredAccounts = useMemo(
-    () => codeFilter ? accounts.filter(a => a.accountCode === codeFilter) : accounts,
-    [accounts, codeFilter],
+    () => nameFilter ? accounts.filter(a => a.accountName === nameFilter) : accounts,
+    [accounts, nameFilter],
   );
 
   const rateMap        = useMemo(() => Object.fromEntries(currencyRates.map(r => [r.currency, Number(r.rateToUsd)])), [currencyRates]);
@@ -244,17 +244,23 @@ export default function BankMetricsPage() {
 
   const hasRates = currencyRates.length > 0;
 
+  // When nameFilter is set, derive accountCode for chart (take the first matching account's code)
+  const nameFilterCode = useMemo(
+    () => nameFilter ? (accounts.find(a => a.accountName === nameFilter)?.accountCode ?? '') : '',
+    [accounts, nameFilter],
+  );
+
   const chartData = useMemo(() => {
     if (!metrics || !hasRates) return [];
     if (accountFilter) return buildDailyChart(metrics.daily, rateMap);
-    if (codeFilter) return buildAccountChart(accountGroups, codeFilter);
+    if (nameFilter) return buildAccountChart(accountGroups, nameFilterCode);
     return buildCountryChart(accountGroups);
-  }, [metrics, hasRates, accountFilter, codeFilter, accountGroups, rateMap]);
+  }, [metrics, hasRates, accountFilter, nameFilter, nameFilterCode, accountGroups, rateMap]);
 
   const chartLabel = accountFilter
     ? t('bankMetrics.chartByDay')
-    : codeFilter
-      ? t('bankMetrics.chartByAccount', { code: codeFilter })
+    : nameFilter
+      ? t('bankMetrics.chartByAccount', { code: nameFilterCode })
       : t('bankMetrics.chartByCode');
 
   return (
@@ -274,17 +280,19 @@ export default function BankMetricsPage() {
           <input type="date" className={s.dateInput} value={toDate} onChange={e => setToDate(e.target.value)} />
         </div>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>{t('bankMetrics.accountCode')}</label>
-          <select className={s.select} value={codeFilter} onChange={e => { setCodeFilter(e.target.value); setAccountFilter(''); }}>
+          <label className={s.filterLabel}>{t('bankMetrics.account')}</label>
+          <select className={s.select} value={nameFilter} onChange={e => { setNameFilter(e.target.value); setAccountFilter(''); }} disabled={accountsLoading}>
             <option value="">{t('bankMetrics.all')}</option>
-            {accountCodes.map(c => <option key={c} value={c}>{c}</option>)}
+            {accountNames.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>{t('bankMetrics.account')}</label>
+          <label className={s.filterLabel}>{t('bankMetrics.accountCode')}</label>
           <select className={s.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)} disabled={accountsLoading}>
             <option value="">{t('bankMetrics.all')}</option>
-            {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountName}</option>)}
+            {filteredAccounts.map(a => (
+              <option key={a.id} value={a.id}>{a.accountNumber}</option>
+            ))}
           </select>
         </div>
       </div>

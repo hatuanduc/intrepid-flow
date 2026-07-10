@@ -8,6 +8,11 @@ import RightPanel from '../../components/common/RightPanel';
 import s from './AccountPage.module.css';
 
 const AVATAR_COLORS = ['#635bff', '#09825d', '#1a56db', '#7c3aed', '#c44c0a', '#0e7490', '#92400e', '#be185d'];
+
+const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'vi', label: 'Tiếng Việt' },
+];
 function avatarColor(str: string) { return AVATAR_COLORS[str.charCodeAt(0) % AVATAR_COLORS.length]; }
 
 function RoleBadge({ name }: { name: string }) {
@@ -189,20 +194,15 @@ export default function AccountPage() {
         </div>
         <div className={`${s.infoRow} ${s.infoRowLast}`}>
           <span className={s.infoLabel}>{t('account.language')}</span>
-          <div className={s.langOptions}>
-            <button
-              className={`${s.langBtn} ${lang === 'en' ? s.langBtnActive : ''}`}
-              onClick={() => setLang('en')}
-            >
-              English
-            </button>
-            <button
-              className={`${s.langBtn} ${lang === 'vi' ? s.langBtnActive : ''}`}
-              onClick={() => setLang('vi')}
-            >
-              Tiếng Việt
-            </button>
-          </div>
+          <select
+            className={s.langSelect}
+            value={lang}
+            onChange={e => setLang(e.target.value as 'en' | 'vi')}
+          >
+            {LANGUAGES.map(l => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
         </div>
       </div>
 

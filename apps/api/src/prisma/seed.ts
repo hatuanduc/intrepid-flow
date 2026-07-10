@@ -153,6 +153,55 @@ async function main() {
   });
 
   console.log('Bank statement defaults seeded');
+
+  // ─── Bank Country Mappings ──────────────────────────────────────────────────
+  const COUNTRY_MAPPINGS = [
+    { companyName: 'INTREPID VIETNAM LTD',          accountCode: 'VN'    },
+    { companyName: 'INTREPID E-COMMERCE HONG KONG LTD', accountCode: 'HK' },
+    { companyName: 'INTREPID MALAYSIA SDN. BHD',    accountCode: 'MY'    },
+    { companyName: 'INTREPID INDONESIA PT',         accountCode: 'ID'    },
+    { companyName: 'INTREPID PHILIPPINES INC.',     accountCode: 'PH'    },
+    { companyName: 'INTREPID DIGITAL I PT',         accountCode: 'DM_VN' },
+  ];
+
+  for (const m of COUNTRY_MAPPINGS) {
+    await prisma.bankCountryMapping.upsert({
+      where: { accountCode: m.accountCode },
+      create: m,
+      update: { companyName: m.companyName },
+    });
+  }
+  console.log(`Seeded ${COUNTRY_MAPPINGS.length} bank country mappings`);
+
+  // ─── Bank Accounts (dev seed) ───────────────────────────────────────────────
+  const BANK_ACCOUNTS = [
+    // Vietnam
+    { accountNumber: '001-123456-001', accountName: 'INTREPID VIETNAM LTD',      bankName: 'HSBC Vietnam',     currency: 'VND', accountCode: 'VN' },
+    { accountNumber: '001-123456-002', accountName: 'INTREPID VIETNAM LTD',      bankName: 'HSBC Vietnam',     currency: 'USD', accountCode: 'VN' },
+    // Hong Kong
+    { accountNumber: '652-138066-838/CU-HKD', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'HKD', accountCode: 'HK' },
+    { accountNumber: '652-138066-838/SA-EUR', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'EUR', accountCode: 'HK' },
+    { accountNumber: '652-138066-838/SA-HKD', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'HKD', accountCode: 'HK' },
+    { accountNumber: '652-138066-838/SA-USD', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'USD', accountCode: 'HK' },
+    // Malaysia
+    { accountNumber: '352-663561-101', accountName: 'INTREPID MALAYSIA SDN. BHD', bankName: 'HSBC Malaysia', currency: 'MYR', accountCode: 'MY' },
+    { accountNumber: '352-663561-725', accountName: 'INTREPID MALAYSIA SDN. BHD', bankName: 'HSBC Malaysia', currency: 'USD', accountCode: 'MY' },
+    // Indonesia
+    { accountNumber: '050-300672-068', accountName: 'INTREPID DIGITAL I PT',      bankName: 'HSBC Indonesia',   currency: 'IDR', accountCode: 'ID' },
+    { accountNumber: '050-300672-069', accountName: 'INTREPID DIGITAL I PT',      bankName: 'HSBC Indonesia',   currency: 'USD', accountCode: 'ID' },
+    // Philippines
+    { accountNumber: '026-329243-040', accountName: 'INTREPID PHILIPPINES INC.', bankName: 'HSBC Philippines', currency: 'PHP', accountCode: 'PH' },
+    { accountNumber: '026-329243-041', accountName: 'INTREPID PHILIPPINES INC.', bankName: 'HSBC Philippines', currency: 'USD', accountCode: 'PH' },
+  ];
+
+  for (const a of BANK_ACCOUNTS) {
+    await prisma.bankAccount.upsert({
+      where: { accountNumber: a.accountNumber },
+      create: { ...a, isActive: true },
+      update: { accountName: a.accountName, bankName: a.bankName, currency: a.currency, accountCode: a.accountCode },
+    });
+  }
+  console.log(`Seeded ${BANK_ACCOUNTS.length} bank accounts`);
 }
 
 main()

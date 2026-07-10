@@ -252,12 +252,13 @@ export class BankSyncService {
         if (result.skipped) {
           skipped++;
           const reason = result.reason ?? 'unknown';
-          const msg = reason.startsWith('no_gsheet_config_for_')
-            ? `no GSheet config for account code ${reason.replace('no_gsheet_config_for_', '')}`
+          const label = result.accountName ? `${result.accountName} (${accountNumber})` : accountNumber;
+          const msg = reason === 'no_gsheet_config'
+            ? `no GSheet config for ${result.accountName ?? accountNumber}`
             : reason === 'no_service_key' ? 'no Google service key configured'
             : reason === 'all_duplicates' ? 'all rows already exist (duplicates)'
             : reason;
-          await this.log(jobId, `${accountNumber}: skipped — ${msg}`, 'sheets_sync', 'warn');
+          await this.log(jobId, `${label}: skipped — ${msg}`, 'sheets_sync', 'warn');
         } else {
           synced++;
           await this.log(jobId, `${accountNumber}: synced ${pl(result.rowsSynced ?? 0, 'row')} to GSheets.`, 'sheets_sync', 'success');

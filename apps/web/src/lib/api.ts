@@ -123,6 +123,7 @@ export type RoleItem = {
   id: string;
   key: string;
   name: string;
+  group?: string | null;
   description?: string | null;
   isSystem: boolean;
   userCount: number;
@@ -180,25 +181,6 @@ export async function listRoles() {
   });
 }
 
-export async function createRole(input: {
-  name: string;
-  description?: string;
-  permissionIds: string[];
-}) {
-  return request<{ item: RoleItem }>('/management/roles', {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify(input),
-  });
-}
-
-export async function updateRole(id: string, input: { name?: string; description?: string; permissionIds?: string[] }) {
-  return request<{ item: RoleItem }>(`/management/roles/${id}`, {
-    method: 'PUT',
-    auth: true,
-    body: JSON.stringify(input),
-  });
-}
 
 export async function deleteUser(id: string) {
   return request<{ ok: boolean }>(`/management/users/${id}`, {
@@ -366,6 +348,7 @@ export type BankAccount = {
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
 };
+
 
 export type DailyMetricsRow = {
   date: string;

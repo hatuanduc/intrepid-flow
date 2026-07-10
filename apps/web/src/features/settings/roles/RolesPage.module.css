@@ -4,9 +4,6 @@
 }
 
 .pageHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   margin-bottom: 24px;
 }
 
@@ -17,19 +14,6 @@
   letter-spacing: -0.3px;
   margin: 0;
 }
-
-.btnPrimary {
-  padding: 8px 16px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 6px;
-  border: none;
-  background: var(--color-accent);
-  color: #fff;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.btnPrimary:hover { background: var(--color-accent-hover); }
 
 .empty {
   font-size: 13px;
@@ -60,8 +44,6 @@
   background: var(--bg-table-head);
   border-bottom: 1px solid var(--color-border);
 }
-
-.groupIcon { color: var(--color-muted); }
 
 .groupLabel {
   font-size: 12px;

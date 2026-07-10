@@ -38,6 +38,7 @@ model Role {
   id          String           @id @default(uuid())
   key         String           @unique
   name        String
+  group       String?
   description String?
   isSystem    Boolean          @default(false) @map("is_system")
   createdAt   DateTime         @default(now()) @map("created_at")
@@ -100,6 +101,7 @@ model BankAccount {
 
   @@map("bank_accounts")
 }
+
 
 model BankSyncJob {
   id           String    @id @default(uuid())

@@ -132,18 +132,13 @@
 /* ── Language card ── */
 .cardGap { margin-top: 16px; }
 
-.langOptions { display: flex; gap: 8px; }
-
-.langBtn {
-  padding: 5px 14px; font-size: 13px; font-weight: 500; border-radius: 6px;
+.langSelect {
+  padding: 7px 10px; font-size: 13px; font-weight: 500; border-radius: 6px;
   border: 1.5px solid var(--color-border); background: var(--bg-surface);
-  color: var(--color-secondary); cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  color: var(--color-ink); cursor: pointer; outline: none;
+  min-width: 140px; transition: border-color 0.15s, box-shadow 0.15s;
 }
-.langBtn:hover { background: var(--bg-page); }
-.langBtnActive {
-  border-color: var(--color-accent-active); background: var(--color-accent-light);
-  color: var(--color-accent-active);
-}
+.langSelect:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 
 @media (max-width: 768px) {
   .page { padding: 16px; max-width: 100%; }

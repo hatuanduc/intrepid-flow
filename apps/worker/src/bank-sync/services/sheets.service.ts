@@ -21,7 +21,7 @@ export class SheetsService {
    * Duplicate detection: reads existing bank references from column D rows 11+
    * before appending, so re-runs are safe.
    */
-  async sync(accountNumber: string, rows: TransactionRow[]): Promise<{ skipped: boolean; reason?: string; rowsSynced?: number }> {
+  async sync(accountNumber: string, rows: TransactionRow[]): Promise<{ skipped: boolean; reason?: string; accountName?: string; rowsSynced?: number }> {
     if (rows.length === 0) {
       this.logger.log(`No rows to sync for ${accountNumber}`);
       return { skipped: true, reason: 'no_rows' };
@@ -41,9 +41,9 @@ export class SheetsService {
     });
     if (!config || !config.isActive || !config.spreadsheetId) {
       this.logger.warn(
-        `No active GSheet config for account code ${account.accountCode} — skipping`,
+        `No active GSheet config for ${account.accountName} (${account.accountCode}) — skipping`,
       );
-      return { skipped: true, reason: `no_gsheet_config_for_${account.accountCode}` };
+      return { skipped: true, reason: 'no_gsheet_config', accountName: account.accountName };
     }
 
     // Global service key and template come from BankJobSettings
@@ -165,8 +165,9 @@ export class SheetsService {
     );
 
     // ── Filter to new-only rows ────────────────────────────────────────────
+    // Rows without bankReference are always treated as new (can't dedup them).
     const newRows = rows.filter(
-      r => r.bankReference && !existingRefs.has(r.bankReference),
+      r => !r.bankReference || !existingRefs.has(r.bankReference),
     );
 
     if (newRows.length === 0) {

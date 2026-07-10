@@ -627,3 +627,23 @@ export default function UsersPage() {
 - Inline loading: `<Spinner size={20} />` from same file
 - Empty: `.empty` class, centered, color `var(--color-subtle)`
 - Error: `.error` class, red text on light red bg (see ui-reference.md §7)
+
+## i18n — Translations (Vietnamese + English)
+
+Translation files: `apps/web/src/lib/i18n/en.ts` and `vi.ts`.
+
+**Rule: whenever any UI text is added or changed, also update the corresponding keys in both `en.ts` and `vi.ts`.**
+
+Usage:
+```tsx
+import { useT } from '../../../lib/i18n';
+const { t, lang } = useT();
+t('namespace.key')
+t('namespace.key', { param: value })  // {param} interpolation
+```
+
+- All user-visible strings go through `t()` — no hardcoded text in components
+- Keys use dot-notation: `namespace.key` (e.g. `bankSettings.saveSettings`)
+- `en.ts` exports `Translations` type — TypeScript enforces `vi.ts` has same shape
+- `lang` is `'vi' | 'en'` — use for locale-aware formatting (`Intl.DateTimeFormat`)
+- Language persisted in `localStorage` key `'app.language'`, default `'en'`
