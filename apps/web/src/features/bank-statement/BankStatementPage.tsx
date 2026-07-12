@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   listBankJobs, triggerBankSync, retryBankJob, deleteBankJob, getBankSettings,
-  type BankSyncJob,
+  type BankSyncJob, type JobStats,
 } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import AccessDenied from '../../components/common/AccessDenied';
@@ -33,6 +33,16 @@ function formatDuration(ms: number | null): string {
   if (ms == null) return '—';
   if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
   return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+}
+
+function SyncSummary({ stats }: { stats: JobStats | null }) {
+  const { t } = useT();
+  if (!stats || stats.totalAccounts === 0) return null;
+  return (
+    <span className={s.syncSummary}>
+      {t('bankStatement.syncSummary', { synced: stats.synced, total: stats.totalAccounts })}
+    </span>
+  );
 }
 
 function formatDateTime(iso: string | null): string {
@@ -138,6 +148,7 @@ export default function BankStatementPage() {
               {jobs[0] && (
                 <p className={s.pageSubtitle}>
                   {t('bankStatement.lastRun')}: {formatDateTime(jobs[0].createdAt)} · <StatusBadge status={jobs[0].status} />
+                  <SyncSummary stats={jobs[0].stats} />
                 </p>
               )}
             </div>
@@ -181,7 +192,10 @@ export default function BankStatementPage() {
                           {job.triggeredBy ? t('bankStatement.manual') : t('bankStatement.automatic')}
                         </span>
                       </td>
-                      <td className={s.td}><StatusBadge status={job.status} /></td>
+                      <td className={s.td}>
+                        <StatusBadge status={job.status} />
+                        <SyncSummary stats={job.stats} />
+                      </td>
                       <td className={s.td}>{formatDuration(job.durationMs)}</td>
                       <td className={s.td} onClick={e => e.stopPropagation()}>
                         {isDone && canRun && (

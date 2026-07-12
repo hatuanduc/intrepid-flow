@@ -142,6 +142,7 @@ model BankSyncJob {
   errorMessage String?   @map("error_message")
   logs         Json      @default("[]")
   steps        Json      @default("[]")
+  durationMsTotal Int    @default(0) @map("duration_ms_total")
   isDeleted    Boolean   @default(false) @map("is_deleted")
   createdAt    DateTime  @default(now()) @map("created_at")
 

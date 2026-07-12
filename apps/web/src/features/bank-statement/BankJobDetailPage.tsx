@@ -44,7 +44,7 @@ function StatusBadge({ status }: { status: string }) {
 function SheetsSyncBadge({
   status, error, t,
 }: {
-  status: 'pending' | 'completed' | 'failed' | 'skipped';
+  status: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data';
   error: string | null;
   t: ReturnType<typeof useT>['t'];
 }) {
@@ -402,7 +402,7 @@ export default function BankJobDetailPage() {
                 <span className={s.statLabel}>{t('bankJob.statsFetched')}</span>
               </div>
               <div className={s.statCard}>
-                <span className={s.statValue}>{stats.synced}</span>
+                <span className={`${s.statValue} ${stats.synced > 0 ? s.statValueSynced : ''}`}>{stats.synced}</span>
                 <span className={s.statLabel}>{t('bankJob.statsSynced')}</span>
               </div>
               <div className={s.statCard}>
@@ -412,9 +412,17 @@ export default function BankJobDetailPage() {
                 <span className={s.statLabel}>{t('bankJob.statsFailed')}</span>
               </div>
               <div className={s.statCard}>
-                <span className={s.statValue}>{stats.syncPending + stats.syncSkipped}</span>
+                <span className={`${s.statValue} ${stats.syncPending + stats.syncSkipped > 0 ? s.statValuePending : ''}`}>
+                  {stats.syncPending + stats.syncSkipped}
+                </span>
                 <span className={s.statLabel}>{t('bankJob.statsNotSynced')}</span>
               </div>
+              {stats.syncNoData > 0 && (
+                <div className={s.statCard}>
+                  <span className={s.statValue}>{stats.syncNoData}</span>
+                  <span className={s.statLabel}>{t('bankJob.statsNoData')}</span>
+                </div>
+              )}
             </div>
           )}
 

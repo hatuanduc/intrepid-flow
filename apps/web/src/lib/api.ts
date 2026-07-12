@@ -297,6 +297,20 @@ export type JobStep = {
   errorMessage: string | null;
 };
 
+export type JobStats = {
+  totalAccounts: number;
+  downloaded: number;
+  downloadFailed: number;
+  synced: number;
+  syncFailed: number;
+  syncSkipped: number;
+  syncPending: number;
+  syncNoData: number;
+  totalRowsDownloaded: number;
+  totalRowsInserted: number;
+  totalRowsSynced: number;
+};
+
 export type BankSyncJob = {
   id: string;
   status: string;
@@ -308,6 +322,7 @@ export type BankSyncJob = {
   steps: JobStep[];
   createdAt: string;
   durationMs: number | null;
+  stats: JobStats | null;
 };
 
 export async function triggerBankSync() {
@@ -387,7 +402,7 @@ export type JobAccountSummary = {
   txCount: number;
   totalCredit: number;
   totalDebit: number;
-  sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped';
+  sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data';
   sheetsSyncError: string | null;
 };
 
@@ -405,19 +420,6 @@ export async function getBankMetrics(from: string, to: string, accountCode?: str
 export async function getBankJobSummary(jobId: string) {
   return request<JobAccountSummary[]>(`/management/bank-statement/jobs/${jobId}/summary`, { auth: true });
 }
-
-export type JobStats = {
-  totalAccounts: number;
-  downloaded: number;
-  downloadFailed: number;
-  synced: number;
-  syncFailed: number;
-  syncSkipped: number;
-  syncPending: number;
-  totalRowsDownloaded: number;
-  totalRowsInserted: number;
-  totalRowsSynced: number;
-};
 
 export async function getBankJobStats(jobId: string) {
   return request<JobStats>(`/management/bank-statement/jobs/${jobId}/stats`, { auth: true });

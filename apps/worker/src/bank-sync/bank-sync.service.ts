@@ -54,10 +54,7 @@ export class BankSyncService {
   async run(jobId: number): Promise<void> {
     const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
     if (!settings?.hsbcnetUsername) {
-      await this.prisma.bankSyncJob.update({
-        where: { id: jobId },
-        data: { status: JOB_STATUS.FAILED, errorMessage: 'HSBCNET_USERNAME_NOT_CONFIGURED', completedAt: new Date() },
-      });
+      await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, 'HSBCNET_USERNAME_NOT_CONFIGURED');
       throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
     }
 
@@ -106,10 +103,7 @@ export class BankSyncService {
       }
 
       if (sheetsSyncFailed) {
-        await this.prisma.bankSyncJob.update({
-          where: { id: jobId },
-          data: { status: JOB_STATUS.FAILED, errorMessage: 'GSheets sync failed for one or more accounts', completedAt: new Date() },
-        });
+        await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, 'GSheets sync failed for one or more accounts');
         await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets.', undefined, 'error');
         return;
       }
@@ -133,10 +127,7 @@ export class BankSyncService {
         });
       }
 
-      await this.prisma.bankSyncJob.update({
-        where: { id: jobId },
-        data: { status: JOB_STATUS.FAILED, errorMessage: msg, completedAt: new Date() },
-      });
+      await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, msg);
       throw err;
     }
   }
@@ -294,7 +285,7 @@ export class BankSyncService {
 
         if (excelBuffer === null) {
           await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
-          await this.upsertJobAccount(jobId, account.id, { status: 'completed' });
+          await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
           continue;
         }
 
@@ -323,7 +314,15 @@ export class BankSyncService {
           rowsDuplicate: duplicates,
         });
 
-        if (inserted > 0) {
+        // Include the account even with 0 new rows if it has never been synced to
+        // GSheets successfully — otherwise a fixed config/retry would never get a
+        // chance to push already-downloaded data that previously failed to sync.
+        const everSynced = await this.prisma.bankSyncJobAccount.findFirst({
+          where: { bankAccountId: account.id, sheetsSyncStatus: 'completed' },
+          select: { id: true },
+        });
+
+        if (inserted > 0 || !everSynced) {
           result.set(account.accountNumber, rows);
           withNew++;
         } else {
@@ -437,13 +436,44 @@ export class BankSyncService {
   // ─── Load existing transactions from DB (for step2 retry) ───────────────────
 
   private async loadTransactionsForJob(jobId: number): Promise<Map<string, TransactionRow[]>> {
-    const txns = await this.prisma.bankTransaction.findMany({
+    const jobAccounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId, status: 'completed' },
+      select: { bankAccountId: true },
+    });
+    if (jobAccounts.length === 0) return new Map();
+
+    // This job's own newly-inserted rows.
+    const ownTxns = await this.prisma.bankTransaction.findMany({
       where: { jobId },
       include: { bankAccount: { select: { accountNumber: true } } },
     });
+    const idsWithOwnRows = new Set(ownTxns.map(t => t.bankAccountId));
+
+    // Accounts with nothing new from this job but never successfully synced —
+    // pull their full stored history so a fixed config/retry can still push it
+    // (duplicate rows stay linked to whichever job first inserted them, so a
+    // later job that only re-checked the bank has no rows of its own for them).
+    const candidateIds = jobAccounts
+      .map(a => a.bankAccountId)
+      .filter(id => !idsWithOwnRows.has(id));
+    const neverSyncedIds: number[] = [];
+    for (const id of candidateIds) {
+      const synced = await this.prisma.bankSyncJobAccount.findFirst({
+        where: { bankAccountId: id, sheetsSyncStatus: 'completed' },
+        select: { id: true },
+      });
+      if (!synced) neverSyncedIds.push(id);
+    }
+
+    const historicalTxns = neverSyncedIds.length > 0
+      ? await this.prisma.bankTransaction.findMany({
+          where: { bankAccountId: { in: neverSyncedIds } },
+          include: { bankAccount: { select: { accountNumber: true } } },
+        })
+      : [];
 
     const result = new Map<string, TransactionRow[]>();
-    for (const txn of txns) {
+    for (const txn of [...ownTxns, ...historicalTxns]) {
       const acc = txn.bankAccount.accountNumber;
       if (!result.has(acc)) result.set(acc, []);
       result.get(acc)!.push({
@@ -546,14 +576,24 @@ export class BankSyncService {
     await this.prisma.bankSyncJob.update({ where: { id: jobId }, data: { steps } });
   }
 
-  private async updateJob(jobId: number, status: string, message?: string) {
+  private async updateJob(jobId: number, status: string, message?: string, errorMessage?: string | null) {
+    const isTerminal = status === JOB_STATUS.COMPLETED || status === JOB_STATUS.FAILED;
+    let terminalData: Record<string, unknown> = {};
+    if (isTerminal) {
+      // Duration accumulates across retries — startedAt resets on each retry,
+      // so only this attempt's elapsed time gets added to the running total.
+      const current = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { startedAt: true } });
+      const now = new Date();
+      const attemptMs = current?.startedAt ? now.getTime() - current.startedAt.getTime() : 0;
+      terminalData = { completedAt: now, durationMsTotal: { increment: attemptMs } };
+    }
+
     await this.prisma.bankSyncJob.update({
       where: { id: jobId },
       data: {
         status,
-        ...(status === JOB_STATUS.COMPLETED || status === JOB_STATUS.FAILED
-          ? { completedAt: new Date() }
-          : {}),
+        ...(errorMessage !== undefined ? { errorMessage } : {}),
+        ...terminalData,
       },
     });
     if (message) await this.log(jobId, message);

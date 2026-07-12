@@ -36,6 +36,20 @@ function generateJobPublicId(): string {
   return `job_${crypto.randomBytes(9).toString('base64url')}`;
 }
 
+export type JobStatsDto = {
+  totalAccounts: number;
+  downloaded: number;
+  downloadFailed: number;
+  synced: number;
+  syncFailed: number;
+  syncSkipped: number;
+  syncPending: number;
+  syncNoData: number;
+  totalRowsDownloaded: number;
+  totalRowsInserted: number;
+  totalRowsSynced: number;
+};
+
 export type BankSyncJobDto = {
   id: string;
   status: string;
@@ -47,7 +61,27 @@ export type BankSyncJobDto = {
   steps: JobStep[];
   createdAt: Date;
   durationMs: number | null;
+  stats: JobStatsDto | null;
 };
+
+type JobAccountRow = { status: string; sheetsSyncStatus: string; rowsDownloaded: number; rowsInserted: number; rowsSynced: number };
+
+function computeJobStats(accounts: JobAccountRow[]): JobStatsDto | null {
+  if (accounts.length === 0) return null;
+  return {
+    totalAccounts: accounts.length,
+    downloaded: accounts.filter(a => a.status === 'completed').length,
+    downloadFailed: accounts.filter(a => a.status === 'failed').length,
+    synced: accounts.filter(a => a.sheetsSyncStatus === 'completed').length,
+    syncFailed: accounts.filter(a => a.sheetsSyncStatus === 'failed').length,
+    syncSkipped: accounts.filter(a => a.sheetsSyncStatus === 'skipped').length,
+    syncPending: accounts.filter(a => a.sheetsSyncStatus === 'pending').length,
+    syncNoData: accounts.filter(a => a.sheetsSyncStatus === 'no_data').length,
+    totalRowsDownloaded: accounts.reduce((s, a) => s + a.rowsDownloaded, 0),
+    totalRowsInserted: accounts.reduce((s, a) => s + a.rowsInserted, 0),
+    totalRowsSynced: accounts.reduce((s, a) => s + a.rowsSynced, 0),
+  };
+}
 
 function toDto(job: {
   publicId: string;
@@ -59,9 +93,14 @@ function toDto(job: {
   logs: unknown;
   steps: unknown;
   createdAt: Date;
-}): BankSyncJobDto {
-  const durationMs =
-    job.startedAt && job.completedAt
+  durationMsTotal?: number;
+}, accounts: JobAccountRow[] = []): BankSyncJobDto {
+  // durationMsTotal accumulates across retries (each retry resets startedAt, so a
+  // naive completedAt - startedAt diff would only reflect the last attempt).
+  // Fall back to the raw diff for jobs created before this field existed.
+  const durationMs = job.durationMsTotal
+    ? job.durationMsTotal
+    : job.startedAt && job.completedAt
       ? job.completedAt.getTime() - job.startedAt.getTime()
       : null;
 
@@ -76,6 +115,7 @@ function toDto(job: {
     steps: parseSteps(job.steps),
     createdAt: job.createdAt,
     durationMs,
+    stats: computeJobStats(accounts),
   };
 }
 
@@ -295,23 +335,15 @@ export class BankStatementService implements OnModuleInit {
     }));
   }
 
-  async getJobStats(jobPublicId: string) {
+  async getJobStats(jobPublicId: string): Promise<JobStatsDto> {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
 
     const accounts = await this.prisma.bankSyncJobAccount.findMany({ where: { jobId: job.id } });
-
-    return {
-      totalAccounts: accounts.length,
-      downloaded: accounts.filter(a => a.status === 'completed').length,
-      downloadFailed: accounts.filter(a => a.status === 'failed').length,
-      synced: accounts.filter(a => a.sheetsSyncStatus === 'completed').length,
-      syncFailed: accounts.filter(a => a.sheetsSyncStatus === 'failed').length,
-      syncSkipped: accounts.filter(a => a.sheetsSyncStatus === 'skipped').length,
-      syncPending: accounts.filter(a => a.sheetsSyncStatus === 'pending').length,
-      totalRowsDownloaded: accounts.reduce((s, a) => s + a.rowsDownloaded, 0),
-      totalRowsInserted: accounts.reduce((s, a) => s + a.rowsInserted, 0),
-      totalRowsSynced: accounts.reduce((s, a) => s + a.rowsSynced, 0),
+    return computeJobStats(accounts) ?? {
+      totalAccounts: 0, downloaded: 0, downloadFailed: 0, synced: 0,
+      syncFailed: 0, syncSkipped: 0, syncPending: 0, syncNoData: 0,
+      totalRowsDownloaded: 0, totalRowsInserted: 0, totalRowsSynced: 0,
     };
   }
 
@@ -384,13 +416,26 @@ export class BankStatementService implements OnModuleInit {
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    return jobs.map(toDto);
+    if (jobs.length === 0) return [];
+
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId: { in: jobs.map(j => j.id) } },
+    });
+    const accountsByJob = new Map<number, JobAccountRow[]>();
+    for (const a of accounts) {
+      const list = accountsByJob.get(a.jobId) ?? [];
+      list.push(a);
+      accountsByJob.set(a.jobId, list);
+    }
+
+    return jobs.map(job => toDto(job, accountsByJob.get(job.id) ?? []));
   }
 
   async getJobDetail(publicId: string): Promise<BankSyncJobDto> {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
-    return toDto(job);
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({ where: { jobId: job.id } });
+    return toDto(job, accounts);
   }
 
   async retryJob(publicId: string, retriedBy: string, stepKey?: StepKey): Promise<BankSyncJobDto> {

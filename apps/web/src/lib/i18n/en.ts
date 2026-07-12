@@ -146,6 +146,7 @@ export const en = {
     status_syncing_sheets: 'Syncing Sheets',
     status_completed: 'Completed',
     status_failed: 'Failed',
+    syncSummary: '{synced}/{total} synced to Sheets',
   },
 
   bankJob: {
@@ -166,10 +167,12 @@ export const en = {
     statsSynced: 'Synced to Sheets',
     statsFailed: 'Failed',
     statsNotSynced: 'Not synced yet',
+    statsNoData: 'No data to sync',
     sheetsSync_pending: 'Not synced yet',
     sheetsSync_completed: 'Synced',
     sheetsSync_failed: 'Sync failed',
     sheetsSync_skipped: 'No GSheet config',
+    sheetsSync_no_data: 'No data',
     viewInMetrics: 'View in Metrics →',
     newBadge: 'New',
     transactions: 'transactions',

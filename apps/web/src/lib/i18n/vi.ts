@@ -148,6 +148,7 @@ export const vi: Translations = {
     status_syncing_sheets: 'Sync GSheets',
     status_completed: 'Hoàn thành',
     status_failed: 'Thất bại',
+    syncSummary: 'Đã đồng bộ {synced}/{total}',
   },
 
   bankJob: {
@@ -168,10 +169,12 @@ export const vi: Translations = {
     statsSynced: 'Đã đồng bộ Sheets',
     statsFailed: 'Lỗi',
     statsNotSynced: 'Chưa đồng bộ',
+    statsNoData: 'Không có giao dịch',
     sheetsSync_pending: 'Chưa đồng bộ',
     sheetsSync_completed: 'Đã lên Sheets',
     sheetsSync_failed: 'Lỗi đồng bộ',
     sheetsSync_skipped: 'Chưa có GSheet config',
+    sheetsSync_no_data: 'Không có giao dịch',
     viewInMetrics: 'Xem trong Metrics →',
     newBadge: 'Mới',
     transactions: 'giao dịch',
