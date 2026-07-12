@@ -29,10 +29,6 @@ function StatusBadge({ status }: { status: string }) {
   return <span className={`${s.badge} ${cls}`}>{label !== `bankStatement.status_${status}` ? label : status}</span>;
 }
 
-function isActive(status: string) {
-  return !['completed', 'failed'].includes(status);
-}
-
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—';
   if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
@@ -78,7 +74,10 @@ export default function BankStatementPage() {
     }
   }, []);
 
-  useEffect(() => { if (canView) load(); }, [canView, load]);
+  useEffect(() => {
+    // Deferred a tick so load()'s internal setState isn't synchronous with the effect itself.
+    if (canView) Promise.resolve().then(() => load());
+  }, [canView, load]);
 
   // Close more-menu on outside click
   useEffect(() => {
@@ -153,7 +152,7 @@ export default function BankStatementPage() {
             <div className={s.setupBanner}>
               <span className={s.setupBannerIcon}>⚠</span>
               <span>{t('bankStatement.missingConfig')}</span>
-              <Link href="/bank-statement/settings" className={s.setupBannerLink}>{t('bankStatement.goToSettings')}</Link>
+              <Link href="/settings/job/bank-statement" className={s.setupBannerLink}>{t('bankStatement.goToSettings')}</Link>
             </div>
           )}
 

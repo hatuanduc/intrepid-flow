@@ -34,6 +34,11 @@ export class SystemSettingsController {
   @ApiOperation({ summary: 'Get system settings status' })
   async getSettings() { return this.service.getSettings(); }
 
+  @Get('service-account-status')
+  @HasPermission(['system:config', 'report_ar:config', 'bank_statement:config'])
+  @ApiOperation({ summary: 'Get the shared Google service account email + configured status (no secret)' })
+  async getServiceAccountStatus() { return this.service.getServiceAccountStatus(); }
+
   @Put('service-account')
   @HasPermission('system:config')
   @ApiOperation({ summary: 'Update global Google service account' })

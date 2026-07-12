@@ -11,7 +11,6 @@ export default function MockAccountDetailPage() {
   const [toDate, setToDate] = useState('');
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
-  const [shownTxns, setShownTxns] = useState<TxRow[]>([]);
   const [exportOpen, setExportOpen] = useState(false);
 
   const selected = MOCK_ACCOUNTS.find((a) => a.id === selectedId) ?? MOCK_ACCOUNTS[0];
@@ -24,12 +23,17 @@ export default function MockAccountDetailPage() {
       )
     : MOCK_ACCOUNTS;
 
-  // Load all transactions when account changes (data only, no filter state resets here)
-  useEffect(() => {
-    const acc = MOCK_ACCOUNTS.find((a) => a.id === selectedId);
-    if (!acc) return;
-    setShownTxns(ACCOUNT_TRANSACTIONS[acc.number] ?? []);
-  }, [selectedId]);
+  // Derived from selectedId + applied filter — no fetch involved, so no effect needed.
+  const shownTxns: TxRow[] = (() => {
+    const all = ACCOUNT_TRANSACTIONS[selected.number] ?? [];
+    if (!appliedFrom || !appliedTo) return all;
+    const from = parseDMY(appliedFrom);
+    const to   = parseDMY(appliedTo);
+    return all.filter((t) => {
+      const d = parseDMY(t.postDate);
+      return d >= from && d <= to;
+    });
+  })();
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -50,23 +54,9 @@ export default function MockAccountDetailPage() {
     setAppliedTo('');
     setDateFilterOpen(false);
     setExportOpen(false);
-    setShownTxns([]);  // cleared immediately; useEffect will refill
   }
 
   function applyFilter() {
-    const acc = MOCK_ACCOUNTS.find((a) => a.id === selectedId);
-    if (!acc) return;
-    const txns = ACCOUNT_TRANSACTIONS[acc.number] ?? [];
-    if (!fromDate || !toDate) {
-      setShownTxns(txns);
-    } else {
-      const from = parseDMY(fromDate);
-      const to   = parseDMY(toDate);
-      setShownTxns(txns.filter((t) => {
-        const d = parseDMY(t.postDate);
-        return d >= from && d <= to;
-      }));
-    }
     setAppliedFrom(fromDate);
     setAppliedTo(toDate);
     setDateFilterOpen(false);

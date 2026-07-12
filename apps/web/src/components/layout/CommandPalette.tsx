@@ -39,6 +39,8 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
   const router  = useRouter();
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
+  const [prevQuery, setPrevQuery] = useState(query);
+  const [prevOpen, setPrevOpen] = useState(open);
   const inputRef   = useRef<HTMLInputElement>(null);
   const listRef    = useRef<HTMLDivElement>(null);
   const activeRef  = useRef<HTMLButtonElement>(null);
@@ -51,16 +53,21 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
     : ALL_SEARCH_ITEMS;
 
   // Reset state when opened
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) { setQuery(''); setActive(0); }
+  }
+
+  // Focus the input when opened — imperative DOM side effect, not a state sync
   useEffect(() => {
-    if (open) {
-      setQuery('');
-      setActive(0);
-      setTimeout(() => inputRef.current?.focus(), 10);
-    }
+    if (open) setTimeout(() => inputRef.current?.focus(), 10);
   }, [open]);
 
   // Reset active index when query changes
-  useEffect(() => { setActive(0); }, [query]);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setActive(0);
+  }
 
   // Scroll active item into view
   useEffect(() => {

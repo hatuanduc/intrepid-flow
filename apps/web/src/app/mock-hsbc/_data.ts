@@ -10,11 +10,15 @@ export type MockAccount = {
 };
 
 export const MOCK_ACCOUNTS: MockAccount[] = [
-  // Hong Kong
-  { id: 'hk-sa-eur', number: '652-138066-838/SA-EUR', company: 'INTREPID E-COMMERCE HONG KONG LTD', countryLabel: 'Hong Kong SAR HBAP (EUR - Euro)',          countryCode: 'HK', currency: 'EUR', balance: '1.08',             bankName: 'Hongkong Shanghai Banking Corp Ltd' },
-  { id: 'hk-cu-hkd', number: '652-138066-838/CU-HKD', company: 'INTREPID E-COMMERCE HONG KONG LTD', countryLabel: 'Hong Kong SAR HBAP (HKD - HONG KONG Dollar)', countryCode: 'HK', currency: 'HKD', balance: '0.00',             bankName: 'Hongkong Shanghai Banking Corp Ltd' },
-  { id: 'hk-sa-hkd', number: '652-138066-838/SA-HKD', company: 'INTREPID E-COMMERCE HONG KONG LTD', countryLabel: 'Hong Kong SAR HBAP (HKD - HONG KONG Dollar)', countryCode: 'HK', currency: 'HKD', balance: '14,434.06',        bankName: 'Hongkong Shanghai Banking Corp Ltd' },
-  { id: 'hk-sa-usd', number: '652-138066-838/SA-USD', company: 'INTREPID E-COMMERCE HONG KONG LTD', countryLabel: 'Hong Kong SAR HBAP (USD - US Dollar)',        countryCode: 'HK', currency: 'USD', balance: '35.71',            bankName: 'Hongkong Shanghai Banking Corp Ltd' },
+  // Vietnam
+  { id: 'vn-vnd',    number: '001-123456-001',        company: 'INTREPID VIETNAM LTD',              countryLabel: 'Vietnam HBVN (VND - VIETNAMESE Dong)',       countryCode: 'VN', currency: 'VND', balance: '4,850,320,000.00', bankName: 'HSBC Bank (Vietnam) Ltd' },
+  { id: 'vn-usd',    number: '001-123456-002',        company: 'INTREPID VIETNAM LTD',              countryLabel: 'Vietnam HBVN (USD - US Dollar)',             countryCode: 'VN', currency: 'USD', balance: '12,450.00',         bankName: 'HSBC Bank (Vietnam) Ltd' },
+  // Datamart Vietnam
+  { id: 'dmxvn-vnd', number: '001-987654-001',        company: 'DATAMART VIET NAM CO., LTD',        countryLabel: 'Vietnam (Datamart) HBVN (VND - VIETNAMESE Dong)', countryCode: 'DMX_VN', currency: 'VND', balance: '1,920,450,000.00', bankName: 'HSBC Bank (Vietnam) Ltd' },
+  { id: 'dmxvn-usd', number: '001-987654-002',        company: 'DATAMART VIET NAM CO., LTD',        countryLabel: 'Vietnam (Datamart) HBVN (USD - US Dollar)',       countryCode: 'DMX_VN', currency: 'USD', balance: '3,200.00',          bankName: 'HSBC Bank (Vietnam) Ltd' },
+  // Singapore
+  { id: 'sg-sgd',    number: '260-445872-001',        company: 'INTREPID DIGITAL COMMERCE PL',      countryLabel: 'Singapore HBSP (SGD - SINGAPORE Dollar)',    countryCode: 'SG', currency: 'SGD', balance: '85,640.50',         bankName: 'HSBC Bank (Singapore) Ltd' },
+  { id: 'sg-usd',    number: '260-445872-002',        company: 'INTREPID DIGITAL COMMERCE PL',      countryLabel: 'Singapore HBSP (USD - US Dollar)',           countryCode: 'SG', currency: 'USD', balance: '9,150.00',          bankName: 'HSBC Bank (Singapore) Ltd' },
   // Indonesia
   { id: 'id-idr-1',  number: '050-300672-068',        company: 'INTREPID DIGITAL I PT',             countryLabel: 'Indonesia HBAP (IDR - INDONESIAN Rupiah)',   countryCode: 'ID', currency: 'IDR', balance: '3,128,250,856.00', bankName: 'PT Bank HSBC Indonesia' },
   { id: 'id-idr-2',  number: '050-300672-069',        company: 'INTREPID DIGITAL I PT',             countryLabel: 'Indonesia HBAP (IDR - INDONESIAN Rupiah)',   countryCode: 'ID', currency: 'IDR', balance: '1,363,989,810.00', bankName: 'PT Bank HSBC Indonesia' },
@@ -41,27 +45,34 @@ export type TxRow = {
 };
 
 export const ACCOUNT_TRANSACTIONS: Record<string, TxRow[]> = {
-  '652-138066-838/SA-EUR': [
-    { bankRef: 'EUR20260630001', narrative: 'INTREPID HK EUR INCOMING SWIFT',    customerRef: 'CUST-HK-630', trnType: 'RT PYMT', credit: 1500.00, debit: null,    balance: 1501.08,  postDate: '30/06/2026' },
-    { bankRef: 'EUR20260629001', narrative: 'INTREPID HK EUR TRANSFER IN',        customerRef: 'CUST-HK-629', trnType: 'RT PYMT', credit: 320.50,  debit: null,    balance:    1.08,  postDate: '29/06/2026' },
-    { bankRef: 'EUR20260629002', narrative: 'HSBC EUR SERVICE CHARGE',            customerRef: null,          trnType: 'Transfer', credit: null,    debit: 45.00,   balance: -319.42,  postDate: '29/06/2026' },
-    { bankRef: 'EUR20260628001', narrative: 'INTREPID HK EUR PAYMENT RECEIVED',   customerRef: 'CUST-HK-628', trnType: 'RT PYMT', credit: 800.00,  debit: null,    balance:  800.00,  postDate: '28/06/2026' },
+  '001-123456-001': [
+    { bankRef: 'VND20260630001', narrative: 'SHOPEE VN PAYOUT SETTLEMENT',        customerRef: 'CUST-VN-630', trnType: 'RT PYMT', credit: 850000000, debit: null,        balance: 4850320000, postDate: '30/06/2026' },
+    { bankRef: 'VND20260629001', narrative: 'SUPPLIER PAYMENT MOCK JSC',          customerRef: null,          trnType: 'Transfer', credit: null,       debit: 320000000,   balance: 4000320000, postDate: '29/06/2026' },
+    { bankRef: 'VND20260629002', narrative: 'TIKTOK SHOP VN PAYOUT',              customerRef: 'CUST-VN-629', trnType: 'RT PYMT', credit: 410000000,  debit: null,        balance: 4320320000, postDate: '29/06/2026' },
+    { bankRef: 'VND20260628001', narrative: 'MARKETPLACE PAYOUT VIETNAM',         customerRef: 'CUST-VN-628', trnType: 'RT PYMT', credit: 3910320000, debit: null,        balance: 3910320000, postDate: '28/06/2026' },
   ],
-  '652-138066-838/CU-HKD': [
-    { bankRef: 'HKD20260630001', narrative: 'HKD INTERNAL TRANSFER',              customerRef: null,          trnType: 'Transfer', credit: null,    debit: 100.00,  balance:    0.00,  postDate: '30/06/2026' },
-    { bankRef: 'HKD20260629001', narrative: 'HKD COLLECTION',                     customerRef: 'CUST-CU-629', trnType: 'RT PYMT', credit: 100.00,  debit: null,    balance:  100.00,  postDate: '29/06/2026' },
+  '001-123456-002': [
+    { bankRef: 'USD20260630030', narrative: 'USD WIRE TRANSFER IN',               customerRef: 'CUST-VNU-630', trnType: 'RT PYMT', credit:  500.00, debit: null,    balance: 12450.00, postDate: '30/06/2026' },
+    { bankRef: 'USD20260629030', narrative: 'USD CORRESPONDENT CHARGE',           customerRef: null,           trnType: 'Transfer', credit: null,    debit:   25.00, balance: 11950.00, postDate: '29/06/2026' },
+    { bankRef: 'USD20260628030', narrative: 'USD INCOMING CROSS BORDER',          customerRef: 'CUST-VNU-628', trnType: 'RT PYMT', credit: 1200.00, debit: null,    balance: 11975.00, postDate: '28/06/2026' },
   ],
-  '652-138066-838/SA-HKD': [
-    { bankRef: 'HKD20260630010', narrative: 'ECOMM SETTLEMENT HK SA-HKD',         customerRef: 'CUST-SH-630', trnType: 'RT PYMT', credit: 5200.00, debit: null,    balance: 14434.06, postDate: '30/06/2026' },
-    { bankRef: 'HKD20260630011', narrative: 'SUPPLIER PAYMENT MOCK CO LTD',       customerRef: null,          trnType: 'Transfer', credit: null,    debit: 1800.00, balance:  9234.06, postDate: '30/06/2026' },
-    { bankRef: 'HKD20260629010', narrative: 'PLATFORM FEE SETTLEMENT',            customerRef: 'CUST-SH-629', trnType: 'RT PYMT', credit: 3400.00, debit: null,    balance: 11034.06, postDate: '29/06/2026' },
-    { bankRef: 'HKD20260629011', narrative: 'LOGISTICS CHARGE MOCK EXPRESS',      customerRef: null,          trnType: 'Transfer', credit: null,    debit:  560.00, balance:  7634.06, postDate: '29/06/2026' },
-    { bankRef: 'HKD20260628010', narrative: 'MARKETPLACE PAYOUT HK',              customerRef: 'CUST-SH-628', trnType: 'RT PYMT', credit: 8194.06, debit: null,    balance:  8194.06, postDate: '28/06/2026' },
+  '001-987654-001': [
+    { bankRef: 'VND20260630040', narrative: '/ORDP/DATAMART VN SUPPLIER/OBK/',    customerRef: '6306VND1A001', trnType: 'RT PYMT', credit: 320000000, debit: null,        balance: 1920450000, postDate: '30/06/2026' },
+    { bankRef: 'VND20260629040', narrative: 'STANDING INSTRUCTION INTERNAL',      customerRef: 'NONREF',       trnType: 'Transfer', credit: null,       debit: 150000000,   balance: 1600450000, postDate: '29/06/2026' },
+    { bankRef: 'VND20260628040', narrative: 'LAZADA VN PAYOUT SETTLEMENT',        customerRef: 'CUST-DMX-628', trnType: 'RT PYMT', credit: 1750450000, debit: null,        balance: 1750450000, postDate: '28/06/2026' },
   ],
-  '652-138066-838/SA-USD': [
-    { bankRef: 'USD20260630001', narrative: 'USD WIRE TRANSFER IN',               customerRef: 'CUST-US-630', trnType: 'RT PYMT', credit:   50.00, debit: null,    balance:   35.71,  postDate: '30/06/2026' },
-    { bankRef: 'USD20260629001', narrative: 'USD CORRESPONDENT CHARGE',           customerRef: null,          trnType: 'Transfer', credit: null,    debit:   14.29, balance:  -14.29,  postDate: '29/06/2026' },
-    { bankRef: 'USD20260628001', narrative: 'USD INCOMING PAYMENT',               customerRef: 'CUST-US-628', trnType: 'RT PYMT', credit:  500.00, debit: null,    balance:  500.00,  postDate: '28/06/2026' },
+  '001-987654-002': [
+    { bankRef: 'USD20260630041', narrative: 'USD TRANSFER DATAMART VN',           customerRef: 'CUST-DMXU-630', trnType: 'RT PYMT', credit:  300.00, debit: null,   balance: 3200.00, postDate: '30/06/2026' },
+    { bankRef: 'USD20260628041', narrative: 'USD BANK CHARGE',                    customerRef: null,            trnType: 'Transfer', credit: null,    debit:  20.00, balance: 2900.00, postDate: '28/06/2026' },
+  ],
+  '260-445872-001': [
+    { bankRef: 'SGD20260630050', narrative: 'SHOPEE SG PAYOUT SETTLEMENT',        customerRef: 'CUST-SG-630', trnType: 'RT PYMT', credit: 32000.00, debit: null,     balance: 85640.50, postDate: '30/06/2026' },
+    { bankRef: 'SGD20260629050', narrative: 'SUPPLIER PAYMENT MOCK PTE LTD',      customerRef: null,          trnType: 'Transfer', credit: null,      debit: 12500.00, balance: 53640.50, postDate: '29/06/2026' },
+    { bankRef: 'SGD20260628050', narrative: 'MARKETPLACE PAYOUT SINGAPORE',       customerRef: 'CUST-SG-628', trnType: 'RT PYMT', credit: 66140.50, debit: null,      balance: 66140.50, postDate: '28/06/2026' },
+  ],
+  '260-445872-002': [
+    { bankRef: 'USD20260630051', narrative: 'USD SG INCOMING SWIFT',              customerRef: 'CUST-SGU-630', trnType: 'RT PYMT', credit: 150.00, debit: null,  balance: 9150.00, postDate: '30/06/2026' },
+    { bankRef: 'USD20260628051', narrative: 'USD SG BANK CHARGE',                 customerRef: null,           trnType: 'Transfer', credit: null,   debit: 15.00, balance: 9000.00, postDate: '28/06/2026' },
   ],
   '050-300672-068': [
     { bankRef: 'IDR20260630001', narrative: '/ORDP/PT MOCK MITRA/OBK/970422/',    customerRef: '6306IDR1A001', trnType: 'RT PYMT', credit: 450000000, debit: null,        balance: 3128250856, postDate: '30/06/2026' },

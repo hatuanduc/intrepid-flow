@@ -1,11 +1,11 @@
-import { Controller, Get, Put, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, Param, ParseIntPipe, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { HasPermission } from '../../common/decorators/has-permission.decorator';
 import { ReportArService } from './report-ar.service';
 import { UpdateArSettingsDto } from './dto/update-settings.dto';
-import { UpsertArGsheetConfigDto } from './dto/upsert-gsheet-config.dto';
+import { CreateArGsheetConfigDto, UpdateArGsheetConfigDto } from './dto/upsert-gsheet-config.dto';
 
 @ApiTags('Report AR')
 @ApiBearerAuth()
@@ -39,11 +39,18 @@ export class ReportArController {
     return this.service.listGsheets();
   }
 
-  @Put('settings/gsheets/:countryCode')
+  @Post('settings/gsheets')
   @HasPermission('report_ar:config')
-  @ApiOperation({ summary: 'Upsert gsheet config cho một country' })
-  upsertGsheet(@Param('countryCode') countryCode: string, @Body() body: UpsertArGsheetConfigDto) {
-    return this.service.upsertGsheet(countryCode.toUpperCase(), body);
+  @ApiOperation({ summary: 'Tạo gsheet config mới cho một country' })
+  createGsheet(@Body() body: CreateArGsheetConfigDto) {
+    return this.service.createGsheet(body);
+  }
+
+  @Put('settings/gsheets/:id')
+  @HasPermission('report_ar:config')
+  @ApiOperation({ summary: 'Cập nhật gsheet config (có thể đổi cả country code)' })
+  updateGsheet(@Param('id', ParseIntPipe) id: number, @Body() body: UpdateArGsheetConfigDto) {
+    return this.service.updateGsheet(id, body);
   }
 
   // ─── Data ──────────────────────────────────────────────────────────────────

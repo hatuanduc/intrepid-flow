@@ -13,7 +13,7 @@ export class RolesService {
     });
   }
 
-  async deleteRole(roleId: string) {
+  async deleteRole(roleId: number) {
     const role = await this.prisma.role.findUnique({ where: { id: roleId }, select: { id: true, isSystem: true } });
     if (!role) throw new NotFoundException('ROLE_NOT_FOUND');
     if (role.isSystem) throw new ForbiddenException('CANNOT_DELETE_SYSTEM_ROLE');

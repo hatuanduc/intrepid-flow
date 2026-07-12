@@ -11,13 +11,13 @@ const SELECTORS = {
   authMethodBtn:  'button[data-testid="Button"], button[data-test-id="autoTestCDLButton"]',
   usernameError:  '#userid-error',
 
-  // Post-login: Log off button — chỉ có khi đã authenticated
+  // Post-login: Log off button — only present once authenticated
   dashboardEl: 'button.page-header__log-off',
-  // Tên user đang login — span bên trong user-profile-container
+  // Logged-in user name — span inside user-profile-container
   loggedInUser: '.user-profile-container span',
-  // 2FA waiting screen — normal state, không phải lỗi
+  // 2FA waiting screen — normal state, not an error
   twoFaPending: 'button[data-test-id="autoTestCDLButton"]',
-  // Auth failed — user nhấn Cancel hoặc session expired → quay về login
+  // Auth failed — user clicked Cancel or session expired → back to login
   authError: '#userid',
 
   // "Change account" search widget (present on any account detail page)
@@ -95,8 +95,8 @@ export class PlaywrightService {
   }
 
   async close(): Promise<void> {
-    // Không logout — để server session còn sống, lần sau load cookies không cần 2FA lại.
-    // Nếu "already logged on" xảy ra → isLoggedIn() tự detect và clearSession().
+    // Don't log out — keeps the server session alive so next time cookies load without 2FA.
+    // If "already logged on" occurs → isLoggedIn() auto-detects it and calls clearSession().
     await this.browser?.close();
     this.browser = null;
     this.context = null;
@@ -105,9 +105,9 @@ export class PlaywrightService {
   }
 
   async clearSession(): Promise<void> {
-    // Xóa cookie trong context
+    // Clear cookies in the context
     await this.context?.clearCookies().catch(() => {});
-    // Xóa session file
+    // Delete the session file
     if (fs.existsSync(this.sessionPath)) {
       fs.unlinkSync(this.sessionPath);
       this.logger.log('Session file cleared');
@@ -119,17 +119,17 @@ export class PlaywrightService {
   async isLoggedIn(): Promise<boolean> {
     const page = this.requirePage();
     try {
-      // Kiểm tra trang hiện tại trước — tránh navigate không cần thiết
+      // Check the current page first — avoid navigating unnecessarily
       const el = await page.$(SELECTORS.dashboardEl);
       if (el) return true;
 
-      // Navigate tới HSBC nếu chưa ở đó
+      // Navigate to HSBC if not already there
       if (!page.url().startsWith(HSBCNET_URL)) {
         await page.goto(HSBCNET_URL, { waitUntil: 'load', timeout: 30_000 });
         await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
       }
 
-      // Sau navigate — check nếu bị redirect sang "already logged on"
+      // After navigating — check if redirected to "already logged on"
       if (page.url().includes('generalError')) {
         this.logger.warn('"Already logged on" detected — clearing stale session, will re-login');
         await this.clearSession();
@@ -158,7 +158,7 @@ export class PlaywrightService {
       throw new Error(`LOGIN_FORM_NOT_FOUND — URL: ${url}, title: "${title}" — selector: "${SELECTORS.usernameInput}"`);
     }
     await page.fill(SELECTORS.usernameInput, username);
-    // Click và chờ navigation hoàn thành (tránh race condition khi dùng window.location.href)
+    // Click and wait for navigation to finish (avoids a race condition since window.location.href is used)
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10_000 }).catch(() => {}),
       page.click(SELECTORS.nextBtn),
@@ -176,7 +176,7 @@ export class PlaywrightService {
     this.logger.log(`Tìm nút xác nhận phương thức đăng nhập — URL: ${page.url()}`);
     const authBtn = await page.waitForSelector(SELECTORS.authMethodBtn, { timeout: 15_000 }).catch(() => null);
     if (authBtn) {
-      // Click và chờ navigation sang 2FA screen
+      // Click and wait for navigation to the 2FA screen
       await Promise.all([
         page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 10_000 }).catch(() => {}),
         authBtn.click(),
@@ -195,7 +195,7 @@ export class PlaywrightService {
     const page = this.requirePage();
     this.logger.log('Waiting for 2FA approval on mobile…');
 
-    // Log khi màn hình chờ 2FA xuất hiện (không block)
+    // Log when the 2FA waiting screen appears (non-blocking)
     page.waitForSelector(SELECTORS.twoFaPending, { timeout: 10_000 })
       .then(() => this.logger.log('Màn hình 2FA xuất hiện — đang chờ phê duyệt trên thiết bị di động'))
       .catch(async () => {
@@ -261,7 +261,7 @@ export class PlaywrightService {
       return [];
     }
     this.logger.log('[discover] Found first clickable account row — clicking');
-    // Dùng Promise.all để Playwright biết click này sẽ trigger navigation
+    // Use Promise.all so Playwright knows this click will trigger navigation
     await Promise.all([
       page.waitForNavigation({ waitUntil: 'load', timeout: 20_000 }).catch(() => {}),
       firstRow.click(),
@@ -281,12 +281,16 @@ export class PlaywrightService {
     this.accountDetailUrl = page.url();
     this.logger.log(`[discover] Stored account-detail URL: ${this.accountDetailUrl}`);
 
-    await searchInput.click();
-
-    // Step 4: Wait for switcher dropdown
+    // Step 4: Click to open the switcher dropdown — retry a few times in case the click
+    // lands before the page has finished hydrating (input is in the DOM but its onClick
+    // handler isn't attached yet), which is a common race right after a full navigation.
     this.logger.log(`[discover] Waiting for switcher list: ${SELECTORS.switcherList}`);
-    const switcher = await page.waitForSelector(SELECTORS.switcherList, { timeout: 8_000 })
-      .catch((err) => { this.logger.error(`[discover] Switcher list not found: ${err.message}`); return null; });
+    let switcher = null;
+    for (let attempt = 1; attempt <= 3 && !switcher; attempt++) {
+      await searchInput.click();
+      switcher = await page.waitForSelector(SELECTORS.switcherList, { timeout: 4_000 }).catch(() => null);
+      if (!switcher) this.logger.warn(`[discover] Switcher list not found (attempt ${attempt}/3) — retrying click`);
+    }
     if (!switcher) throw new Error('Account switcher list not found');
     const items = await switcher.$$(SELECTORS.switcherItem);
     this.logger.log(`[discover] Found ${items.length} items in switcher`);
@@ -400,8 +404,8 @@ export class PlaywrightService {
 
     const excelBtn = page.locator(SELECTORS.excelOption).filter({ hasText: 'Excel' }).first();
 
-    // Set up download listener TRƯỚC KHI click để tránh race condition (localhost trả file cực nhanh).
-    // Handle cả 2 case: download trên trang hiện tại (same-tab) hoặc trong tab mới (target="_blank").
+    // Set up the download listener BEFORE clicking to avoid a race condition (localhost returns the file very fast).
+    // Handles both cases: download on the current tab (same-tab) or in a new tab (target="_blank").
     type DL = import('playwright').Download;
     const downloadPromise = new Promise<DL>((resolve, reject) => {
       const tid = setTimeout(() => reject(new Error('Download timeout 30s')), 30_000);
@@ -417,7 +421,7 @@ export class PlaywrightService {
     if (!tmpPath) throw new Error(`Download path null for ${accountNumber}`);
 
     const buffer = await fs.promises.readFile(tmpPath);
-    // Đóng tab phụ nếu có (ignore nếu không có)
+    // Close the extra tab if one was opened (ignore if none)
     await download.page().close().catch(() => {});
     this.logger.log(`${accountNumber}: downloaded ${(buffer.length / 1024).toFixed(1)} KB`);
     return buffer;

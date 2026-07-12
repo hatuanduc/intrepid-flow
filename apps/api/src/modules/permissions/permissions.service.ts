@@ -17,7 +17,7 @@ const CORE_PERMISSIONS = [
   { key: 'system:config',           module: 'system',          action: 'config',      label: 'Cấu hình hệ thống (kết nối, secret keys)' },
 ];
 
-// null permissionKeys = tất cả permissions (Administrator)
+// null permissionKeys = all permissions (Administrator)
 const CORE_ROLES = [
   {
     key: 'admin',
@@ -109,7 +109,7 @@ export class PermissionsService implements OnApplicationBootstrap {
 
       const permIds = r.permissionKeys === null
         ? allPermissions.map(p => p.id)
-        : r.permissionKeys.map(k => permByKey[k]).filter((id): id is string => !!id);
+        : r.permissionKeys.map(k => permByKey[k]).filter((id): id is number => !!id);
 
       await this.prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
       if (permIds.length > 0) {

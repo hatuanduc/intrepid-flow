@@ -5,8 +5,8 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   getBankJob, retryBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
-  getJobAccountTransactions,
-  type BankSyncJob, type JobAccountSummary, type JobTransaction,
+  getJobAccountTransactions, getBankJobStats,
+  type BankSyncJob, type JobAccountSummary, type JobTransaction, type JobStats,
 } from '../../lib/api';
 import RightPanel from '../../components/common/RightPanel';
 import { getToken } from '../../lib/auth';
@@ -33,12 +33,34 @@ function StatusBadge({ status }: { status: string }) {
     : status === 'failed'           ? s.badgeError
     : status === 'waiting_2fa'      ? s.badgeWarn
     : status === 'pending'          ? s.badgeDefault
-    : ['checking_session', 'logging_in', 'authenticated',
+    : ['checking_session', 'logging_in', 'authenticated', 'discovering_accounts',
        'downloading', 'storing', 'syncing_sheets'].includes(status) ? s.badgeRunning
     : s.badgeDefault;
   const key = `bankStatement.status_${status}`;
   const label = t(key);
   return <span className={`${s.badge} ${cls}`}>{label !== key ? label : status}</span>;
+}
+
+function SheetsSyncBadge({
+  status, error, t,
+}: {
+  status: 'pending' | 'completed' | 'failed' | 'skipped';
+  error: string | null;
+  t: ReturnType<typeof useT>['t'];
+}) {
+  const cls = status === 'completed' ? s.badgeSuccess
+    : status === 'failed'  ? s.badgeError
+    : status === 'skipped' ? s.badgeWarn
+    : s.badgeDefault;
+  const label = t(`bankJob.sheetsSync_${status}`);
+  return (
+    <span
+      className={`${s.badge} ${cls} ${s.summarySyncBadge}`}
+      title={error ?? undefined}
+    >
+      {label}
+    </span>
+  );
 }
 
 function isActive(status: string) {
@@ -134,6 +156,7 @@ export default function BankJobDetailPage() {
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [openSteps, setOpenSteps]         = useState<Set<string>>(new Set());
   const [summary, setSummary]   = useState<JobAccountSummary[]>([]);
+  const [stats, setStats]       = useState<JobStats | null>(null);
   const [txPanel, setTxPanel]   = useState<{ acc: JobAccountSummary; rows: JobTransaction[] } | null>(null);
   const [txLoading, setTxLoading] = useState(false);
 
@@ -166,6 +189,7 @@ export default function BankJobDetailPage() {
         startSse(data);
         if (['completed', 'failed'].includes(data.status)) {
           getBankJobSummary(id).then(setSummary).catch(() => {});
+          getBankJobStats(id).then(setStats).catch(() => {});
         }
       } catch {
         if (mounted) setError(t('bankJob.loadFailed'));
@@ -205,6 +229,7 @@ export default function BankJobDetailPage() {
       if (!isActive(updated.status)) {
         es.close();
         getBankJobSummary(updated.id).then(setSummary).catch(() => {});
+        getBankJobStats(updated.id).then(setStats).catch(() => {});
       }
     };
     es.onerror = () => es.close();
@@ -369,6 +394,30 @@ export default function BankJobDetailPage() {
             </span>
           </div>
 
+          {/* Sync stats */}
+          {stats && stats.totalAccounts > 0 && (
+            <div className={s.statsGrid}>
+              <div className={s.statCard}>
+                <span className={s.statValue}>{stats.downloaded}</span>
+                <span className={s.statLabel}>{t('bankJob.statsFetched')}</span>
+              </div>
+              <div className={s.statCard}>
+                <span className={s.statValue}>{stats.synced}</span>
+                <span className={s.statLabel}>{t('bankJob.statsSynced')}</span>
+              </div>
+              <div className={s.statCard}>
+                <span className={`${s.statValue} ${stats.syncFailed + stats.downloadFailed > 0 ? s.statValueErr : ''}`}>
+                  {stats.syncFailed + stats.downloadFailed}
+                </span>
+                <span className={s.statLabel}>{t('bankJob.statsFailed')}</span>
+              </div>
+              <div className={s.statCard}>
+                <span className={s.statValue}>{stats.syncPending + stats.syncSkipped}</span>
+                <span className={s.statLabel}>{t('bankJob.statsNotSynced')}</span>
+              </div>
+            </div>
+          )}
+
           {/* Account summary table */}
           {summary.length > 0 && (
             <div className={s.summarySection}>
@@ -404,6 +453,7 @@ export default function BankJobDetailPage() {
                     <span className={s.summaryTxCount}>{acc.txCount} {t('bankJob.transactions')}</span>
                     <span className={s.summaryCredit}>+{acc.totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className={s.summaryDebit}>{acc.totalDebit > 0 ? `-${acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
+                    <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.summaryArrow}>
                       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -420,7 +470,6 @@ export default function BankJobDetailPage() {
             retrying={retrying}
             showRaw={showRaw}
             setShowRaw={setShowRaw}
-            expandedSteps={expandedSteps}
             openSteps={openSteps}
             onToggleStep={toggleStep}
             onRetryStep={handleRetry}
@@ -513,14 +562,13 @@ function TxDetailPanel({ acc, rows, loading }: {
 
 function JobTimeline({
   job, canRun, retrying, showRaw, setShowRaw,
-  expandedSteps, openSteps, onToggleStep, onRetryStep, renderLogNodes,
+  openSteps, onToggleStep, onRetryStep, renderLogNodes,
 }: {
   job: BankSyncJob;
   canRun: boolean;
   retrying: boolean;
   showRaw: boolean;
   setShowRaw: (v: boolean | ((prev: boolean) => boolean)) => void;
-  expandedSteps: Set<string>;
   openSteps: Set<string>;
   onToggleStep: (key: string) => void;
   onRetryStep: (stepKey?: 'bank_sync' | 'sheets_sync') => void;

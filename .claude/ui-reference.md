@@ -686,7 +686,8 @@ Trước khi viết code, kiểm tra:
 - [ ] Form trong RightPanel: đặt `id` trên form, dùng `form="id"` trên submit button
 - [ ] Loading state: `const [loading, setLoading] = useState(true)` + `finally { setLoading(false) }`
 - [ ] Error state: `const [error, setError] = useState<string | null>(null)`
-- [ ] API calls trong `useEffect(() => { load(); }, [])` — không có dependency ngoài `[]`
+- [ ] API calls trong `useEffect(() => { ... }, [])` — không có dependency ngoài `[]`
+- [ ] Fetch-on-mount: gọi `load()` qua `Promise.resolve().then(() => load())` trong effect — tránh lỗi `react-hooks/set-state-in-effect` (xem mục 11)
 - [ ] Tất cả API functions có auth: `auth: true` trong request options
 - [ ] Không dùng inline style, dùng CSS Modules
 - [ ] Màu sắc chỉ từ tokens ở mục 1 — không tự đặt màu khác
@@ -721,7 +722,9 @@ export default function UsersPage() {
     finally { setLoading(false); }
   }
 
-  useEffect(() => { load(); }, []);
+  // Deferred a tick — calling load() directly here trips eslint's
+  // react-hooks/set-state-in-effect rule (load's first sync statement is setLoading(true)).
+  useEffect(() => { Promise.resolve().then(() => load()); }, []);
 
   return (
     <div className={s.page}>
@@ -735,3 +738,37 @@ export default function UsersPage() {
   );
 }
 ```
+
+---
+
+## 12. EFFECTS & SETSTATE RULES
+
+`eslint-config-next` (Next 16) enforces `react-hooks/set-state-in-effect`: an effect callback may not
+*synchronously* call a state setter (directly, or by calling a local function whose first statement
+does). Calls inside `.then()/.catch()/.finally()` are fine — only the synchronous part of the effect
+body is checked. Three patterns cover almost every case in this codebase:
+
+**1. Fetch-on-mount** — defer the call with a microtask so it's no longer synchronous with the effect:
+```tsx
+useEffect(() => {
+  Promise.resolve().then(() => load());
+}, []);
+```
+
+**2. Reset/derive state when a prop or value changes** — compare against the previous value during
+render instead of in an effect (no effect needed at all):
+```tsx
+const [prevQuery, setPrevQuery] = useState(query);
+if (query !== prevQuery) {
+  setPrevQuery(query);
+  setActive(0);
+}
+```
+
+**3. Pure derived value** — if the state can be computed directly from existing props/state (no
+fetch, no external system), drop the `useState`/`useEffect` entirely and compute it inline during render.
+
+Effects that read browser-only APIs (`localStorage`, `Notification`, etc.) on mount should keep the
+default value SSR-safe and defer the read with `Promise.resolve().then(() => ...)` — do **not** switch
+these to a lazy `useState(() => ...)` initializer, since that runs during the very first client render
+and can cause a hydration mismatch against the server-rendered HTML.

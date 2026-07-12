@@ -159,6 +159,11 @@ SMTP_FROM=your@gmail.com
 
 APP_URL=https://dev.your-domain.com
 NEXT_PUBLIC_API_BASE_URL=https://api.dev.your-domain.com
+
+# HSBCnet portal URL — bank-sync worker login vào đây để tải sao kê.
+# Dev EC2: trỏ về mock-hsbc của chính domain dev (test full pipeline mà không đụng ngân hàng thật).
+# Prod EC2: KHÔNG set biến này — worker tự dùng default https://www1.secure.hsbcnet.com (HSBCnet thật).
+HSBCNET_URL=https://dev.your-domain.com/mock-hsbc
 EOF
 
 chmod 600 /app/.env
@@ -167,6 +172,27 @@ chmod 600 /app/.env
 ### Bước 4 — Deploy lần đầu
 
 Push code lên `develop` hoặc `main` → GitHub Actions sẽ tự động rsync + build + start.
+
+### Bước 4b — Seed admin user (chạy 1 lần, sau lần deploy đầu tiên)
+
+Set mật khẩu admin trong SSM **trước** khi seed (thay `PLACEHOLDER` do Terraform tạo):
+
+```bash
+aws ssm put-parameter --name "/intrepid/prod/SEED_ADMIN_PASSWORD" \
+  --value "<random_strong_password>" --type SecureString --overwrite --region ap-southeast-1
+```
+
+Deploy lại 1 lần (hoặc đợi lần deploy kế tiếp) để `deploy.sh` pull giá trị này vào `/app/.env`, rồi seed thủ công qua SSM session:
+
+```bash
+INSTANCE_ID=$(cd infra/aws/environments/prod && terraform output -raw instance_id)
+aws ssm start-session --target $INSTANCE_ID --region ap-southeast-1
+
+cd /app
+docker compose -f docker-compose.prod.yml run --rm migrate pnpm db:seed
+```
+
+Chỉ cần chạy **1 lần duy nhất** cho mỗi môi trường (dev/prod). Sau đó admin đăng nhập bằng mật khẩu vừa set — **không** re-run seed sau khi admin đã đổi mật khẩu qua app, vì seed sẽ ghi đè lại password về giá trị trong SSM.
 
 Hoặc chạy thủ công lần đầu:
 ```bash

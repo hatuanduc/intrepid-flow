@@ -6,6 +6,7 @@ export const JOB_STATUS = {
   LOGGING_IN: 'logging_in',
   WAITING_2FA: 'waiting_2fa',
   AUTHENTICATED: 'authenticated',
+  DISCOVERING_ACCOUNTS: 'discovering_accounts',
   DOWNLOADING: 'downloading',
   STORING: 'storing',
   SYNCING_SHEETS: 'syncing_sheets',
@@ -27,12 +28,12 @@ export const FAIL_REASON = {
 export const HSBCNET_URL = process.env.HSBCNET_URL ?? 'https://www1.secure.hsbcnet.com';
 export const SESSION_FILE = 'sessions/hsbcnet.json';
 
-// Safety net — nếu cả dashboard lẫn error selector đều không xuất hiện
-export const TWO_FA_TIMEOUT_MS = 5 * 60_000; // 5 phút
+// Safety net — in case neither the dashboard nor the error selector shows up
+export const TWO_FA_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 
 // ─── HSBCnet Excel column definitions ────────────────────────────────────────
 
-// 5 cột bắt buộc — thiếu 1 trong số này thì job fail
+// 5 required columns — missing any of these fails the job
 export const REQUIRED_COLUMNS = [
   'Post date',
   'Narrative',
@@ -41,7 +42,7 @@ export const REQUIRED_COLUMNS = [
   'Debit amount',
 ] as const;
 
-// Các cột còn lại — thiếu thì warn, không fail
+// Remaining columns — missing ones just warn, don't fail
 export const OPTIONAL_COLUMNS = [
   'Account name',
   'Account number',
@@ -67,7 +68,7 @@ export const OPTIONAL_COLUMNS = [
 
 export const ALL_KNOWN_COLUMNS = [...REQUIRED_COLUMNS, ...OPTIONAL_COLUMNS] as const;
 
-// Map từ Excel column name → TransactionRow field
+// Map from Excel column name → TransactionRow field
 export const COLUMN_FIELD_MAP: Record<string, string> = {
   'Post date':          'postDate',
   'Narrative':          'narrative',

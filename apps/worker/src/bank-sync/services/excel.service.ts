@@ -181,7 +181,7 @@ export class ExcelService {
       row.bankReference ?? '',
       row.creditAmount ?? '',
       row.debitAmount ?? '',
-      row.balance ?? '',       // balance thay đổi sau mỗi giao dịch — phân biệt 2 tx giống hệt nhau
+      row.balance ?? '',       // balance changes after each transaction — distinguishes two otherwise-identical tx
     ].join('|');
     return crypto.createHash('sha256').update(key).digest('hex');
   }

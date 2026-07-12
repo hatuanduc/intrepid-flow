@@ -5,9 +5,11 @@ import { getArData, type ArData, type ArDetailRow } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import AccessDenied from '../../components/common/AccessDenied';
 import { Spinner } from '../../components/common/PageLoader';
+import { useT } from '../../lib/i18n';
 import s from './ReportArPage.module.css';
 
 type Tab = 'summary' | 'unbilled' | 'overdue';
+type T = ReturnType<typeof useT>['t'];
 
 function formatUSD(n: number): string {
   if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
@@ -16,6 +18,7 @@ function formatUSD(n: number): string {
 }
 
 export default function ReportArPage() {
+  const { t } = useT();
   const canView   = useHasPermission('report_ar:view');
   const canConfig = useHasPermission('report_ar:config');
   const [tab, setTab] = useState<Tab>('summary');
@@ -36,13 +39,13 @@ export default function ReportArPage() {
     } catch (err) {
       const code = err instanceof Error ? err.message : '';
       if (code === 'GSHEET_CONFIG_NOT_FOUND') {
-        setError('Chưa cấu hình Google Spreadsheet. Vào Cài đặt → Báo cáo AR để thiết lập.');
+        setError(t('reportAr.errConfigNotFound'));
       } else if (code === 'SERVICE_KEY_NOT_CONFIGURED') {
-        setError('Chưa cấu hình Google Service Account. Vào Cài đặt → Báo cáo AR → Kết nối.');
+        setError(t('reportAr.errServiceKeyNotConfigured'));
       } else if (code === 'SHEETS_READ_FAILED') {
-        setError('Không thể đọc dữ liệu từ Google Sheets. Kiểm tra lại quyền truy cập.');
+        setError(t('reportAr.errSheetsReadFailed'));
       } else {
-        setError('Không thể tải dữ liệu. Vui lòng thử lại.');
+        setError(t('reportAr.errDefault'));
       }
     } finally {
       setLoading(false);
@@ -54,7 +57,10 @@ export default function ReportArPage() {
     load(bc);
   }
 
-  useEffect(() => { if (canView) load(); }, [canView]);
+  useEffect(() => {
+    // Deferred a tick so load()'s internal setState isn't synchronous with the effect itself.
+    if (canView) Promise.resolve().then(() => load());
+  }, [canView]);
 
   if (!canView) return <AccessDenied />;
 
@@ -62,7 +68,7 @@ export default function ReportArPage() {
     <div className={s.page}>
       <div className={s.pageHeader}>
         <div className={s.pageTitleRow}>
-          <h1 className={s.pageTitle}>AR Report</h1>
+          <h1 className={s.pageTitle}>{t('reportAr.title')}</h1>
           <span className={s.countryChip}>{country}</span>
         </div>
         <div className={s.headerActions}>
@@ -71,7 +77,7 @@ export default function ReportArPage() {
               <path d="M1 4v6h6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
               <path d="M3.51 15a9 9 0 1 0 .49-5.5L1 10" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/>
             </svg>
-            {loading ? 'Đang tải...' : 'Làm mới'}
+            {loading ? t('reportAr.refreshing') : t('reportAr.refresh')}
           </button>
           {canConfig && (
             <a href="/settings/job/report-ar" className={s.settingsLink}>
@@ -79,7 +85,7 @@ export default function ReportArPage() {
                 <path d="M5.8 1.5h2.4l.4 1.6a5 5 0 011.1.65l1.55-.55 1.2 2.08-1.2 1.06a5 5 0 010 1.28l1.2 1.06-1.2 2.08-1.55-.55a5 5 0 01-1.1.65l-.4 1.62H5.8l-.4-1.62a5 5 0 01-1.1-.65l-1.55.55L1.55 8.7l1.2-1.06a5 5 0 010-1.28L1.55 5.3l1.2-2.08 1.55.55a5 5 0 011.1-.65L5.8 1.5z" stroke="currentColor" strokeWidth="1.2"/>
                 <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
               </svg>
-              Cài đặt
+              {t('reportAr.settings')}
             </a>
           )}
         </div>
@@ -104,12 +110,12 @@ export default function ReportArPage() {
           {/* BizClass filter */}
           {allBizClasses.length > 0 && (
             <div className={s.bizFilter}>
-              <span className={s.bizFilterLabel}>Business Class</span>
+              <span className={s.bizFilterLabel}>{t('reportAr.bizClassLabel')}</span>
               <div className={s.bizChips}>
                 <button
                   className={`${s.bizChip} ${!bizClass ? s.bizChipActive : ''}`}
                   onClick={() => selectBizClass(undefined)}
-                >All</button>
+                >{t('reportAr.bizClassAll')}</button>
                 {allBizClasses.map(bc => (
                   <button
                     key={bc}
@@ -123,30 +129,30 @@ export default function ReportArPage() {
 
           {/* Summary Cards */}
           <div className={s.summaryCards}>
-            <SummaryCard label="Tổng AR" value={formatUSD(data.summary.totalAR)} accent />
-            <SummaryCard label="Chưa xuất HĐ" value={formatUSD(data.summary.unbilled)} pct={data.summary.totalAR > 0 ? (data.summary.unbilled / data.summary.totalAR * 100) : 0} color="orange" onClick={() => setTab('unbilled')} />
-            <SummaryCard label="Quá hạn" value={formatUSD(data.summary.overdue)} pct={data.summary.totalAR > 0 ? (data.summary.overdue / data.summary.totalAR * 100) : 0} color="red" onClick={() => setTab('overdue')} />
-            <SummaryCard label="Trong hạn TN" value={formatUSD(data.summary.underTerm)} pct={data.summary.totalAR > 0 ? (data.summary.underTerm / data.summary.totalAR * 100) : 0} color="blue" />
+            <SummaryCard label={t('reportAr.totalAr')} value={formatUSD(data.summary.totalAR)} accent t={t} />
+            <SummaryCard label={t('reportAr.unbilled')} value={formatUSD(data.summary.unbilled)} pct={data.summary.totalAR > 0 ? (data.summary.unbilled / data.summary.totalAR * 100) : 0} color="orange" onClick={() => setTab('unbilled')} t={t} />
+            <SummaryCard label={t('reportAr.overdue')} value={formatUSD(data.summary.overdue)} pct={data.summary.totalAR > 0 ? (data.summary.overdue / data.summary.totalAR * 100) : 0} color="red" onClick={() => setTab('overdue')} t={t} />
+            <SummaryCard label={t('reportAr.underTerm')} value={formatUSD(data.summary.underTerm)} pct={data.summary.totalAR > 0 ? (data.summary.underTerm / data.summary.totalAR * 100) : 0} color="blue" t={t} />
           </div>
 
           {/* Tabs */}
           <div className={s.tabs}>
             <button className={`${s.tab} ${tab === 'summary' ? s.tabActive : ''}`} onClick={() => setTab('summary')}>
-              Theo thương hiệu
+              {t('reportAr.tabByBrand')}
             </button>
             <button className={`${s.tab} ${tab === 'unbilled' ? s.tabActive : ''}`} onClick={() => setTab('unbilled')}>
-              Chưa xuất HĐ
+              {t('reportAr.tabUnbilled')}
               {data.unbilledRows.length > 0 && <span className={s.tabCount}>{data.unbilledRows.length}</span>}
             </button>
             <button className={`${s.tab} ${tab === 'overdue' ? s.tabActive : ''}`} onClick={() => setTab('overdue')}>
-              Quá hạn
+              {t('reportAr.tabOverdue')}
               {data.overdueRows.length > 0 && <span className={`${s.tabCount} ${s.tabCountRed}`}>{data.overdueRows.length}</span>}
             </button>
           </div>
 
-          {tab === 'summary' && <BrandTab rows={data.byBrand} />}
-          {tab === 'unbilled' && <DetailTab rows={data.unbilledRows} emptyMsg="Không có khoản nào chưa xuất hóa đơn." />}
-          {tab === 'overdue' && <DetailTab rows={data.overdueRows} emptyMsg="Không có khoản quá hạn." />}
+          {tab === 'summary' && <BrandTab rows={data.byBrand} t={t} />}
+          {tab === 'unbilled' && <DetailTab rows={data.unbilledRows} emptyMsg={t('reportAr.emptyUnbilled')} t={t} />}
+          {tab === 'overdue' && <DetailTab rows={data.overdueRows} emptyMsg={t('reportAr.emptyOverdue')} t={t} />}
         </>
       )}
     </div>
@@ -155,13 +161,14 @@ export default function ReportArPage() {
 
 // ─── Summary Card ─────────────────────────────────────────────────────────────
 
-function SummaryCard({ label, value, pct, accent, color, onClick }: {
+function SummaryCard({ label, value, pct, accent, color, onClick, t }: {
   label: string;
   value: string;
   pct?: number;
   accent?: boolean;
   color?: 'orange' | 'red' | 'blue';
   onClick?: () => void;
+  t: T;
 }) {
   return (
     <div className={`${s.summaryCard} ${accent ? s.summaryCardAccent : ''} ${onClick ? s.summaryCardClickable : ''}`} onClick={onClick}>
@@ -177,7 +184,7 @@ function SummaryCard({ label, value, pct, accent, color, onClick }: {
         {value}
       </div>
       {pct !== undefined && (
-        <div className={s.summaryPct}>{pct.toFixed(1)}% of AR</div>
+        <div className={s.summaryPct}>{t('reportAr.pctOfAr', { pct: pct.toFixed(1) })}</div>
       )}
     </div>
   );
@@ -187,11 +194,11 @@ function SummaryCard({ label, value, pct, accent, color, onClick }: {
 
 const SHOW_LIMIT = 15;
 
-function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
+function BrandTab({ rows, t }: { rows: ArData['byBrand']; t: T }) {
   const [showAll, setShowAll] = useState(false);
 
   if (rows.length === 0) {
-    return <div className={s.empty}>Không có dữ liệu theo thương hiệu.</div>;
+    return <div className={s.empty}>{t('reportAr.emptyByBrand')}</div>;
   }
 
   const maxLeadtime = Math.max(...rows.map(r => r.totalLeadtime), 1);
@@ -200,9 +207,9 @@ function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
   return (
     <div className={s.brandTable}>
       <div className={s.brandHeader}>
-        <span className={s.brandHeaderName}>Thương hiệu</span>
-        <span className={s.brandHeaderBar}>Leadtime theo trạng thái (ngày)</span>
-        <span className={s.brandHeaderTotal}>Tổng ngày</span>
+        <span className={s.brandHeaderName}>{t('reportAr.brandHeaderName')}</span>
+        <span className={s.brandHeaderBar}>{t('reportAr.brandHeaderBar')}</span>
+        <span className={s.brandHeaderTotal}>{t('reportAr.brandHeaderTotal')}</span>
       </div>
 
       <div className={s.brandScroll}>
@@ -215,7 +222,7 @@ function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
                   <div
                     className={s.barSegment}
                     style={{ width: `${(row.unbilledDays / maxLeadtime) * 100}%`, background: '#ffc000' }}
-                    title={`Chưa xuất HĐ: ${Math.round(row.unbilledDays)} ngày`}
+                    title={t('reportAr.tooltipUnbilled', { n: Math.round(row.unbilledDays) })}
                   >
                     {row.unbilledDays >= maxLeadtime * 0.1 && <span className={s.barLabel}>{Math.round(row.unbilledDays)}</span>}
                   </div>
@@ -224,7 +231,7 @@ function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
                   <div
                     className={s.barSegment}
                     style={{ width: `${(row.overdueDays / maxLeadtime) * 100}%`, background: '#e05252' }}
-                    title={`Quá hạn: ${Math.round(row.overdueDays)} ngày`}
+                    title={t('reportAr.tooltipOverdue', { n: Math.round(row.overdueDays) })}
                   >
                     {row.overdueDays >= maxLeadtime * 0.1 && <span className={s.barLabel}>{Math.round(row.overdueDays)}</span>}
                   </div>
@@ -233,7 +240,7 @@ function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
                   <div
                     className={s.barSegment}
                     style={{ width: `${(row.underTermDays / maxLeadtime) * 100}%`, background: '#4472c4' }}
-                    title={`Trong hạn: ${Math.round(row.underTermDays)} ngày`}
+                    title={t('reportAr.tooltipUnderTerm', { n: Math.round(row.underTermDays) })}
                   >
                     {row.underTermDays >= maxLeadtime * 0.1 && <span className={s.barLabel}>{Math.round(row.underTermDays)}</span>}
                   </div>
@@ -247,14 +254,14 @@ function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
 
       {rows.length > SHOW_LIMIT && (
         <button className={s.showMoreBtn} onClick={() => setShowAll(v => !v)}>
-          {showAll ? 'Ẩn bớt' : `Xem thêm ${rows.length - SHOW_LIMIT} thương hiệu`}
+          {showAll ? t('reportAr.showLess') : t('reportAr.showMore', { n: rows.length - SHOW_LIMIT })}
         </button>
       )}
 
       <div className={s.legendBar}>
-        <span className={s.legendItem}><span className={s.legendDot} style={{ background: '#ffc000' }} />Chưa xuất HĐ</span>
-        <span className={s.legendItem}><span className={s.legendDot} style={{ background: '#e05252' }} />Quá hạn</span>
-        <span className={s.legendItem}><span className={s.legendDot} style={{ background: '#4472c4' }} />Trong hạn tín dụng</span>
+        <span className={s.legendItem}><span className={s.legendDot} style={{ background: '#ffc000' }} />{t('reportAr.legendUnbilled')}</span>
+        <span className={s.legendItem}><span className={s.legendDot} style={{ background: '#e05252' }} />{t('reportAr.legendOverdue')}</span>
+        <span className={s.legendItem}><span className={s.legendDot} style={{ background: '#4472c4' }} />{t('reportAr.legendUnderTerm')}</span>
       </div>
     </div>
   );
@@ -262,7 +269,7 @@ function BrandTab({ rows }: { rows: ArData['byBrand'] }) {
 
 // ─── Detail Tab ───────────────────────────────────────────────────────────────
 
-function DetailTab({ rows, emptyMsg }: { rows: ArDetailRow[]; emptyMsg: string }) {
+function DetailTab({ rows, emptyMsg, t }: { rows: ArDetailRow[]; emptyMsg: string; t: T }) {
   const [search, setSearch] = useState('');
 
   const filtered = search.trim()
@@ -287,7 +294,7 @@ function DetailTab({ rows, emptyMsg }: { rows: ArDetailRow[]; emptyMsg: string }
           </svg>
           <input
             className={s.searchInput}
-            placeholder="Tìm thương hiệu, kỳ, loại KD..."
+            placeholder={t('reportAr.searchPlaceholder')}
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -301,18 +308,18 @@ function DetailTab({ rows, emptyMsg }: { rows: ArDetailRow[]; emptyMsg: string }
         <table className={s.table}>
           <thead>
             <tr>
-              <th className={s.th}>Kỳ</th>
-              <th className={s.th}>Thương hiệu</th>
-              <th className={s.th}>Loại KD</th>
-              <th className={s.th} style={{ textAlign: 'right' }}>Số tiền</th>
-              <th className={s.th}>Trạng thái</th>
+              <th className={s.th}>{t('reportAr.colPeriod')}</th>
+              <th className={s.th}>{t('reportAr.colBrand')}</th>
+              <th className={s.th}>{t('reportAr.colBizClass')}</th>
+              <th className={s.th} style={{ textAlign: 'right' }}>{t('reportAr.colAmount')}</th>
+              <th className={s.th}>{t('reportAr.colStatus')}</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
                 <td className={s.td} colSpan={5} style={{ textAlign: 'center', color: 'var(--color-subtle)' }}>
-                  Không tìm thấy kết quả.
+                  {t('reportAr.noResults')}
                 </td>
               </tr>
             ) : filtered.map((row, i) => (
@@ -323,7 +330,7 @@ function DetailTab({ rows, emptyMsg }: { rows: ArDetailRow[]; emptyMsg: string }
                 <td className={s.td} style={{ textAlign: 'right' }}>
                   <span className={s.amountCell}>{formatUSD(row.amount)}</span>
                 </td>
-                <td className={s.td}><StatusBadge status={row.status} /></td>
+                <td className={s.td}><StatusBadge status={row.status} t={t} /></td>
               </tr>
             ))}
           </tbody>
@@ -333,9 +340,9 @@ function DetailTab({ rows, emptyMsg }: { rows: ArDetailRow[]; emptyMsg: string }
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  if (status.includes('over due')) return <span className={s.statusOverdue}>Quá hạn</span>;
-  if (status.includes('credit term')) return <span className={s.statusUnderTerm}>Trong hạn</span>;
-  if (status.includes('confirmation')) return <span className={s.statusPending}>Chờ xác nhận</span>;
+function StatusBadge({ status, t }: { status: string; t: T }) {
+  if (status.includes('over due')) return <span className={s.statusOverdue}>{t('reportAr.statusOverdue')}</span>;
+  if (status.includes('credit term')) return <span className={s.statusUnderTerm}>{t('reportAr.statusUnderTerm')}</span>;
+  if (status.includes('confirmation')) return <span className={s.statusPending}>{t('reportAr.statusPending')}</span>;
   return <span className={s.statusDefault}>{status}</span>;
 }

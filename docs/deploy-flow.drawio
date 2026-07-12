@@ -24,7 +24,7 @@
           <mxGeometry x="30" y="86" width="260" height="50" as="geometry" />
         </mxCell>
 
-        <mxCell id="p1-pr" value="&lt;b&gt;Pull Request&lt;/b&gt; to main / develop (infra paths only)"
+        <mxCell id="p1-pr" value="&lt;b&gt;Pull Request&lt;/b&gt; to main / develop (any PR — no path filter)"
           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0effe;strokeColor=#c7d2fe;fontColor=#635bff;fontSize=12;"
           vertex="1" parent="1">
           <mxGeometry x="30" y="156" width="260" height="40" as="geometry" />
@@ -37,19 +37,62 @@
           <mxGeometry x="30" y="204" width="260" height="16" as="geometry" />
         </mxCell>
 
-        <!-- ====== JOB 1: infra ====== -->
+        <!-- ====== JOB 1: check ====== -->
+        <mxCell id="p1-check-bg" value=""
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=50;"
+          vertex="1" parent="1">
+          <mxGeometry x="400" y="76" width="260" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-check-lbl" value="Job 1: &lt;b&gt;check&lt;/b&gt;   CI — lint + typecheck"
+          style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;fontColor=#1e40af;"
+          vertex="1" parent="1">
+          <mxGeometry x="408" y="82" width="280" height="18" as="geometry" />
+        </mxCell>
+
+        <mxCell id="p1-c1" value="① Checkout"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="414" y="106" width="232" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-c2" value="② pnpm install --frozen-lockfile"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="414" y="138" width="232" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-c3" value="③ Prisma generate  (pnpm db:generate)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="414" y="170" width="232" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-c4" value="④ Lint  (pnpm lint)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="414" y="202" width="232" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-c5" value="⑤ Typecheck API  (tsc --noEmit)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="414" y="234" width="232" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-c6" value="⑥ Typecheck Web  (tsc --noEmit)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="414" y="266" width="232" height="28" as="geometry" />
+        </mxCell>
+
+        <!-- ====== JOB 2: infra ====== -->
         <mxCell id="p1-infra-bg" value=""
           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef3c7;strokeColor=#d97706;opacity=50;"
           vertex="1" parent="1">
-          <mxGeometry x="30" y="230" width="260" height="342" as="geometry" />
+          <mxGeometry x="30" y="230" width="260" height="366" as="geometry" />
         </mxCell>
-        <mxCell id="p1-infra-lbl" value="Job 1: &lt;b&gt;infra&lt;/b&gt;   role: &lt;b&gt;infra-manager&lt;/b&gt; (OIDC)"
+        <mxCell id="p1-infra-lbl" value="Job 2: &lt;b&gt;infra&lt;/b&gt;   role: &lt;b&gt;infra-manager&lt;/b&gt; (OIDC)   needs: check"
           style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;fontColor=#92400e;"
           vertex="1" parent="1">
           <mxGeometry x="38" y="236" width="280" height="18" as="geometry" />
         </mxCell>
 
-        <mxCell id="p1-i1" value="① Checkout (fetch-depth: 2)"
+        <mxCell id="p1-i1" value="① Checkout (fetch-depth: 0)"
           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
           vertex="1" parent="1">
           <mxGeometry x="44" y="260" width="232" height="32" as="geometry" />
@@ -64,13 +107,13 @@
           vertex="1" parent="1">
           <mxGeometry x="44" y="340" width="232" height="32" as="geometry" />
         </mxCell>
-        <mxCell id="p1-i4" value="④ Detect infra changes (git diff HEAD~1)"
+        <mxCell id="p1-i4" value="④ Detect infra changes (push: before→sha • PR: base→head)"
           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
           vertex="1" parent="1">
           <mxGeometry x="44" y="380" width="232" height="32" as="geometry" />
         </mxCell>
-        <mxCell id="p1-i5" value="⑤ terraform validate + plan  (if changed)"
-          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#fcd34d;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+        <mxCell id="p1-i5" value="⑤ terraform validate + plan  (always runs)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff;strokeColor=#e3e8ee;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
           vertex="1" parent="1">
           <mxGeometry x="44" y="420" width="232" height="32" as="geometry" />
         </mxCell>
@@ -79,10 +122,15 @@
           vertex="1" parent="1">
           <mxGeometry x="44" y="460" width="232" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="p1-i7" value="⑦ Output: instance_id  (terraform output -raw)"
-          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+        <mxCell id="p1-i7" value="⑦ Post plan to PR  (upsert comment, PR only)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0effe;strokeColor=#c7d2fe;fontColor=#635bff;fontSize=11;align=left;spacingLeft=8;"
           vertex="1" parent="1">
           <mxGeometry x="44" y="508" width="232" height="32" as="geometry" />
+        </mxCell>
+        <mxCell id="p1-i8" value="⑧ Output: instance_id  (if push — terraform output -raw)"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1a1f36;fontSize=11;align=left;spacingLeft=8;"
+          vertex="1" parent="1">
+          <mxGeometry x="44" y="548" width="232" height="32" as="geometry" />
         </mxCell>
 
         <!-- ====== JOB 2: deploy ====== -->
@@ -91,7 +139,7 @@
           vertex="1" parent="1">
           <mxGeometry x="30" y="620" width="260" height="250" as="geometry" />
         </mxCell>
-        <mxCell id="p1-deploy-lbl" value="Job 2: &lt;b&gt;deploy&lt;/b&gt;   role: &lt;b&gt;{env}-deploy-role&lt;/b&gt; (OIDC, push only)"
+        <mxCell id="p1-deploy-lbl" value="Job 3: &lt;b&gt;deploy&lt;/b&gt;   role: &lt;b&gt;{env}-deploy-role&lt;/b&gt; (OIDC, push only)   needs: infra"
           style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;fontColor=#065f46;"
           vertex="1" parent="1">
           <mxGeometry x="38" y="626" width="300" height="18" as="geometry" />
@@ -197,15 +245,27 @@
 
         <!-- ====== EDGES ====== -->
 
-        <!-- Push → infra -->
-        <mxCell id="p1-ef1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="p1-push" target="p1-infra-bg" parent="1">
+        <!-- Push → check -->
+        <mxCell id="p1-ef1" value="" style="edgeStyle=orthogonalEdgeStyle;html=1;" edge="1" source="p1-push" target="p1-check-bg" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
-        <!-- PR → plan (dashed) -->
-        <mxCell id="p1-ef-pr" value="plan only (no apply)"
+        <!-- PR → check (dashed) -->
+        <mxCell id="p1-ef-pr" value=""
+          style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;strokeColor=#635bff;"
+          edge="1" source="p1-pr" target="p1-check-bg" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- check → infra -->
+        <mxCell id="p1-ef-check-infra" value="needs: check" style="edgeStyle=orthogonalEdgeStyle;html=1;fontSize=11;fontStyle=1;" edge="1" source="p1-check-bg" target="p1-infra-bg" parent="1">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+
+        <!-- Post plan to PR → PR comment (dashed) -->
+        <mxCell id="p1-ef-comment" value="comment: terraform plan"
           style="edgeStyle=orthogonalEdgeStyle;html=1;dashed=1;fontSize=10;strokeColor=#635bff;fontColor=#635bff;"
-          edge="1" source="p1-pr" target="p1-i5" parent="1">
+          edge="1" source="p1-i7" target="p1-pr" parent="1">
           <mxGeometry relative="1" as="geometry" />
         </mxCell>
 
@@ -343,7 +403,7 @@
           vertex="1" parent="1">
           <mxGeometry x="98" y="390" width="460" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="p2-docker-hdr" value="Docker Compose  (all restart: unless-stopped)"
+        <mxCell id="p2-docker-hdr" value="Docker Compose  (restart: unless-stopped, except migrate: no)"
           style="text;html=1;strokeColor=none;fillColor=none;align=left;fontSize=11;fontStyle=1;fontColor=#1e40af;"
           vertex="1" parent="1">
           <mxGeometry x="106" y="396" width="360" height="18" as="geometry" />
@@ -359,7 +419,7 @@
           vertex="1" parent="1">
           <mxGeometry x="308" y="420" width="180" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="p2-dc-api" value="&lt;b&gt;api&lt;/b&gt;  NestJS  :4000&lt;br&gt;deps: db healthy&lt;br&gt;logs → CloudWatch"
+        <mxCell id="p2-dc-api" value="&lt;b&gt;api&lt;/b&gt;  NestJS  :4000&lt;br&gt;deps: db healthy, migrate done&lt;br&gt;logs → CloudWatch"
           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f0effe;strokeColor=#c7d2fe;fontColor=#1a1f36;fontSize=11;"
           vertex="1" parent="1">
           <mxGeometry x="112" y="498" width="180" height="60" as="geometry" />
@@ -369,10 +429,15 @@
           vertex="1" parent="1">
           <mxGeometry x="308" y="498" width="180" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="p2-dc-worker" value="&lt;b&gt;worker&lt;/b&gt;  BankSync processor&lt;br&gt;deps: db + redis healthy&lt;br&gt;Playwright headless"
+        <mxCell id="p2-dc-worker" value="&lt;b&gt;worker&lt;/b&gt;  BankSync processor&lt;br&gt;deps: db + redis healthy, migrate done&lt;br&gt;Playwright headless"
           style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#1a1f36;fontSize=11;"
           vertex="1" parent="1">
-          <mxGeometry x="200" y="580" width="200" height="60" as="geometry" />
+          <mxGeometry x="150" y="580" width="190" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="p2-dc-migrate" value="&lt;b&gt;migrate&lt;/b&gt;  one-shot: prisma migrate deploy&lt;br&gt;restart: no  •  gates api + worker"
+          style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fef9c3;strokeColor=#fcd34d;fontColor=#1a1f36;fontSize=11;"
+          vertex="1" parent="1">
+          <mxGeometry x="352" y="580" width="190" height="60" as="geometry" />
         </mxCell>
 
         <!-- Log group note -->

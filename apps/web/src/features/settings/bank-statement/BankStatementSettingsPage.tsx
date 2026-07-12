@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import {
   getBankSettings, updateBankSettings,
   listBankGsheets, upsertBankGsheet,
-  listBankAccounts,
+  listBankAccounts, listBankAccountNames,
   type BankJobSettings, type SyncDateMode,
-  type BankGsheetConfig, type BankAccount,
+  type BankGsheetConfig, type BankAccount, type BankAccountNameItem,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import AccessDenied from '../../../components/common/AccessDenied';
@@ -15,6 +15,9 @@ import PageLoader from '../../../components/common/PageLoader';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
 import RightPanel from '../../../components/common/RightPanel';
+import ServiceAccountShareInfo from '../../../components/common/ServiceAccountShareInfo';
+import Tooltip from '../../../components/common/Tooltip';
+import { extractSpreadsheetId, isValidSpreadsheetId } from '../../../lib/googleSheets';
 import s from './BankStatementSettingsPage.module.css';
 
 type Tab = 'schedule' | 'connect' | 'accounts' | 'gsheets';
@@ -30,24 +33,30 @@ export default function BankStatementSettingsPage() {
   const [settings, setSettings] = useState<BankJobSettings | null>(null);
   const [gsheets, setGsheets] = useState<BankGsheetConfig[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
+  const [accountNames, setAccountNames] = useState<BankAccountNameItem[]>([]);
 
   async function load() {
     setLoading(true);
     try {
-      const [s, g, ba] = await Promise.all([
+      const [s, g, ba, an] = await Promise.all([
         getBankSettings(),
         listBankGsheets(),
         listBankAccounts().catch(() => [] as BankAccount[]),
+        listBankAccountNames().catch(() => [] as BankAccountNameItem[]),
       ]);
       setSettings(s);
       setGsheets(g);
       setBankAccounts(ba);
+      setAccountNames(an);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { if (canConfig) load(); }, [canConfig]);
+  useEffect(() => {
+    // Deferred a tick so load()'s internal setState isn't synchronous with the effect itself.
+    if (canConfig) Promise.resolve().then(() => load());
+  }, [canConfig]);
 
   if (!canConfig) return <AccessDenied />;
 
@@ -90,13 +99,13 @@ export default function BankStatementSettingsPage() {
         <ConnectTab settings={settings} onSaved={(s) => { setSettings(s); toast.success(t('bankSettings.connectSaved')); }} />
       )}
       {tab === 'accounts' && (
-        <AccountsTab bankAccounts={bankAccounts} />
+        <AccountsTab accountNames={accountNames} bankAccounts={bankAccounts} />
       )}
       {tab === 'gsheets' && settings && (
         <GsheetsTab
           settings={settings}
           gsheets={gsheets}
-          bankAccounts={bankAccounts}
+          accountNames={accountNames}
           onSaved={(s) => { if (s) setSettings(s); else load(); }}
           toast={toast}
         />
@@ -271,8 +280,12 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
 
 function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved: (s: BankJobSettings) => void }) {
   const { t } = useT();
+  const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(settings.hsbcnetUsername ?? '');
   const [saving, setSaving] = useState(false);
+
+  function startEdit() { setUsername(settings.hsbcnetUsername ?? ''); setEditing(true); }
+  function cancelEdit() { setUsername(settings.hsbcnetUsername ?? ''); setEditing(false); }
 
   async function save() {
     setSaving(true);
@@ -285,6 +298,7 @@ function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved:
         syncCustomDays: settings.syncCustomDays ?? 1,
       });
       onSaved(result);
+      setEditing(false);
     } finally {
       setSaving(false);
     }
@@ -292,23 +306,41 @@ function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved:
 
   return (
     <div className={s.section}>
-      <div className={s.card}>
-        <div className={s.field}>
-          <label className={s.label}>HSBCnet Username</label>
-          <input
-            className={s.input}
-            value={username}
-            onChange={e => setUsername(e.target.value)}
-            placeholder="INTREPID1"
-            style={{ maxWidth: 320 }}
-          />
-          <span className={s.fieldHint}>{t('bankSettings.hsbcnetHint')}</span>
+      <div className={s.card} style={{ padding: 0 }}>
+        <div className={s.cardHead}>
+          <span className={s.cardTitle}>HSBCnet</span>
+          {!editing ? (
+            <button className={s.btnEdit} onClick={startEdit}>
+              <EditIcon /> {t('common.edit')}
+            </button>
+          ) : (
+            <div className={s.editActions}>
+              <button className={s.btnCancel} type="button" onClick={cancelEdit} disabled={saving}>{t('common.cancel')}</button>
+              <button className={s.btnSave} type="button" onClick={save} disabled={saving}>
+                {saving ? t('bankSettings.saving') : t('common.save')}
+              </button>
+            </div>
+          )}
         </div>
-      </div>
-      <div>
-        <button className={s.btnPrimary} onClick={save} disabled={saving}>
-          {saving ? t('bankSettings.saving') : t('bankSettings.saveSettings')}
-        </button>
+        <div className={`${s.infoRow} ${s.infoRowLast}`}>
+          <span className={s.infoLabel}>HSBCnet Username</span>
+          {editing ? (
+            <div className={s.infoInput}>
+              <input
+                className={s.input}
+                value={username}
+                onChange={e => setUsername(e.target.value)}
+                placeholder="INTREPID1"
+                autoFocus
+              />
+              <span className={s.fieldHint}>{t('bankSettings.hsbcnetHint')}</span>
+            </div>
+          ) : (
+            <span className={s.infoValue}>
+              {settings.hsbcnetUsername || <span className={s.infoEmpty}>{t('bankSettings.hsbcnetNotConfigured')}</span>}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -321,14 +353,9 @@ function fmtSyncDate(iso: string) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function AccountsTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
+function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccountNameItem[]; bankAccounts: BankAccount[] }) {
   const { t } = useT();
   const [detailName, setDetailName] = useState<string | null>(null);
-
-  // Derive distinct (accountName, accountCode) pairs from synced accounts
-  const companies = Array.from(
-    new Map(bankAccounts.map(a => [a.accountName, a.accountCode])).entries(),
-  ).map(([name, code]) => ({ name, code })).sort((a, b) => a.name.localeCompare(b.name));
 
   const detailAccounts = detailName ? bankAccounts.filter(a => a.accountName === detailName) : [];
 
@@ -349,15 +376,15 @@ function AccountsTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
             </tr>
           </thead>
           <tbody>
-            {companies.length === 0 && (
+            {accountNames.length === 0 && (
               <tr><td className={s.td} colSpan={3}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
             )}
-            {companies.map(c => {
+            {accountNames.map(c => {
               const count = bankAccounts.filter(a => a.accountName === c.name).length;
               return (
                 <tr key={c.name} style={{ cursor: 'pointer' }} onClick={() => setDetailName(c.name)}>
                   <td className={s.td}>{c.name}</td>
-                  <td className={s.td}><CountryBadge code={c.code} /></td>
+                  <td className={s.td}><CountryBadge code={c.accountCode} /></td>
                   <td className={s.td}>
                     <span className={s.accountCountBadge}>{t('bankSettings.accountsCount', { n: count })}</span>
                   </td>
@@ -419,16 +446,15 @@ function AccountsTab({ bankAccounts }: { bankAccounts: BankAccount[] }) {
 // ─── Tab: Google Sheets ───────────────────────────────────────────────────────
 
 function GsheetsTab({
-  settings, gsheets, bankAccounts, onSaved, toast,
+  settings, gsheets, accountNames, onSaved, toast,
 }: {
   settings: BankJobSettings;
   gsheets: BankGsheetConfig[];
-  bankAccounts: BankAccount[];
+  accountNames: BankAccountNameItem[];
   onSaved: (s?: BankJobSettings) => void;
   toast: ReturnType<typeof useToast>;
 }) {
   const { t } = useT();
-  const countryCodes = [...new Set(bankAccounts.map(a => a.accountCode))].sort();
   const configMap = Object.fromEntries(gsheets.map(g => [g.accountCode, g]));
 
   return (
@@ -438,17 +464,17 @@ function GsheetsTab({
         <p className={s.sectionDesc}>{t('bankSettings.spreadsheetByAccountDesc')}</p>
       </div>
 
-      {countryCodes.length === 0 && (
+      {accountNames.length === 0 && (
         <div className={s.empty}>{t('bankSettings.noAccountsYet')}</div>
       )}
 
       <div className={s.countryCardList}>
-        {countryCodes.map(code => (
+        {accountNames.map(an => (
           <GsheetCountryCard
-            key={code}
-            accountCode={code}
-            countryName={bankAccounts.find(a => a.accountCode === code)?.accountName ?? code}
-            existing={configMap[code] ?? null}
+            key={an.accountCode}
+            accountCode={an.accountCode}
+            countryName={an.name}
+            existing={configMap[an.accountCode] ?? null}
             toast={toast}
           />
         ))}
@@ -472,25 +498,30 @@ function GlobalGsheetConfig({
   const { t } = useT();
   const [templateSpreadsheetId, setTemplateSpreadsheetId] = useState(settings.googleTemplateSpreadsheetId ?? '');
   const [templateSheet, setTemplateSheet] = useState(settings.googleTemplateSheet ?? '');
-  const [serviceKeyJson, setServiceKeyJson] = useState('');
+  const [idError, setIdError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const hasKey = !!settings.googleServiceKeyJson;
-
   async function save() {
+    const rawId = templateSpreadsheetId.trim();
+    const cleanId = rawId ? extractSpreadsheetId(rawId) : '';
+    if (cleanId && !isValidSpreadsheetId(cleanId)) {
+      setIdError(t('bankSettings.spreadsheetIdInvalid'));
+      return;
+    }
+    setIdError(null);
+    setTemplateSpreadsheetId(cleanId);
+
     setSaving(true);
     try {
       const result = await updateBankSettings({
         scheduleCron: settings.scheduleCron,
         isScheduled: settings.isScheduled,
         hsbcnetUsername: settings.hsbcnetUsername,
-        googleTemplateSpreadsheetId: templateSpreadsheetId.trim() || null,
+        googleTemplateSpreadsheetId: cleanId || null,
         googleTemplateSheet: templateSheet.trim() || null,
-        googleServiceKeyJson: serviceKeyJson.trim() || settings.googleServiceKeyJson || null,
         syncDateMode: settings.syncDateMode ?? 'yesterday',
         syncCustomDays: settings.syncCustomDays ?? 1,
       });
-      setServiceKeyJson('');
       onSaved(result);
       toast.success(t('bankSettings.gsheetsSaved'));
     } catch {
@@ -508,18 +539,20 @@ function GlobalGsheetConfig({
         <div className={s.field} style={{ flex: 3 }}>
           <label className={s.label}>
             {t('bankSettings.templateIdLabel')}
-            <Tooltip>
+            <Tooltip wide>
               {t('bankSettings.templateIdTooltip')}{'\n\n'}
               {t('bankSettings.templateIdTooltipUrl')}{'\n'}
               docs.google.com/spreadsheets/d/<strong>ID</strong>/edit
             </Tooltip>
           </label>
           <input
-            className={`${s.input} ${s.inputFull}`}
+            className={`${s.input} ${s.inputFull} ${idError ? s.inputError : ''}`}
             value={templateSpreadsheetId}
-            onChange={e => setTemplateSpreadsheetId(e.target.value)}
-            placeholder="1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0"
+            onChange={e => { setTemplateSpreadsheetId(e.target.value); setIdError(null); }}
+            onBlur={e => setTemplateSpreadsheetId(extractSpreadsheetId(e.target.value))}
+            placeholder={t('bankSettings.spreadsheetIdPlaceholder')}
           />
+          {idError && <span className={s.fieldError}>{idError}</span>}
         </div>
         <div className={s.field} style={{ flex: 1 }}>
           <label className={s.label}>
@@ -535,30 +568,8 @@ function GlobalGsheetConfig({
         </div>
       </div>
 
-      <div className={s.field} style={{ marginTop: 14 }}>
-        <label className={s.label}>
-          Service Account JSON
-          {hasKey
-            ? <span className={s.hasKeyBadge}>{t('bankSettings.configured')}</span>
-            : <span className={s.noKeyBadge}>{t('bankSettings.noKey')}</span>}
-          <Tooltip wide>
-            <strong>{t('bankSettings.serviceKeySetupTitle')}</strong>{'\n\n'}
-            {t('bankSettings.serviceKeyStep1')}{'\n'}
-            {t('bankSettings.serviceKeyStep2')}{'\n'}
-            {t('bankSettings.serviceKeyStep3')}{'\n\n'}
-            <strong>{t('bankSettings.serviceKeyShareTitle')}</strong>{'\n'}
-            {t('bankSettings.serviceKeyShareDesc')} <strong>Editor</strong>.{'\n\n'}
-            {t('bankSettings.serviceKeyEmailFormat')}{'\n'}
-            <code>name@project-id.iam.gserviceaccount.com</code>
-          </Tooltip>
-        </label>
-        <textarea
-          className={s.textareaInput}
-          value={serviceKeyJson}
-          onChange={e => setServiceKeyJson(e.target.value)}
-          placeholder={hasKey ? t('bankSettings.keepExistingKey') : '{\n  "type": "service_account",\n  ...\n}'}
-          style={{ minHeight: 72 }}
-        />
+      <div style={{ marginTop: 14 }}>
+        <ServiceAccountShareInfo accessLevel="editor" />
       </div>
 
       <div className={s.actionRow} style={{ marginTop: 12 }}>
@@ -584,18 +595,26 @@ function GsheetCountryCard({
   const [isActive, setIsActive] = useState(existing?.isActive ?? false);
   const [saving, setSaving] = useState(false);
   const [expanded, setExpanded] = useState(!!(existing?.spreadsheetId));
-  const [editing, setEditing] = useState(!existing?.spreadsheetId);
-  const savedIdRef = useRef(existing?.spreadsheetId ?? '');
+  const [editing, setEditing] = useState(false);
+  const [savedId, setSavedId] = useState(existing?.spreadsheetId ?? '');
+  const [idError, setIdError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function save(overrides?: { isActive?: boolean; id?: string }) {
     const activeVal = overrides?.isActive ?? isActive;
-    const idVal = (overrides?.id ?? spreadsheetId).trim();
-    if (!idVal) return;
+    const rawId = (overrides?.id ?? spreadsheetId).trim();
+    if (!rawId) return;
+    const idVal = extractSpreadsheetId(rawId);
+    if (!isValidSpreadsheetId(idVal)) {
+      setIdError(t('bankSettings.spreadsheetIdInvalid'));
+      return;
+    }
+    setIdError(null);
+    setSpreadsheetId(idVal);
     setSaving(true);
     try {
       await upsertBankGsheet(accountCode, { spreadsheetId: idVal, isActive: activeVal });
-      savedIdRef.current = idVal;
+      setSavedId(idVal);
       setEditing(false);
       toast.success(t('bankSettings.configSaved', { code: accountCode }));
     } catch {
@@ -604,9 +623,18 @@ function GsheetCountryCard({
   }
 
   async function toggleActive() {
+    // Enable/disable works independently — card just opens/closes to match.
     const next = !isActive;
-    setIsActive(next); setExpanded(next);
-    if (spreadsheetId.trim()) await save({ isActive: next });
+    setIsActive(next);
+    setExpanded(next);
+    if (savedId) {
+      await save({ isActive: next });
+    } else if (next) {
+      setEditing(true);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } else {
+      setEditing(false);
+    }
   }
 
   function startEdit() {
@@ -614,18 +642,24 @@ function GsheetCountryCard({
     setTimeout(() => inputRef.current?.focus(), 0);
   }
 
+  function cancelEdit() {
+    setSpreadsheetId(savedId);
+    setIdError(null);
+    setEditing(false);
+  }
+
   function handleBlur() {
     const trimmed = spreadsheetId.trim();
-    if (trimmed && trimmed !== savedIdRef.current) { void save({ id: trimmed }); }
-    else { if (savedIdRef.current) setEditing(false); }
+    if (trimmed && trimmed !== savedId) { void save({ id: trimmed }); }
+    else if (savedId) { setEditing(false); }
   }
 
   function handleKeyDown(e: { key: string; preventDefault(): void }) {
     if (e.key === 'Enter') { e.preventDefault(); void save(); }
-    if (e.key === 'Escape') { setSpreadsheetId(savedIdRef.current); if (savedIdRef.current) setEditing(false); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
   }
 
-  const displayId = savedIdRef.current || spreadsheetId;
+  const displayId = savedId || spreadsheetId;
 
   return (
     <div className={`${s.countryCard} ${isActive ? s.countryCardActive : ''}`}>
@@ -649,18 +683,25 @@ function GsheetCountryCard({
       {expanded && (
         <div className={s.countryCardBody}>
           <div className={s.field}>
-            <label className={s.label}>Spreadsheet ID</label>
+            <label className={s.label}>
+              {t('bankSettings.spreadsheetIdLabel')}
+              <Tooltip>{t('bankSettings.spreadsheetIdTooltip')}</Tooltip>
+            </label>
             {editing ? (
-              <input
-                ref={inputRef}
-                className={`${s.input} ${s.inputFull}`}
-                value={spreadsheetId}
-                onChange={e => setSpreadsheetId(e.target.value)}
-                onBlur={handleBlur}
-                onKeyDown={handleKeyDown}
-                placeholder="1h5gC1vqRfPvZ7DANAnAog-u5bDNNbpZRCaVuxAfzyQ0"
-                disabled={saving}
-              />
+              <>
+                <input
+                  ref={inputRef}
+                  className={`${s.input} ${s.inputFull} ${idError ? s.inputError : ''}`}
+                  value={spreadsheetId}
+                  onChange={e => { setSpreadsheetId(e.target.value); setIdError(null); }}
+                  onBlur={handleBlur}
+                  onKeyDown={handleKeyDown}
+                  placeholder={t('bankSettings.spreadsheetIdPlaceholder')}
+                  disabled={saving}
+                />
+                {idError && <span className={s.fieldError}>{idError}</span>}
+                {saving && <span className={s.fieldHint}>{t('bankSettings.saving')}</span>}
+              </>
             ) : (
               <div className={s.spreadsheetDisplay} onClick={startEdit}>
                 <span className={s.spreadsheetText}>
@@ -680,29 +721,12 @@ function GsheetCountryCard({
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
-function Tooltip({ children, wide }: { children: React.ReactNode; wide?: boolean }) {
-  const [visible, setVisible] = useState(false);
+function EditIcon() {
   return (
-    <span className={s.tooltipWrap}>
-      <button
-        type="button"
-        className={s.tooltipTrigger}
-        onMouseEnter={() => setVisible(true)}
-        onMouseLeave={() => setVisible(false)}
-        onFocus={() => setVisible(true)}
-        onBlur={() => setVisible(false)}
-      >
-        <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-          <circle cx="6.5" cy="6.5" r="5.75" stroke="currentColor" strokeWidth="1.25"/>
-          <text x="6.5" y="10" textAnchor="middle" fontSize="8" fontWeight="600" fill="currentColor">i</text>
-        </svg>
-      </button>
-      {visible && (
-        <div className={`${s.tooltipBox} ${wide ? s.tooltipBoxWide : ''}`}>
-          {children}
-        </div>
-      )}
-    </span>
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path d="M8.5 1.5a1.414 1.414 0 012 2L3.5 10.5l-3 .5.5-3L8.5 1.5z"
+        stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
   );
 }
 
@@ -711,9 +735,9 @@ const COUNTRY_COLORS: Record<string, { bg: string; color: string }> = {
   MY:    { bg: '#d1fae5', color: '#065f46' },
   ID:    { bg: '#fef3c7', color: '#92400e' },
   PH:    { bg: '#ede9fe', color: '#5b21b6' },
-  SG:    { bg: '#fee2e2', color: '#991b1b' },
-  TH:    { bg: '#fce7f3', color: '#9d174d' },
-  DM_VN: { bg: '#f0f4f8', color: '#3c4257' },
+  SG:     { bg: '#fee2e2', color: '#991b1b' },
+  TH:     { bg: '#fce7f3', color: '#9d174d' },
+  DMX_VN: { bg: '#f0f4f8', color: '#3c4257' },
 };
 
 function CountryBadge({ code }: { code: string }) {

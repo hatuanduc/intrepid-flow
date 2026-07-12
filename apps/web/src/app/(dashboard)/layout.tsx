@@ -28,7 +28,7 @@ export default function DashboardRootLayout({ children }: { children: React.Reac
       } catch {
         clearToken();
         router.replace('/login');
-        // giữ loading=true trong khi redirect — không flash trắng
+        // keep loading=true during redirect — avoids a white flash
       }
     }
     run();

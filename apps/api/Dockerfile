@@ -20,5 +20,5 @@ COPY apps/api/ ./apps/api/
 RUN pnpm --filter @intrepid/api build
 
 EXPOSE 4000
-# Run migrations then start — migrations are idempotent, safe on every restart
-CMD ["sh", "-c", "pnpm db:migrate:deploy && exec node apps/api/dist/main.js"]
+# Migration runs in a dedicated `migrate` compose service, not here
+CMD ["node", "apps/api/dist/main.js"]

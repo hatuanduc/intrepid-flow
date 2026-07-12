@@ -40,7 +40,28 @@ services:
         awslogs-stream: redis
     restart: unless-stopped
 
+  migrate:
+    image: intrepid-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["pnpm", "db:migrate:deploy"]
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: migrate
+    restart: "no"
+
   api:
+    image: intrepid-api
     build:
       context: .
       dockerfile: apps/api/Dockerfile
@@ -61,6 +82,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:4000/health || exit 1"]
       interval: 10s
@@ -112,6 +135,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
       interval: 10s

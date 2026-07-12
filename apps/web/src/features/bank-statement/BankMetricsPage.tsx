@@ -1,14 +1,14 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
-  listBankAccounts, getBankMetrics, getBankCurrencyRates, refreshCurrencyRates,
+  listBankAccounts, listBankAccountNames, getBankMetrics, getBankCurrencyRates, refreshCurrencyRates,
   getAccountTransactions,
-  type BankAccount, type MetricsResponse, type DailyMetricsRow, type CurrencyRate, type JobTransaction,
+  type BankAccount, type BankAccountNameItem, type MetricsResponse, type DailyMetricsRow, type CurrencyRate, type JobTransaction,
 } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import { useToast } from '../../components/common/Toast';
@@ -46,7 +46,7 @@ function codeColor(code: string) { return CODE_COLORS[code] ?? '#697386'; }
 // ─── Data types & builders ────────────────────────────────────────────────────
 
 type AccountRow = {
-  accountId: string; accountNumber: string; accountName: string;
+  accountId: number; accountNumber: string; accountName: string;
   accountCode: string; currency: string;
   totalCredit: number; totalDebit: number; txCount: number;
   creditUsd: number | null; debitUsd: number | null;
@@ -149,6 +149,86 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
   );
 }
 
+// ─── Filter pill (account number) ──────────────────────────────────────────────
+
+type PillProps = {
+  label: string;
+  active?: boolean;
+  activeLabel?: string;
+  disabled?: boolean;
+  onClear?: () => void;
+  children: (close: () => void) => React.ReactNode;
+};
+function FilterPill({ label, active, activeLabel, disabled, onClear, children }: PillProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className={s.pillWrap} ref={ref}>
+      <button
+        type="button"
+        className={`${s.pill} ${active ? s.pillActive : ''}`}
+        onClick={() => setOpen(v => !v)}
+        disabled={disabled}
+      >
+        {active ? (
+          <>
+            <span className={s.pillCheck}>✓</span>
+            <span>{activeLabel ?? label}</span>
+            <span
+              className={s.pillClear}
+              role="button"
+              onClick={e => { e.stopPropagation(); onClear?.(); setOpen(false); }}
+            >×</span>
+          </>
+        ) : (
+          <>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={s.pillPlus}>
+              <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M6 4v4M4 6h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            {label}
+          </>
+        )}
+      </button>
+      {open && (
+        <div className={s.pillDropdown}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountNumberFilter({ accounts, onSelect, t }: {
+  accounts: BankAccount[];
+  onSelect: (id: string) => void;
+  t: ReturnType<typeof useT>['t'];
+}) {
+  return (
+    <div className={s.filterPopup}>
+      <p className={s.filterPopupTitle}>{t('bankMetrics.accountCode')}</p>
+      <div className={s.filterRoleList}>
+        {accounts.map(a => (
+          <div key={a.id} className={s.filterRoleRow} onClick={() => onSelect(String(a.id))}>
+            {a.accountNumber}
+          </div>
+        ))}
+        {accounts.length === 0 && <p className={s.filterEmpty}>{t('bankMetrics.noData')}</p>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BankMetricsPage() {
@@ -159,6 +239,7 @@ export default function BankMetricsPage() {
   const searchParams = useSearchParams();
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [accountNameItems, setAccountNameItems] = useState<BankAccountNameItem[]>([]);
   const [fromDate, setFromDate] = useState(iso30DaysAgo());
   const [toDate, setToDate] = useState(isoToday());
   const [nameFilter, setNameFilter] = useState('');
@@ -171,6 +252,7 @@ export default function BankMetricsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountNamesLoading, setAccountNamesLoading] = useState(true);
   const [ratesRefreshing, setRatesRefreshing] = useState(false);
   const [txPanel, setTxPanel] = useState<{ row: AccountRow; txRows: JobTransaction[] } | null>(null);
   const [txLoading, setTxLoading] = useState(false);
@@ -181,12 +263,14 @@ export default function BankMetricsPage() {
 
   useEffect(() => {
     listBankAccounts().then(setAccounts).catch(() => {}).finally(() => setAccountsLoading(false));
+    listBankAccountNames().then(setAccountNameItems).catch(() => {}).finally(() => setAccountNamesLoading(false));
   }, []);
 
   useEffect(() => {
     if (!fromDate || !toDate) return;
-    setLoading(true); setError(null); setPage(1);
-    getBankMetrics(fromDate, toDate, undefined, accountFilter || undefined)
+    // Deferred a tick so these resets aren't synchronous with the effect itself.
+    Promise.resolve().then(() => { setLoading(true); setError(null); setPage(1); });
+    getBankMetrics(fromDate, toDate, undefined, accountFilter ? Number(accountFilter) : undefined)
       .then(data => setMetrics(data))
       .catch(() => setError(t('bankMetrics.loadFailed')))
       .finally(() => setLoading(false));
@@ -216,9 +300,10 @@ export default function BankMetricsPage() {
     }
   }
 
-  if (!canView) return <AccessDenied />;
-
-  const accountNames = useMemo(() => [...new Set(accounts.map(a => a.accountName))].sort(), [accounts]);
+  const accountNames = useMemo(
+    () => [...accountNameItems].sort((a, b) => a.name.localeCompare(b.name)),
+    [accountNameItems],
+  );
   const filteredAccounts = useMemo(
     () => nameFilter ? accounts.filter(a => a.accountName === nameFilter) : accounts,
     [accounts, nameFilter],
@@ -226,29 +311,34 @@ export default function BankMetricsPage() {
 
   const rateMap        = useMemo(() => Object.fromEntries(currencyRates.map(r => [r.currency, Number(r.rateToUsd)])), [currencyRates]);
   const accountGroups  = useMemo(() => metrics ? buildCountryGroups(metrics.daily, rateMap) : [], [metrics, rateMap]);
-  const flatAccounts   = useMemo(() => accountGroups.flatMap(g => g.accounts), [accountGroups]);
-  const paginated      = useMemo(() => flatAccounts.slice((page - 1) * pageSize, page * pageSize), [flatAccounts, page]);
   const ratesUpdatedAt = useMemo(() => currencyRates.length > 0 ? currencyRates.reduce((m, r) => r.updatedAt > m ? r.updatedAt : m, currencyRates[0].updatedAt) : null, [currencyRates]);
+  const hasRates = currencyRates.length > 0;
+
+  // When nameFilter is set, derive accountCode for chart from the declared account name (master data)
+  const nameFilterCode = useMemo(
+    () => nameFilter ? (accountNameItems.find(n => n.name === nameFilter)?.accountCode ?? '') : '',
+    [accountNameItems, nameFilter],
+  );
+
+  // Narrow to the selected company chip so totals/table stay in sync with the chart.
+  const filteredGroups = useMemo(
+    () => nameFilter ? accountGroups.filter(g => g.accountCode === nameFilterCode) : accountGroups,
+    [accountGroups, nameFilter, nameFilterCode],
+  );
+  const flatAccounts   = useMemo(() => filteredGroups.flatMap(g => g.accounts), [filteredGroups]);
+  const paginated      = useMemo(() => flatAccounts.slice((page - 1) * pageSize, page * pageSize), [flatAccounts, page]);
 
   const usdTotal = useMemo(() => {
     let credit = 0, debit = 0;
     const missing = new Set<string>();
-    for (const g of accountGroups) {
+    for (const g of filteredGroups) {
       for (const a of g.accounts) {
         if (a.creditUsd === null) { missing.add(a.currency); }
         else { credit += a.creditUsd; debit += a.debitUsd ?? 0; }
       }
     }
     return { credit, debit, net: credit - debit, missing: [...missing] };
-  }, [accountGroups]);
-
-  const hasRates = currencyRates.length > 0;
-
-  // When nameFilter is set, derive accountCode for chart (take the first matching account's code)
-  const nameFilterCode = useMemo(
-    () => nameFilter ? (accounts.find(a => a.accountName === nameFilter)?.accountCode ?? '') : '',
-    [accounts, nameFilter],
-  );
+  }, [filteredGroups]);
 
   const chartData = useMemo(() => {
     if (!metrics || !hasRates) return [];
@@ -262,6 +352,8 @@ export default function BankMetricsPage() {
     : nameFilter
       ? t('bankMetrics.chartByAccount', { code: nameFilterCode })
       : t('bankMetrics.chartByCode');
+
+  if (!canView) return <AccessDenied />;
 
   return (
     <div className={s.page}>
@@ -279,22 +371,51 @@ export default function BankMetricsPage() {
           <label className={s.filterLabel}>{t('bankMetrics.toDate')}</label>
           <input type="date" className={s.dateInput} value={toDate} onChange={e => setToDate(e.target.value)} />
         </div>
-        <div className={s.filterGroup}>
-          <label className={s.filterLabel}>{t('bankMetrics.account')}</label>
-          <select className={s.select} value={nameFilter} onChange={e => { setNameFilter(e.target.value); setAccountFilter(''); }} disabled={accountsLoading}>
-            <option value="">{t('bankMetrics.all')}</option>
-            {accountNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <div className={s.filterGroup}>
-          <label className={s.filterLabel}>{t('bankMetrics.accountCode')}</label>
-          <select className={s.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)} disabled={accountsLoading}>
-            <option value="">{t('bankMetrics.all')}</option>
-            {filteredAccounts.map(a => (
-              <option key={a.id} value={a.id}>{a.accountNumber}</option>
-            ))}
-          </select>
-        </div>
+      </div>
+
+      {/* Account name chips */}
+      <div className={s.chips}>
+        <button
+          type="button"
+          className={`${s.chip} ${!nameFilter ? s.chipSelected : ''}`}
+          onClick={() => { setNameFilter(''); setAccountFilter(''); }}
+          disabled={accountNamesLoading}
+        >
+          <span className={s.chipLabel}>{t('bankMetrics.all')}</span>
+          <span className={s.chipCount}>{accounts.length}</span>
+        </button>
+        {accountNames.map(n => (
+          <button
+            key={n.id}
+            type="button"
+            className={`${s.chip} ${nameFilter === n.name ? s.chipSelected : ''}`}
+            onClick={() => { setNameFilter(n.name); setAccountFilter(''); }}
+            disabled={accountNamesLoading}
+            title={n.name}
+          >
+            <span className={s.chipLabel}>{n.accountCode}</span>
+            <span className={s.chipCount}>{accounts.filter(a => a.accountName === n.name).length}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Account number filter pill */}
+      <div className={s.filterPills}>
+        <FilterPill
+          label={t('bankMetrics.accountCode')}
+          active={!!accountFilter}
+          activeLabel={filteredAccounts.find(a => String(a.id) === accountFilter)?.accountNumber}
+          disabled={accountsLoading}
+          onClear={() => setAccountFilter('')}
+        >
+          {close => (
+            <AccountNumberFilter
+              accounts={filteredAccounts}
+              onSelect={id => { setAccountFilter(id); close(); }}
+              t={t}
+            />
+          )}
+        </FilterPill>
       </div>
 
       {error && <div className={s.error}>{error}</div>}

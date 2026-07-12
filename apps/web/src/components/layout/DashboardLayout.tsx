@@ -14,7 +14,7 @@ import {
 } from './nav-items';
 
 type User = {
-  id: string;
+  id: number;
   email: string;
   name: string | null;
   roles: string[];
@@ -71,6 +71,7 @@ function SearchBar() {
   const [query, setQuery]   = useState('');
   const [open,  setOpen]    = useState(false);
   const [active, setActive] = useState(0);
+  const [prevQuery, setPrevQuery] = useState(query);
   const wrapRef  = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
@@ -84,7 +85,10 @@ function SearchBar() {
       )
     : ALL_SEARCH_ITEMS;
 
-  useEffect(() => { setActive(0); }, [query]);
+  if (query !== prevQuery) {
+    setPrevQuery(query);
+    setActive(0);
+  }
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest' });
@@ -237,20 +241,6 @@ function deriveShortcuts(pinnedHrefs: string[]): NavItem[] {
   });
 }
 
-/* ── Hooks ── */
-function useDropdown() {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    function handler(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-  return { open, setOpen, ref };
-}
-
 function initials(name: string | null, email: string) {
   if (name) {
     const parts = name.trim().split(' ');
@@ -264,7 +254,8 @@ export default function DashboardLayout({ user, children }: { user: User; childr
   const router   = useRouter();
   const pathname = usePathname();
   const { t }    = useT();
-  const account  = useDropdown();
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [moreOpen, setMoreOpen]       = useState(false);
   const [pinnedHrefs, setPinnedHrefs] = useState<string[]>(() => loadPins());
@@ -278,12 +269,22 @@ export default function DashboardLayout({ user, children }: { user: User; childr
     );
     if (match) {
       recordVisit(match.href, match.label);
-      setShortcuts(deriveShortcuts(loadPins()));
+      // Deferred a tick so this state sync isn't synchronous with the effect itself.
+      Promise.resolve().then(() => setShortcuts(deriveShortcuts(loadPins())));
     }
   }, [pathname]);
 
-  useEffect(() => { setImpersonating(isImpersonating()); }, []);
+  useEffect(() => {
+    Promise.resolve().then(() => setImpersonating(isImpersonating()));
+  }, []);
 
+  useEffect(() => {
+    function handler(e: MouseEvent) {
+      if (accountRef.current && !accountRef.current.contains(e.target as Node)) setAccountOpen(false);
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
   function handleLogout() { clearToken(); router.replace('/login'); }
   function closeSidebar()  { setSidebarOpen(false); }
@@ -371,13 +372,13 @@ export default function DashboardLayout({ user, children }: { user: User; childr
           {MenuIcon}
         </button>
 
-        <div className={s.accountZone} ref={account.ref}>
-          <button className={s.accountBtn} onClick={() => account.setOpen(v => !v)}>
+        <div className={s.accountZone} ref={accountRef}>
+          <button className={s.accountBtn} onClick={() => setAccountOpen(v => !v)}>
             <span className={s.accountAvatar}>{initials(user.name, user.email)}</span>
             <span className={s.accountName}>{user.name ?? user.email}</span>
             <span className={s.chevron}><ChevronDownIcon /></span>
           </button>
-          {account.open && (
+          {accountOpen && (
             <div className={s.dropdown}>
               <div className={s.dropdownHeader}>
                 <span className={s.dropdownAvatar}>{initials(user.name, user.email)}</span>
@@ -387,10 +388,10 @@ export default function DashboardLayout({ user, children }: { user: User; childr
                 </div>
               </div>
               <div className={s.dropdownDivider} />
-              <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/account'); }}>
+              <button className={s.dropdownItem} onClick={() => { setAccountOpen(false); router.push('/account'); }}>
                 <span className={s.dropdownItemIcon}>{AccountMenuIcon}</span>{t('layout.account')}
               </button>
-              <button className={s.dropdownItem} onClick={() => { account.setOpen(false); router.push('/settings'); }}>
+              <button className={s.dropdownItem} onClick={() => { setAccountOpen(false); router.push('/settings'); }}>
                 <span className={s.dropdownItemIcon}>{SettingsMenuIcon}</span>{t('layout.settings')}
               </button>
               <div className={s.dropdownDivider} />

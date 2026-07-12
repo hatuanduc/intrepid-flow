@@ -14,8 +14,11 @@ export default function NotificationsSettingsPage() {
   const [permission, setPermission] = useState<ReturnType<typeof getPermission>>('default');
 
   useEffect(() => {
-    setEnabled(isHsbcNotifEnabled());
-    setPermission(getPermission());
+    // Deferred a tick so reading these browser-only APIs isn't synchronous with the effect itself.
+    Promise.resolve().then(() => {
+      setEnabled(isHsbcNotifEnabled());
+      setPermission(getPermission());
+    });
   }, []);
 
   async function handleToggle(checked: boolean) {

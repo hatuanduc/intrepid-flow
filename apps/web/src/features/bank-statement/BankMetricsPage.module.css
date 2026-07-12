@@ -22,6 +22,30 @@
 .select { min-width: 160px; max-width: 240px; }
 .dateInput:focus, .select:focus { border-color: var(--color-accent-active); }
 
+/* ── Chip filters (composed from shared design system — see ui.module.css) ── */
+.chips        { composes: chips        from '../../styles/ui.module.css'; }
+.chip         { composes: chip         from '../../styles/ui.module.css'; }
+.chipSelected { composes: chipSelected from '../../styles/ui.module.css'; }
+.chipLabel    { composes: chipLabel    from '../../styles/ui.module.css'; }
+.chipCount    { composes: chipCount    from '../../styles/ui.module.css'; }
+.chip:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Filter pill (account number) ── */
+.filterPills      { composes: filterPills      from '../../styles/ui.module.css'; }
+.pillWrap         { composes: pillWrap         from '../../styles/ui.module.css'; }
+.pill             { composes: pill             from '../../styles/ui.module.css'; }
+.pill:disabled    { opacity: 0.5; cursor: not-allowed; }
+.pillActive       { composes: pillActive       from '../../styles/ui.module.css'; }
+.pillPlus         { composes: pillPlus         from '../../styles/ui.module.css'; }
+.pillCheck        { composes: pillCheck        from '../../styles/ui.module.css'; }
+.pillClear        { composes: pillClear        from '../../styles/ui.module.css'; }
+.pillDropdown     { composes: pillDropdown     from '../../styles/ui.module.css'; }
+.filterPopup      { composes: filterPopup      from '../../styles/ui.module.css'; }
+.filterPopupTitle { composes: filterPopupTitle from '../../styles/ui.module.css'; }
+.filterRoleList   { composes: filterRoleList   from '../../styles/ui.module.css'; }
+.filterRoleRow    { composes: filterRoleRow    from '../../styles/ui.module.css'; }
+.filterEmpty      { composes: filterEmpty      from '../../styles/ui.module.css'; }
+
 /* ── USD Total block ── */
 .usdBlock {
   background: var(--bg-surface); border: 1px solid var(--color-border);

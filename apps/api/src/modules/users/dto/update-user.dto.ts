@@ -1,4 +1,4 @@
-import { IsString, MinLength, IsBoolean, IsArray, IsUUID, IsOptional } from 'class-validator';
+import { IsString, MinLength, IsBoolean, IsArray, IsInt, IsOptional } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 
 export class UpdateUserDto {
@@ -19,9 +19,15 @@ export class UpdateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({ type: [String] })
+  @ApiPropertyOptional({ type: [Number] })
   @IsOptional()
   @IsArray()
-  @IsUUID('4', { each: true })
-  roleIds?: string[];
+  @IsInt({ each: true })
+  roleIds?: number[];
+
+  @ApiPropertyOptional({ type: [Number], description: 'ID của các quyền tùy chỉnh gán riêng cho user' })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  permissionIds?: number[];
 }

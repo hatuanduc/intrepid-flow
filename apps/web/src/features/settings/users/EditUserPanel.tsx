@@ -1,8 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { updateUser, listRoles, type UserItem, type RoleItem } from '../../../lib/api';
+import { updateUser, listRoles, listPermissions, type UserItem, type RoleItem, type PermissionItem } from '../../../lib/api';
 import RightPanel from '../../../components/common/RightPanel';
+import UserPermissionPicker from './UserPermissionPicker';
 import s from './AddUserPanel.module.css';
 
 type Props = {
@@ -16,24 +17,36 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(true);
-  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>([]);
+  const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
-  useEffect(() => {
+  const resetKey = `${open}:${user?.id ?? ''}`;
+  const [prevResetKey, setPrevResetKey] = useState(resetKey);
+  if (resetKey !== prevResetKey) {
+    setPrevResetKey(resetKey);
     if (open && user) {
       setName(user.name ?? '');
       setPassword('');
       setIsActive(user.isActive);
       setSelectedRoleIds(user.roles.map(r => r.id));
+      setSelectedPermissionIds(user.permissions.map(p => p.id));
       setError(null);
       setSearch('');
-      listRoles().then(r => setRoles(r.items ?? []));
     }
-  }, [open, user?.id]);
+  }
+
+  useEffect(() => {
+    if (open) {
+      listRoles().then(r => setRoles(r.items ?? []));
+      listPermissions().then(r => setPermissions(r.items ?? []));
+    }
+  }, [open]);
 
   function clearField(field: string) {
     setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
@@ -46,10 +59,23 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
     return errs;
   }
 
-  function toggleRole(id: string) {
+  function toggleRole(id: number) {
     setSelectedRoleIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
+  }
+
+  function togglePermission(id: number) {
+    setSelectedPermissionIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }
+
+  function toggleModulePermissions(ids: number[]) {
+    setSelectedPermissionIds(prev => {
+      const allSelected = ids.every(id => prev.includes(id));
+      return allSelected ? prev.filter(x => !ids.includes(x)) : [...new Set([...prev, ...ids])];
+    });
   }
 
   async function submit(e: React.FormEvent) {
@@ -66,6 +92,7 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
         password: password || undefined,
         isActive,
         roleIds: selectedRoleIds,
+        permissionIds: selectedPermissionIds,
       });
       onSaved();
     } catch (err) {
@@ -175,6 +202,24 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
           <p className={s.noResult}>Không tìm thấy vai trò.</p>
         )}
 
+        <div className={s.divider} />
+
+        <div className={s.permSection}>
+          <div className={s.permSectionHead}>
+            <label className={s.label}>Quyền tùy chỉnh theo module</label>
+            {selectedPermissionIds.length > 0 && (
+              <span className={s.roleTotalCount}>{selectedPermissionIds.length} đã chọn</span>
+            )}
+          </div>
+          <p className={s.permSectionDesc}>Gán thêm quyền riêng cho user này, cộng dồn với quyền từ vai trò đã chọn ở trên.</p>
+          <UserPermissionPicker
+            permissions={permissions}
+            selectedIds={selectedPermissionIds}
+            onToggle={togglePermission}
+            onToggleModule={toggleModulePermissions}
+          />
+        </div>
+
         {error && <div className={s.error}>{error}</div>}
       </form>
     </RightPanel>
@@ -188,7 +233,7 @@ function RoleOption({
 }: {
   role: RoleItem;
   selected: boolean;
-  onToggle: (id: string) => void;
+  onToggle: (id: number) => void;
 }) {
   return (
     <label className={[s.roleOption, selected ? s.roleOptionSelected : ''].filter(Boolean).join(' ')}>

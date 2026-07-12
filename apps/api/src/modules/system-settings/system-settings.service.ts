@@ -17,7 +17,7 @@ export class SystemSettingsService implements OnModuleInit {
   async onModuleInit() {
     const settings = await this.prisma.currencySettings.findUnique({ where: { id: SETTINGS_ID } });
     const day = settings?.autoUpdateDay ?? 1;
-    this.jobScheduler.sync('currency-rates', `0 9 ${day} * *`, true, () => this.refreshCurrencyRates());
+    this.jobScheduler.sync('currency-rates', `0 9 ${day} * *`, true, async () => { await this.refreshCurrencyRates(); });
   }
 
   // ─── Google Service Account ───────────────────────────────────────────────────
@@ -25,6 +25,11 @@ export class SystemSettingsService implements OnModuleInit {
   async getSettings() {
     const s = await this.prisma.systemSettings.findUnique({ where: { id: SETTINGS_ID } });
     return this._toSettingsDto(s);
+  }
+
+  async getServiceAccountStatus() {
+    const { hasServiceKey, clientEmail } = await this.getSettings();
+    return { hasServiceKey, clientEmail };
   }
 
   async updateServiceAccount(serviceKeyJson: string | null) {
@@ -107,7 +112,7 @@ export class SystemSettingsService implements OnModuleInit {
       create: { id: SETTINGS_ID, autoUpdateDay: dto.autoUpdateDay, nextUpdateAt: next },
       update: { autoUpdateDay: dto.autoUpdateDay, nextUpdateAt: next },
     });
-    this.jobScheduler.sync('currency-rates', `0 9 ${dto.autoUpdateDay} * *`, true, () => this.refreshCurrencyRates());
+    this.jobScheduler.sync('currency-rates', `0 9 ${dto.autoUpdateDay} * *`, true, async () => { await this.refreshCurrencyRates(); });
     return settings;
   }
 

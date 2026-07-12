@@ -14,7 +14,7 @@ const prisma = new PrismaClient({
 
 async function main() {
   const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@intrepid.com';
-  const password = process.env.DEMO_PASSWORD ?? 'intrepid';
+  const password = process.env.SEED_ADMIN_PASSWORD ?? 'intrepid';
   const hashed = bcrypt.hashSync(password, 10);
   const corePermissions = [
     { key: 'dashboard:view',  module: 'dashboard', action: 'view',   label: 'Xem tổng quan' },
@@ -98,34 +98,38 @@ async function main() {
 
   console.log('Seed user ready:', user.email);
 
-  // Mock users để test pagination
-  const mockUsers = [
-    'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Văn Cường', 'Phạm Thị Dung', 'Hoàng Văn Em',
-    'Đặng Thị Phương', 'Bùi Văn Giang', 'Vũ Thị Hà', 'Đỗ Văn Inh', 'Ngô Thị Kim',
-    'Dương Văn Long', 'Lý Thị Mai', 'Trịnh Văn Nam', 'Phan Thị Oanh', 'Võ Văn Phúc',
-    'Đinh Thị Quỳnh', 'Lưu Văn Sơn', 'Tạ Thị Thủy', 'Hà Văn Ước', 'Mai Thị Vân',
-    'Cao Văn Xuân', 'Tô Thị Yến', 'Chu Văn Zung', 'Nông Thị Ánh', 'Thái Văn Bảo',
-  ];
+  // Mock users for testing pagination — only seeded when SEED_MOCK_USERS=true (local dev)
+  if (process.env.SEED_MOCK_USERS === 'true') {
+    const mockUsers = [
+      'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Văn Cường', 'Phạm Thị Dung', 'Hoàng Văn Em',
+      'Đặng Thị Phương', 'Bùi Văn Giang', 'Vũ Thị Hà', 'Đỗ Văn Inh', 'Ngô Thị Kim',
+      'Dương Văn Long', 'Lý Thị Mai', 'Trịnh Văn Nam', 'Phan Thị Oanh', 'Võ Văn Phúc',
+      'Đinh Thị Quỳnh', 'Lưu Văn Sơn', 'Tạ Thị Thủy', 'Hà Văn Ước', 'Mai Thị Vân',
+      'Cao Văn Xuân', 'Tô Thị Yến', 'Chu Văn Zung', 'Nông Thị Ánh', 'Thái Văn Bảo',
+    ];
 
-  for (let i = 0; i < mockUsers.length; i++) {
-    const mockEmail = `user${i + 1}@intrepid.com`;
-    const mockUser = await prisma.user.upsert({
-      where: { email: mockEmail },
-      create: {
-        email: mockEmail,
-        name: mockUsers[i],
-        password: hashed,
-        isActive: i % 5 !== 0, // mỗi 5 user thì 1 bị khóa
-      },
-      update: { name: mockUsers[i] },
-    });
-    await prisma.userRole.upsert({
-      where: { userId_roleId: { userId: mockUser.id, roleId: adminRole.id } },
-      create: { userId: mockUser.id, roleId: adminRole.id },
-      update: {},
-    });
+    for (let i = 0; i < mockUsers.length; i++) {
+      const mockEmail = `user${i + 1}@intrepid.com`;
+      const mockUser = await prisma.user.upsert({
+        where: { email: mockEmail },
+        create: {
+          email: mockEmail,
+          name: mockUsers[i],
+          password: hashed,
+          isActive: i % 5 !== 0, // 1 out of every 5 users is locked
+        },
+        update: { name: mockUsers[i] },
+      });
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: mockUser.id, roleId: adminRole.id } },
+        create: { userId: mockUser.id, roleId: adminRole.id },
+        update: {},
+      });
+    }
+    console.log(`Seeded ${mockUsers.length} mock users`);
+  } else {
+    console.log('Skipped mock users (SEED_MOCK_USERS not enabled)');
   }
-  console.log(`Seeded ${mockUsers.length} mock users`);
 
   // ─── Bank Statement defaults ────────────────────────────────────────────────
   await prisma.bankJobSettings.upsert({
@@ -154,54 +158,24 @@ async function main() {
 
   console.log('Bank statement defaults seeded');
 
-  // ─── Bank Country Mappings ──────────────────────────────────────────────────
-  const COUNTRY_MAPPINGS = [
-    { companyName: 'INTREPID VIETNAM LTD',          accountCode: 'VN'    },
-    { companyName: 'INTREPID E-COMMERCE HONG KONG LTD', accountCode: 'HK' },
-    { companyName: 'INTREPID MALAYSIA SDN. BHD',    accountCode: 'MY'    },
-    { companyName: 'INTREPID INDONESIA PT',         accountCode: 'ID'    },
-    { companyName: 'INTREPID PHILIPPINES INC.',     accountCode: 'PH'    },
-    { companyName: 'INTREPID DIGITAL I PT',         accountCode: 'DM_VN' },
+  // ─── Bank Account Names (master data — account number is discovered by the sync job) ───
+  const BANK_ACCOUNT_NAMES = [
+    { name: 'INTREPID VIETNAM LTD',         accountCode: 'VN' },
+    { name: 'INTREPID MALAYSIA SDN. BHD',   accountCode: 'MY' },
+    { name: 'INTREPID DIGITAL I PT',        accountCode: 'ID' },
+    { name: 'INTREPID PHILIPPINES INC.',    accountCode: 'PH' },
+    { name: 'DATAMART VIET NAM CO., LTD',   accountCode: 'DMX_VN' },
+    { name: 'INTREPID DIGITAL COMMERCE PL', accountCode: 'SG' },
   ];
 
-  for (const m of COUNTRY_MAPPINGS) {
-    await prisma.bankCountryMapping.upsert({
-      where: { accountCode: m.accountCode },
-      create: m,
-      update: { companyName: m.companyName },
+  for (const a of BANK_ACCOUNT_NAMES) {
+    await prisma.bankAccountName.upsert({
+      where: { name: a.name },
+      create: a,
+      update: { accountCode: a.accountCode },
     });
   }
-  console.log(`Seeded ${COUNTRY_MAPPINGS.length} bank country mappings`);
-
-  // ─── Bank Accounts (dev seed) ───────────────────────────────────────────────
-  const BANK_ACCOUNTS = [
-    // Vietnam
-    { accountNumber: '001-123456-001', accountName: 'INTREPID VIETNAM LTD',      bankName: 'HSBC Vietnam',     currency: 'VND', accountCode: 'VN' },
-    { accountNumber: '001-123456-002', accountName: 'INTREPID VIETNAM LTD',      bankName: 'HSBC Vietnam',     currency: 'USD', accountCode: 'VN' },
-    // Hong Kong
-    { accountNumber: '652-138066-838/CU-HKD', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'HKD', accountCode: 'HK' },
-    { accountNumber: '652-138066-838/SA-EUR', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'EUR', accountCode: 'HK' },
-    { accountNumber: '652-138066-838/SA-HKD', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'HKD', accountCode: 'HK' },
-    { accountNumber: '652-138066-838/SA-USD', accountName: 'INTREPID E-COMMERCE HONG KONG LTD', bankName: 'HSBC Hong Kong', currency: 'USD', accountCode: 'HK' },
-    // Malaysia
-    { accountNumber: '352-663561-101', accountName: 'INTREPID MALAYSIA SDN. BHD', bankName: 'HSBC Malaysia', currency: 'MYR', accountCode: 'MY' },
-    { accountNumber: '352-663561-725', accountName: 'INTREPID MALAYSIA SDN. BHD', bankName: 'HSBC Malaysia', currency: 'USD', accountCode: 'MY' },
-    // Indonesia
-    { accountNumber: '050-300672-068', accountName: 'INTREPID DIGITAL I PT',      bankName: 'HSBC Indonesia',   currency: 'IDR', accountCode: 'ID' },
-    { accountNumber: '050-300672-069', accountName: 'INTREPID DIGITAL I PT',      bankName: 'HSBC Indonesia',   currency: 'USD', accountCode: 'ID' },
-    // Philippines
-    { accountNumber: '026-329243-040', accountName: 'INTREPID PHILIPPINES INC.', bankName: 'HSBC Philippines', currency: 'PHP', accountCode: 'PH' },
-    { accountNumber: '026-329243-041', accountName: 'INTREPID PHILIPPINES INC.', bankName: 'HSBC Philippines', currency: 'USD', accountCode: 'PH' },
-  ];
-
-  for (const a of BANK_ACCOUNTS) {
-    await prisma.bankAccount.upsert({
-      where: { accountNumber: a.accountNumber },
-      create: { ...a, isActive: true },
-      update: { accountName: a.accountName, bankName: a.bankName, currency: a.currency, accountCode: a.accountCode },
-    });
-  }
-  console.log(`Seeded ${BANK_ACCOUNTS.length} bank accounts`);
+  console.log(`Seeded ${BANK_ACCOUNT_NAMES.length} bank account names`);
 }
 
 main()

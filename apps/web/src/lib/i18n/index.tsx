@@ -34,8 +34,11 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>('en');
 
   useEffect(() => {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === 'en' || stored === 'vi') setLangState(stored as Lang);
+    // Deferred a tick so this localStorage-derived update isn't synchronous with the effect itself.
+    Promise.resolve().then(() => {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      if (stored === 'en' || stored === 'vi') setLangState(stored as Lang);
+    });
   }, []);
 
   function setLang(l: Lang) {

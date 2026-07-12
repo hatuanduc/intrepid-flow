@@ -69,7 +69,7 @@ export default function ConnectionsPage() {
   }, []);
 
   useEffect(() => {
-    if (!canConfig) { setLoading(false); return; }
+    if (!canConfig) return;
     getSystemSettings()
       .then(setStatus)
       .catch(() => {})

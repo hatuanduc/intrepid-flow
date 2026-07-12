@@ -16,24 +16,26 @@ const HEADERS = [
 
 // Country code → Location name mapping
 const COUNTRY_LOCATIONS: Record<string, string> = {
-  HK: 'Hong Kong SAR HBAP',
+  VN: 'Vietnam HBVN',
+  DMX_VN: 'Vietnam HBVN',
   ID: 'Indonesia HBAP',
   MY: 'Malaysia HBMB',
   PH: 'Philippines HBAP',
+  SG: 'Singapore HBSP',
 };
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const accountNumber = url.searchParams.get('acc') ?? '652-138066-838/SA-EUR';
-  const currency     = url.searchParams.get('cur') ?? 'EUR';
-  const countryCode  = url.searchParams.get('co')  ?? 'HK';
-  const company      = url.searchParams.get('name') ?? 'INTREPID E-COMMERCE HONG KONG LTD';
-  const bankName     = url.searchParams.get('bank') ?? 'Hongkong Shanghai Banking Corp Ltd';
+  const accountNumber = url.searchParams.get('acc') ?? '001-123456-001';
+  const currency     = url.searchParams.get('cur') ?? 'VND';
+  const countryCode  = url.searchParams.get('co')  ?? 'VN';
+  const company      = url.searchParams.get('name') ?? 'INTREPID VIETNAM LTD';
+  const bankName     = url.searchParams.get('bank') ?? 'HSBC Bank (Vietnam) Ltd';
   const fromParam    = url.searchParams.get('from') ?? '';
   const toParam      = url.searchParams.get('to')   ?? '';
   const location     = COUNTRY_LOCATIONS[countryCode] ?? countryCode;
 
-  let transactions = ACCOUNT_TRANSACTIONS[accountNumber] ?? ACCOUNT_TRANSACTIONS['652-138066-838/SA-EUR'];
+  let transactions = ACCOUNT_TRANSACTIONS[accountNumber] ?? ACCOUNT_TRANSACTIONS['001-123456-001'];
 
   if (fromParam && toParam) {
     const from = parseDMY(fromParam);

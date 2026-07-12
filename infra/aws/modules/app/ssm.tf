@@ -32,6 +32,14 @@ resource "aws_ssm_parameter" "smtp_pass" {
   lifecycle { ignore_changes = [value] }
 }
 
+resource "aws_ssm_parameter" "seed_admin_password" {
+  name        = "/intrepid/${var.env}/SEED_ADMIN_PASSWORD"
+  description = "Initial admin password — chỉ dùng 1 lần khi chạy `pnpm db:seed` thủ công lần đầu, xem infra/aws/README.md"
+  type        = "SecureString"
+  value       = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
 # ── Config (String, env-specific) ────────────────────────────────────────────
 
 resource "aws_ssm_parameter" "app_url" {

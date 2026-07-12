@@ -25,7 +25,7 @@ type MainTab = 'users' | 'roles';
 type ActiveFilters = {
   name?: string;
   email?: string;
-  roleIds?: string[];
+  roleIds?: number[];
 };
 type DeleteTarget =
   | { type: 'user'; item: UserItem }
@@ -130,12 +130,12 @@ function TextFilter({ label, value, onApply }: {
 
 /* ── Role filter popup ── */
 function RoleFilter({ roles, selected, onApply }: {
-  roles: { id: string; name: string }[];
-  selected: string[];
-  onApply: (ids: string[]) => void;
+  roles: { id: number; name: string }[];
+  selected: number[];
+  onApply: (ids: number[]) => void;
 }) {
-  const [checked, setChecked] = useState<string[]>(selected);
-  function toggle(id: string) {
+  const [checked, setChecked] = useState<number[]>(selected);
+  function toggle(id: number) {
     setChecked(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
   return (
@@ -172,7 +172,6 @@ function MoreMenu({
   onResendInvite?: () => void;
   onImpersonate?: () => void;
 }) {
-  if (!onEdit && !onDelete && !onResendInvite && !onImpersonate) return null;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -183,6 +182,7 @@ function MoreMenu({
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
+  if (!onEdit && !onDelete && !onResendInvite && !onImpersonate) return null;
   return (
     <div className={s.moreWrap} ref={ref} onClick={e => e.stopPropagation()}>
       <button
@@ -411,11 +411,14 @@ export default function UsersPage() {
     finally { setLoadingRoles(false); }
   }
 
-  useEffect(() => { loadUsers(); loadRoles(); }, []);
+  useEffect(() => {
+    // Deferred a tick so loadUsers()/loadRoles()'s internal setState isn't synchronous with the effect itself.
+    Promise.resolve().then(() => { loadUsers(); loadRoles(); });
+  }, []);
 
   useEffect(() => {
-    if (mainTab === 'roles' && roles.length === 0) loadRoles();
-  }, [mainTab]);
+    if (mainTab === 'roles' && roles.length === 0) Promise.resolve().then(() => loadRoles());
+  }, [mainTab, roles.length]);
 
   async function handleConfirmDelete() {
     if (!deleteTarget) return;
@@ -714,7 +717,6 @@ export default function UsersPage() {
         role={panelRole === 'new' ? null : panelRole}
         open={panelRole !== null}
         onClose={() => setPanelRole(null)}
-        onSaved={() => { setPanelRole(null); loadRoles(); }}
       />
     </div>
   );

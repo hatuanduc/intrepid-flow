@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { JOB_STATUS, FAIL_REASON } from './constants';
-import { PlaywrightService, computeDateRange } from './services/playwright.service';
+import { PlaywrightService, computeDateRange, type DiscoveredAccount } from './services/playwright.service';
 import { ExcelService, type TransactionRow } from './services/excel.service';
 import { SheetsService } from './services/sheets.service';
 
@@ -27,6 +27,19 @@ function parseSteps(raw: unknown): JobStep[] {
   return raw as JobStep[];
 }
 
+// Bank entity name per country code — used only when discovery creates a brand-new account.
+const BANK_NAME_BY_CODE: Record<string, string> = {
+  VN: 'HSBC Vietnam',
+  MY: 'HSBC Malaysia',
+  ID: 'HSBC Indonesia',
+  PH: 'HSBC Philippines',
+  SG: 'HSBC Singapore',
+};
+
+function bankNameForCode(countryCode: string): string {
+  return BANK_NAME_BY_CODE[countryCode] ?? `HSBC ${countryCode}`;
+}
+
 @Injectable()
 export class BankSyncService {
   private readonly logger = new Logger(BankSyncService.name);
@@ -38,7 +51,7 @@ export class BankSyncService {
     private readonly sheets: SheetsService,
   ) {}
 
-  async run(jobId: string): Promise<void> {
+  async run(jobId: number): Promise<void> {
     const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
     if (!settings?.hsbcnetUsername) {
       await this.prisma.bankSyncJob.update({
@@ -55,7 +68,7 @@ export class BankSyncService {
     const step2Done = steps.find(s => s.key === 'sheets_sync')?.status === 'completed';
 
     try {
-      // ── Step 1: Lấy sao kê ngân hàng ──────────────────────────────────────
+      // ── Step 1: Fetch bank statement ────────────────────────────────────────
       let accountRows = new Map<string, TransactionRow[]>();
 
       if (!step1Done) {
@@ -68,7 +81,8 @@ export class BankSyncService {
         await this.log(jobId, `Loaded ${pl(accountRows.size, 'account number')} from DB.`, 'sheets_sync');
       }
 
-      // ── Step 2: Đồng bộ Google Sheets ─────────────────────────────────────
+      // ── Step 2: Sync to Google Sheets ───────────────────────────────────────
+      let sheetsSyncFailed = false;
       if (!step2Done) {
         if (accountRows.size === 0) {
           await this.log(jobId, 'No new transactions — GSheets sync not needed.', 'sheets_sync', 'success');
@@ -81,9 +95,23 @@ export class BankSyncService {
           await this.updateStep(jobId, 'sheets_sync', { status: 'running', startedAt: new Date().toISOString() });
           await this.updateJob(jobId, JOB_STATUS.SYNCING_SHEETS);
           await this.log(jobId, `Syncing ${pl(accountRows.size, 'account number')} to Google Sheets...`, 'sheets_sync');
-          await this.runSheetsSync(jobId, accountRows);
-          await this.updateStep(jobId, 'sheets_sync', { status: 'completed', completedAt: new Date().toISOString() });
+          const sheetsResult = await this.runSheetsSync(jobId, accountRows);
+          sheetsSyncFailed = sheetsResult.failed > 0;
+          await this.updateStep(jobId, 'sheets_sync', {
+            status: sheetsSyncFailed ? 'failed' : 'completed',
+            completedAt: new Date().toISOString(),
+            errorMessage: sheetsSyncFailed ? `${sheetsResult.failed} account(s) failed to sync to Google Sheets` : null,
+          });
         }
+      }
+
+      if (sheetsSyncFailed) {
+        await this.prisma.bankSyncJob.update({
+          where: { id: jobId },
+          data: { status: JOB_STATUS.FAILED, errorMessage: 'GSheets sync failed for one or more accounts', completedAt: new Date() },
+        });
+        await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets.', undefined, 'error');
+        return;
       }
 
       await this.updateJob(jobId, JOB_STATUS.COMPLETED);
@@ -113,9 +141,79 @@ export class BankSyncService {
     }
   }
 
+  // ─── Account discovery — scrape HSBCnet switcher, upsert BankAccount rows ───
+
+  private async discoverAndSyncAccounts(jobId: number): Promise<void> {
+    const discovered: DiscoveredAccount[] = await this.playwright.discoverAccounts();
+    if (discovered.length === 0) {
+      await this.log(jobId, 'No accounts discovered from HSBCnet — keeping existing account list.', 'bank_sync', 'warn');
+      return;
+    }
+
+    // Account names are master data (added manually) — discovery only creates
+    // accounts for names that already exist here, never new account names.
+    const accountNames = await this.prisma.bankAccountName.findMany({ where: { isActive: true } });
+    const accountNameByName = new Map(accountNames.map(a => [a.name.trim().toLowerCase(), a]));
+
+    const existingNumbers = new Set(
+      (await this.prisma.bankAccount.findMany({
+        where: { accountNumber: { in: discovered.map(a => a.accountNumber) } },
+        select: { accountNumber: true },
+      })).map(a => a.accountNumber),
+    );
+
+    const unmatchedNames = new Set<string>();
+    let synced = 0;
+
+    for (const acc of discovered) {
+      const accountNameEntry = accountNameByName.get(acc.companyName.trim().toLowerCase());
+      if (!accountNameEntry) {
+        unmatchedNames.add(acc.companyName);
+        continue;
+      }
+
+      await this.prisma.bankAccount.upsert({
+        where: { accountNumber: acc.accountNumber },
+        create: {
+          accountNumber: acc.accountNumber,
+          accountNameId: accountNameEntry.id,
+          accountName: accountNameEntry.name,
+          accountCode: accountNameEntry.accountCode,
+          currency: acc.currency,
+          bankName: bankNameForCode(accountNameEntry.accountCode),
+          isActive: true,
+        },
+        update: {
+          accountNameId: accountNameEntry.id,
+          accountName: accountNameEntry.name,
+          accountCode: accountNameEntry.accountCode,
+          currency: acc.currency,
+        },
+      });
+      synced++;
+    }
+
+    const newCount = discovered.filter(a => !existingNumbers.has(a.accountNumber)).length;
+    await this.log(
+      jobId,
+      `Account discovery: ${discovered.length} found, ${synced} synced (${newCount} new, ${synced - newCount} updated).`,
+      'bank_sync',
+      'success',
+    );
+
+    if (unmatchedNames.size > 0) {
+      await this.log(
+        jobId,
+        `Skipped ${unmatchedNames.size} unrecognized account name(s) — not in BankAccountName master list: ${Array.from(unmatchedNames).join(', ')}`,
+        'bank_sync',
+        'warn',
+      );
+    }
+  }
+
   // ─── Step 1: Bank sync (login → discover → download → parse → store) ────────
 
-  private async runBankSync(jobId: string): Promise<Map<string, TransactionRow[]>> {
+  private async runBankSync(jobId: number): Promise<Map<string, TransactionRow[]>> {
     const result = new Map<string, TransactionRow[]>();
 
     // ── 1a. Browser + auth ────────────────────────────────────────────────────
@@ -146,7 +244,11 @@ export class BankSyncService {
     await this.updateJob(jobId, JOB_STATUS.AUTHENTICATED);
     await this.log(jobId, 'Authenticated successfully.', 'bank_sync', 'success');
 
-    // ── 1b. Compute date range from settings ─────────────────────────────────
+    // ── 1b. Discover accounts from HSBCnet switcher → upsert BankAccount ─────
+    await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
+    await this.discoverAndSyncAccounts(jobId);
+
+    // ── 1c. Compute date range from settings ─────────────────────────────────
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anySettings = settings as any;
     const dateMode: string = anySettings?.syncDateMode ?? 'yesterday';
@@ -155,7 +257,7 @@ export class BankSyncService {
     const rangeLabel = `${formatDateLabel(dateFrom)} → ${formatDateLabel(dateTo)}`;
     await this.log(jobId, `Date range: ${rangeLabel} (mode: ${dateMode}).`, 'bank_sync');
 
-    // ── 1c. Download per active account (grouped by accountName) ─────────────
+    // ── 1d. Download per active account (grouped by accountName) ─────────────
     const accounts = await this.prisma.bankAccount.findMany({
       where: { isActive: true },
       orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
@@ -186,11 +288,13 @@ export class BankSyncService {
         } catch (err) {
           const msg = (err as Error).message ?? 'Download error';
           await this.log(jobId, `  → ${account.accountNumber}: fetch failed — ${msg} [${FAIL_REASON.DOWNLOAD_ERROR}]`, 'bank_sync', 'error');
+          await this.upsertJobAccount(jobId, account.id, { status: 'failed', errorMessage: msg });
           continue;
         }
 
         if (excelBuffer === null) {
           await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
+          await this.upsertJobAccount(jobId, account.id, { status: 'completed' });
           continue;
         }
 
@@ -201,7 +305,9 @@ export class BankSyncService {
         await this.log(jobId, `  → ${account.accountNumber}: parsed ${pl(rows.length, 'transaction row')}.`, 'bank_sync');
 
         if (!validation.valid) {
-          await this.log(jobId, `  → ${account.accountNumber}: missing required columns — ${validation.missingRequired.join(', ')} [${FAIL_REASON.MISSING_REQUIRED_COLUMNS}]`, 'bank_sync', 'error');
+          const msg = `Missing required columns — ${validation.missingRequired.join(', ')}`;
+          await this.log(jobId, `  → ${account.accountNumber}: ${msg} [${FAIL_REASON.MISSING_REQUIRED_COLUMNS}]`, 'bank_sync', 'error');
+          await this.upsertJobAccount(jobId, account.id, { status: 'failed', errorMessage: msg, rowsDownloaded: rows.length });
           continue;
         }
         if (validation.missingOptional.length > 0) {
@@ -210,6 +316,12 @@ export class BankSyncService {
 
         const { inserted, duplicates } = await this.storeTransactions(jobId, account.id, account.accountNumber, rows);
         await this.log(jobId, `  → ${account.accountNumber}: stored — ${inserted} new, ${pl(duplicates, 'duplicate')}.`, 'bank_sync', inserted > 0 ? 'success' : 'warn');
+        await this.upsertJobAccount(jobId, account.id, {
+          status: 'completed',
+          rowsDownloaded: rows.length,
+          rowsInserted: inserted,
+          rowsDuplicate: duplicates,
+        });
 
         if (inserted > 0) {
           result.set(account.accountNumber, rows);
@@ -237,50 +349,94 @@ export class BankSyncService {
 
   // ─── Step 2: Sheets sync (read DB → push GSheets) ───────────────────────────
 
-  private async runSheetsSync(jobId: string, accountRows: Map<string, TransactionRow[]>): Promise<void> {
+  private async runSheetsSync(
+    jobId: number,
+    accountRows: Map<string, TransactionRow[]>,
+  ): Promise<{ synced: number; skipped: number; failed: number }> {
     if (accountRows.size === 0) {
       await this.log(jobId, 'No account numbers to sync to GSheets.', 'sheets_sync');
-      return;
+      return { synced: 0, skipped: 0, failed: 0 };
     }
+
+    const bankAccounts = await this.prisma.bankAccount.findMany({
+      where: { accountNumber: { in: Array.from(accountRows.keys()) } },
+      select: { id: true, accountNumber: true, accountName: true },
+    });
+    const bankAccountIdByNumber = new Map(bankAccounts.map(a => [a.accountNumber, a.id]));
+    const accountNameByNumber = new Map(bankAccounts.map(a => [a.accountNumber, a.accountName]));
+
+    // Accounts already synced successfully earlier in this same job (e.g. before a
+    // retry) — skip re-uploading them, only the still-unsynced ones get attempted.
+    const alreadySyncedIds = new Set(
+      (await this.prisma.bankSyncJobAccount.findMany({
+        where: { jobId, sheetsSyncStatus: 'completed' },
+        select: { bankAccountId: true },
+      })).map(a => a.bankAccountId),
+    );
 
     let synced = 0;
     let skipped = 0;
+    let failed = 0;
 
     for (const [accountNumber, rows] of accountRows) {
+      const bankAccountId = bankAccountIdByNumber.get(accountNumber);
+      const accountName = accountNameByNumber.get(accountNumber);
+      const label = accountName ? `${accountName} (${accountNumber})` : accountNumber;
+
+      if (bankAccountId && alreadySyncedIds.has(bankAccountId)) {
+        synced++;
+        await this.log(jobId, `${label}: synced in a previous attempt — no action needed.`, 'sheets_sync');
+        continue;
+      }
+
       try {
         const result = await this.sheets.sync(accountNumber, rows);
         if (result.skipped) {
           skipped++;
           const reason = result.reason ?? 'unknown';
-          const label = result.accountName ? `${result.accountName} (${accountNumber})` : accountNumber;
           const msg = reason === 'no_gsheet_config'
-            ? `no GSheet config for ${result.accountName ?? accountNumber}`
+            ? `no GSheet config for ${accountName ?? accountNumber}`
             : reason === 'no_service_key' ? 'no Google service key configured'
             : reason === 'all_duplicates' ? 'all rows already exist (duplicates)'
             : reason;
           await this.log(jobId, `${label}: skipped — ${msg}`, 'sheets_sync', 'warn');
+          if (bankAccountId) {
+            await this.upsertJobAccount(jobId, bankAccountId, { sheetsSyncStatus: 'skipped', sheetsSyncError: msg });
+          }
         } else {
           synced++;
-          await this.log(jobId, `${accountNumber}: synced ${pl(result.rowsSynced ?? 0, 'row')} to GSheets.`, 'sheets_sync', 'success');
+          await this.log(jobId, `${label}: synced ${pl(result.rowsSynced ?? 0, 'row')} to GSheets.`, 'sheets_sync', 'success');
+          if (bankAccountId) {
+            await this.upsertJobAccount(jobId, bankAccountId, {
+              sheetsSyncStatus: 'completed',
+              rowsSynced: result.rowsSynced ?? 0,
+              sheetsSyncError: null,
+            });
+          }
         }
       } catch (err) {
-        skipped++;
+        failed++;
         const msg = (err as Error).message ?? 'Sheets error';
-        await this.log(jobId, `${accountNumber}: GSheets error — ${msg} [${FAIL_REASON.SHEET_ERROR}]`, 'sheets_sync', 'error');
+        await this.log(jobId, `${label}: GSheets error — ${msg} [${FAIL_REASON.SHEET_ERROR}]`, 'sheets_sync', 'error');
+        if (bankAccountId) {
+          await this.upsertJobAccount(jobId, bankAccountId, { sheetsSyncStatus: 'failed', sheetsSyncError: msg });
+        }
       }
     }
 
     await this.log(
       jobId,
-      `Done — ${pl(synced, 'account number')} synced, ${skipped} skipped.`,
+      `Done — ${synced} synced, ${skipped} skipped, ${failed} failed.`,
       'sheets_sync',
-      synced > 0 ? 'success' : 'warn',
+      failed > 0 ? 'error' : (synced > 0 ? 'success' : 'warn'),
     );
+
+    return { synced, skipped, failed };
   }
 
   // ─── Load existing transactions from DB (for step2 retry) ───────────────────
 
-  private async loadTransactionsForJob(jobId: string): Promise<Map<string, TransactionRow[]>> {
+  private async loadTransactionsForJob(jobId: number): Promise<Map<string, TransactionRow[]>> {
     const txns = await this.prisma.bankTransaction.findMany({
       where: { jobId },
       include: { bankAccount: { select: { accountNumber: true } } },
@@ -307,9 +463,32 @@ export class BankSyncService {
 
   // ─── Helpers ─────────────────────────────────────────────────────────────────
 
+  // Per-account progress within a job — powers the job summary stats and lets a
+  // retry skip accounts that already finished (download or sheets-sync) successfully.
+  private async upsertJobAccount(
+    jobId: number,
+    bankAccountId: number,
+    data: Partial<{
+      status: string;
+      errorMessage: string | null;
+      rowsDownloaded: number;
+      rowsInserted: number;
+      rowsDuplicate: number;
+      rowsSynced: number;
+      sheetsSyncStatus: string;
+      sheetsSyncError: string | null;
+    }>,
+  ): Promise<void> {
+    await this.prisma.bankSyncJobAccount.upsert({
+      where: { jobId_bankAccountId: { jobId, bankAccountId } },
+      create: { jobId, bankAccountId, ...data },
+      update: data,
+    });
+  }
+
   private async storeTransactions(
-    jobId: string,
-    bankAccountId: string,
+    jobId: number,
+    bankAccountId: number,
     accountNumber: string,
     rows: TransactionRow[],
   ): Promise<{ inserted: number; duplicates: number }> {
@@ -359,7 +538,7 @@ export class BankSyncService {
     return { inserted, duplicates };
   }
 
-  private async updateStep(jobId: string, stepKey: StepKey, updates: Partial<JobStep>) {
+  private async updateStep(jobId: number, stepKey: StepKey, updates: Partial<JobStep>) {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { steps: true } });
     const steps = parseSteps(job?.steps);
     const idx = steps.findIndex(s => s.key === stepKey);
@@ -367,7 +546,7 @@ export class BankSyncService {
     await this.prisma.bankSyncJob.update({ where: { id: jobId }, data: { steps } });
   }
 
-  private async updateJob(jobId: string, status: string, message?: string) {
+  private async updateJob(jobId: number, status: string, message?: string) {
     await this.prisma.bankSyncJob.update({
       where: { id: jobId },
       data: {
@@ -382,7 +561,7 @@ export class BankSyncService {
   }
 
   private async log(
-    jobId: string,
+    jobId: number,
     message: string,
     step?: string,
     level: 'info' | 'success' | 'warn' | 'error' = 'info',

@@ -38,7 +38,7 @@ export class RolesController {
   @ApiOperation({ summary: 'Xóa vai trò (chỉ non-system)' })
   @ApiResponse({ status: 200, schema: { example: { ok: true } } })
   async deleteRole(@Param('id') id: string) {
-    await this.roles.deleteRole(id);
+    await this.roles.deleteRole(Number(id));
     return { ok: true };
   }
 }

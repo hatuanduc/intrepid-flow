@@ -80,6 +80,13 @@ export class BankStatementController {
 
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
 
+  @Get('account-names')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách account name (master data) declared cho sync' })
+  listAccountNames() {
+    return this.service.listAccountNames();
+  }
+
   @Get('accounts')
   @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Danh sách tài khoản ngân hàng' })
@@ -96,7 +103,7 @@ export class BankStatementController {
     @Query('accountCode') accountCode?: string,
     @Query('accountId') accountId?: string,
   ) {
-    return this.service.getMetrics(new Date(from), new Date(to), accountCode, accountId);
+    return this.service.getMetrics(new Date(from), new Date(to), accountCode, accountId ? Number(accountId) : undefined);
   }
 
   // ─── Job Management ──────────────────────────────────────────────────────────
@@ -105,7 +112,7 @@ export class BankStatementController {
   @HasPermission('bank_statement:run')
   @ApiOperation({ summary: 'Kích hoạt job đồng bộ bank statement' })
   trigger(@Req() req: any): Promise<BankSyncJobDto> {
-    return this.service.triggerJob(req.authUser.id as string);
+    return this.service.triggerJob(String(req.authUser.id));
   }
 
   @Get('jobs')
@@ -120,6 +127,13 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Chi tiết một job' })
   getJob(@Param('id') id: string): Promise<BankSyncJobDto> {
     return this.service.getJobDetail(id);
+  }
+
+  @Get('jobs/:id/stats')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Thống kê tiến độ đồng bộ theo account của một job' })
+  getJobStats(@Param('id') id: string) {
+    return this.service.getJobStats(id);
   }
 
   @Get('jobs/:id/summary')
@@ -137,21 +151,21 @@ export class BankStatementController {
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    return this.service.getAccountTransactions(accountId, new Date(from), new Date(to));
+    return this.service.getAccountTransactions(Number(accountId), new Date(from), new Date(to));
   }
 
   @Get('jobs/:id/account-transactions')
   @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Danh sách giao dịch của một tài khoản trong job' })
   getJobAccountTransactions(@Param('id') id: string, @Query('accountId') accountId: string) {
-    return this.service.getJobAccountTransactions(id, accountId);
+    return this.service.getJobAccountTransactions(id, Number(accountId));
   }
 
   @Post('jobs/:id/retry')
   @HasPermission('bank_statement:run')
   @ApiOperation({ summary: 'Retry một job — reset từ stepKey (hoặc step đầu tiên chưa done) rồi re-queue' })
   retryJob(@Param('id') id: string, @Body() body: RetryJobDto, @Req() req: any): Promise<BankSyncJobDto> {
-    return this.service.retryJob(id, req.authUser.id as string, body.stepKey);
+    return this.service.retryJob(id, String(req.authUser.id), body.stepKey);
   }
 
   @Delete('jobs/:id')

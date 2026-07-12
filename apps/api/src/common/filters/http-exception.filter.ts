@@ -11,7 +11,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       const status = exception.getStatus();
       const body = exception.getResponse();
 
-      // ValidationPipe trả về object { message: string[], error, statusCode }
+      // ValidationPipe returns an object { message: string[], error, statusCode }
       if (typeof body === 'object' && body !== null && 'message' in body) {
         const msg = (body as Record<string, unknown>).message;
         return res.status(status).json({

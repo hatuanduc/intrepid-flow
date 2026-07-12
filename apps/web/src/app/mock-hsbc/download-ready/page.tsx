@@ -9,7 +9,8 @@ function DownloadContent() {
   useEffect(() => {
     // Trigger download on the same tab — Content-Disposition: attachment keeps page alive
     window.location.href = `/api/mock-hsbc/export?${params.toString()}`;
-    setStarted(true);
+    // Deferred a tick so the render-triggering setState isn't synchronous with the effect itself.
+    Promise.resolve().then(() => setStarted(true));
   }, [params]);
 
   return (

@@ -22,8 +22,12 @@ export class JwtAuthGuard implements CanActivate {
       });
       if (!user || !user.isActive) return false;
       const roleRows = user.roles ?? [];
+      const directPermissions = user.permissions ?? [];
       const permissions = Array.from(
-        new Set(roleRows.flatMap(r => r.role.permissions.map(rp => rp.permission.key))),
+        new Set([
+          ...roleRows.flatMap(r => r.role.permissions.map(rp => rp.permission.key)),
+          ...directPermissions.map(up => up.permission.key),
+        ]),
       );
       req.authUser = {
         id: user.id,

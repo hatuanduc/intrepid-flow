@@ -70,7 +70,7 @@ export default function GeographyPage() {
   const [deletingRate, setDeletingRate] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!canConfig) { setLoading(false); return; }
+    if (!canConfig) return;
     getCurrencyData()
       .then(curr => {
         setCurrencyData(curr);

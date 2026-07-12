@@ -20,7 +20,6 @@ export default function RolesPage() {
   const [selectedRole, setSelectedRole] = useState<RoleItem | null>(null);
 
   useEffect(() => {
-    setLoading(true);
     listRoles()
       .then(r => setRoles(r.items ?? []))
       .finally(() => setLoading(false));

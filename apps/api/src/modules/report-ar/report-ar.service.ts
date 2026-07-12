@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException, InternalServerErrorException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateArSettingsDto } from './dto/update-settings.dto';
-import { UpsertArGsheetConfigDto } from './dto/upsert-gsheet-config.dto';
+import { CreateArGsheetConfigDto, UpdateArGsheetConfigDto } from './dto/upsert-gsheet-config.dto';
 
 const SETTINGS_ID = 'default';
 
@@ -193,17 +193,48 @@ export class ReportArService {
     }));
   }
 
-  async upsertGsheet(countryCode: string, dto: UpsertArGsheetConfigDto) {
-    const c = await this.prisma.arGsheetConfig.upsert({
-      where: { countryCode },
-      create: {
+  async createGsheet(dto: CreateArGsheetConfigDto) {
+    const countryCode = dto.countryCode.trim().toUpperCase();
+    const existing = await this.prisma.arGsheetConfig.findUnique({ where: { countryCode } });
+    if (existing) throw new ConflictException('COUNTRY_CODE_EXISTS');
+
+    const c = await this.prisma.arGsheetConfig.create({
+      data: {
         countryCode,
         spreadsheetId: dto.spreadsheetId,
         sheetName: dto.sheetName,
         spreadsheetUrl: dto.spreadsheetUrl ?? null,
         isActive: dto.isActive ?? true,
       },
-      update: {
+    });
+    return {
+      id: c.id,
+      countryCode: c.countryCode,
+      spreadsheetId: c.spreadsheetId,
+      sheetName: c.sheetName,
+      spreadsheetUrl: c.spreadsheetUrl,
+      isActive: c.isActive,
+      updatedAt: c.updatedAt,
+    };
+  }
+
+  async updateGsheet(id: number, dto: UpdateArGsheetConfigDto) {
+    const existing = await this.prisma.arGsheetConfig.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('GSHEET_CONFIG_NOT_FOUND');
+
+    let countryCode = existing.countryCode;
+    if (dto.countryCode) {
+      countryCode = dto.countryCode.trim().toUpperCase();
+      if (countryCode !== existing.countryCode) {
+        const dup = await this.prisma.arGsheetConfig.findUnique({ where: { countryCode } });
+        if (dup) throw new ConflictException('COUNTRY_CODE_EXISTS');
+      }
+    }
+
+    const c = await this.prisma.arGsheetConfig.update({
+      where: { id },
+      data: {
+        countryCode,
         spreadsheetId: dto.spreadsheetId,
         sheetName: dto.sheetName,
         spreadsheetUrl: dto.spreadsheetUrl ?? null,

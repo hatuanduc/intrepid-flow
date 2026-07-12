@@ -2,9 +2,12 @@
 
 ## Tech Stack & Project Structure
 
-Monorepo (npm workspaces):
+Monorepo (**pnpm workspaces**, xem `pnpm-workspace.yaml`):
 - `apps/api` — **NestJS** backend, port 4000, Prisma + PostgreSQL
 - `apps/web` — **Next.js** (App Router), port 3000, TypeScript, CSS Modules
+- `apps/worker` — **NestJS** background worker (Playwright jobs), health check port 9000
+
+`apps/api` và `apps/worker` đọc `.env` từ **root repo** (`main.ts` dùng `path.resolve(__dirname, '../../../.env')`), không phải `.env` riêng trong từng app.
 
 ```
 apps/
@@ -32,7 +35,7 @@ apps/
       ui.module.css            ← shared CSS design primitives (single source of truth)
 ```
 
-Dev: `npm run dev` từ root chạy cả api lẫn web đồng thời.
+Dev: `pnpm dev` từ root chạy api + web + worker đồng thời (`concurrently`).
 
 ## UI Design System
 Full reference: @ui-reference.md — **read this before building any new page or component.**

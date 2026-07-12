@@ -39,7 +39,7 @@ async function request<T>(
     ...init,
     headers,
     // Default to no-store unless caller provided a cache option
-    cache: init && Object.prototype.hasOwnProperty.call(init, 'cache') ? (init as any).cache : 'no-store',
+    cache: init && Object.prototype.hasOwnProperty.call(init, 'cache') ? init.cache : 'no-store',
   });
 
   let res = initialRes;
@@ -76,7 +76,7 @@ async function request<T>(
 export type LoginResponse = {
   token: string;
   user: {
-    id: string;
+    id: number;
     email: string;
     name: string | null;
     roles: string[];
@@ -95,7 +95,7 @@ export async function login(email: string, password: string) {
 export async function me() {
   return request<{
     user: {
-      id: string;
+      id: number;
       email: string;
       name: string | null;
       roles: string[];
@@ -111,7 +111,7 @@ export async function me() {
 }
 
 export type PermissionItem = {
-  id: string;
+  id: number;
   key: string;
   module: string;
   action: string;
@@ -120,7 +120,7 @@ export type PermissionItem = {
 };
 
 export type RoleItem = {
-  id: string;
+  id: number;
   key: string;
   name: string;
   group?: string | null;
@@ -131,12 +131,13 @@ export type RoleItem = {
 };
 
 export type UserItem = {
-  id: string;
+  id: number;
   email: string;
   name: string | null;
   isActive: boolean;
   hasPassword: boolean;
-  roles: Array<{ id: string; key: string; name: string }>;
+  roles: Array<{ id: number; key: string; name: string }>;
+  permissions: PermissionItem[];
 };
 
 export async function listUsers(search = '') {
@@ -149,7 +150,8 @@ export async function listUsers(search = '') {
 
 export async function createUser(input: {
   email: string;
-  roleIds: string[];
+  roleIds: number[];
+  permissionIds?: number[];
 }) {
   return request<{ item: UserItem }>('/management/users', {
     method: 'POST',
@@ -159,12 +161,13 @@ export async function createUser(input: {
 }
 
 export async function updateUser(
-  id: string,
+  id: number,
   input: {
     name?: string;
     password?: string;
     isActive?: boolean;
-    roleIds?: string[];
+    roleIds?: number[];
+    permissionIds?: number[];
   },
 ) {
   return request<{ item: UserItem }>(`/management/users/${id}`, {
@@ -182,21 +185,21 @@ export async function listRoles() {
 }
 
 
-export async function deleteUser(id: string) {
+export async function deleteUser(id: number) {
   return request<{ ok: boolean }>(`/management/users/${id}`, {
     method: 'DELETE',
     auth: true,
   });
 }
 
-export async function impersonateUser(id: string) {
-  return request<{ token: string; user: { id: string; email: string; name: string | null } }>(
+export async function impersonateUser(id: number) {
+  return request<{ token: string; user: { id: number; email: string; name: string | null } }>(
     `/management/users/${id}/impersonate`,
     { method: 'POST', auth: true },
   );
 }
 
-export async function deleteRole(id: string) {
+export async function deleteRole(id: number) {
   return request<{ ok: boolean }>(`/management/roles/${id}`, {
     method: 'DELETE',
     auth: true,
@@ -219,7 +222,6 @@ export type BankJobSettings = {
   scheduleCron: string;
   isScheduled: boolean;
   hsbcnetUsername: string | null;
-  googleServiceKeyJson: string | null;
   googleTemplateSpreadsheetId: string | null;
   googleTemplateSheet: string | null;
   syncDateMode: SyncDateMode;
@@ -227,19 +229,18 @@ export type BankJobSettings = {
 };
 
 export type BankDownloadTemplate = {
-  id: string;
+  id: number;
   headers: string[];
   headerHash: string;
   updatedAt: string;
 };
 
 export type BankGsheetConfig = {
-  id: string;
+  id: number;
   accountCode: string;
   spreadsheetId: string;
   spreadsheetUrl: string | null;
   templateSheetName: string | null;
-  hasServiceKey: boolean;
   isActive: boolean;
   updatedAt: string;
 };
@@ -252,7 +253,6 @@ export async function updateBankSettings(input: {
   scheduleCron: string;
   isScheduled: boolean;
   hsbcnetUsername?: string | null;
-  googleServiceKeyJson?: string | null;
   googleTemplateSpreadsheetId?: string | null;
   googleTemplateSheet?: string | null;
   syncDateMode: SyncDateMode;
@@ -338,7 +338,7 @@ export async function deleteBankJob(id: string) {
 }
 
 export type BankAccount = {
-  id: string;
+  id: number;
   accountNumber: string;
   accountName: string;
   bankName: string;
@@ -349,10 +349,21 @@ export type BankAccount = {
   lastSyncStatus: string | null;
 };
 
+export type BankAccountNameItem = {
+  id: number;
+  name: string;
+  accountCode: string;
+  isActive: boolean;
+};
+
+export async function listBankAccountNames() {
+  return request<BankAccountNameItem[]>('/management/bank-statement/account-names', { auth: true });
+}
+
 
 export type DailyMetricsRow = {
   date: string;
-  accountId: string;
+  accountId: number;
   accountNumber: string;
   accountName: string;
   accountCode: string;
@@ -368,7 +379,7 @@ export type MetricsResponse = {
 };
 
 export type JobAccountSummary = {
-  accountId: string;
+  accountId: number;
   accountNumber: string;
   accountName: string;
   accountCode: string;
@@ -376,16 +387,18 @@ export type JobAccountSummary = {
   txCount: number;
   totalCredit: number;
   totalDebit: number;
+  sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped';
+  sheetsSyncError: string | null;
 };
 
 export async function listBankAccounts() {
   return request<BankAccount[]>('/management/bank-statement/accounts', { auth: true });
 }
 
-export async function getBankMetrics(from: string, to: string, accountCode?: string, accountId?: string) {
+export async function getBankMetrics(from: string, to: string, accountCode?: string, accountId?: number) {
   const params = new URLSearchParams({ from, to });
   if (accountCode) params.set('accountCode', accountCode);
-  if (accountId) params.set('accountId', accountId);
+  if (accountId != null) params.set('accountId', String(accountId));
   return request<MetricsResponse>(`/management/bank-statement/metrics?${params}`, { auth: true });
 }
 
@@ -393,8 +406,25 @@ export async function getBankJobSummary(jobId: string) {
   return request<JobAccountSummary[]>(`/management/bank-statement/jobs/${jobId}/summary`, { auth: true });
 }
 
+export type JobStats = {
+  totalAccounts: number;
+  downloaded: number;
+  downloadFailed: number;
+  synced: number;
+  syncFailed: number;
+  syncSkipped: number;
+  syncPending: number;
+  totalRowsDownloaded: number;
+  totalRowsInserted: number;
+  totalRowsSynced: number;
+};
+
+export async function getBankJobStats(jobId: string) {
+  return request<JobStats>(`/management/bank-statement/jobs/${jobId}/stats`, { auth: true });
+}
+
 export type JobTransaction = {
-  id: string;
+  id: number;
   postDate: string;
   narrative: string | null;
   bankReference: string | null;
@@ -403,14 +433,14 @@ export type JobTransaction = {
   fetchedAt: string;
 };
 
-export async function getJobAccountTransactions(jobId: string, accountId: string) {
+export async function getJobAccountTransactions(jobId: string, accountId: number) {
   return request<JobTransaction[]>(
     `/management/bank-statement/jobs/${jobId}/account-transactions?accountId=${accountId}`,
     { auth: true },
   );
 }
 
-export async function getAccountTransactions(accountId: string, from: string, to: string) {
+export async function getAccountTransactions(accountId: number, from: string, to: string) {
   return request<JobTransaction[]>(
     `/management/bank-statement/account-transactions?accountId=${accountId}&from=${from}&to=${to}`,
     { auth: true },
@@ -419,14 +449,8 @@ export async function getAccountTransactions(accountId: string, from: string, to
 
 // --- Report AR ---
 
-export type ArSettings = {
-  id: string;
-  hasServiceKey: boolean;
-  updatedAt: string;
-};
-
 export type ArGsheetConfig = {
-  id: string;
+  id: number;
   countryCode: string;
   spreadsheetId: string;
   sheetName: string;
@@ -467,27 +491,30 @@ export type ArData = {
   bizClasses: string[];
 };
 
-export async function getArSettings() {
-  return request<ArSettings>('/management/report-ar/settings', { auth: true });
-}
-
-export async function updateArSettings(input: { googleServiceKeyJson?: string | null }) {
-  return request<ArSettings>('/management/report-ar/settings', {
-    method: 'PUT', auth: true, body: JSON.stringify(input),
-  });
-}
-
 export async function listArGsheets() {
   return request<ArGsheetConfig[]>('/management/report-ar/settings/gsheets', { auth: true });
 }
 
-export async function upsertArGsheet(countryCode: string, input: {
+export async function createArGsheet(input: {
+  countryCode: string;
   spreadsheetId: string;
   sheetName: string;
   spreadsheetUrl?: string;
   isActive?: boolean;
 }) {
-  return request<ArGsheetConfig>(`/management/report-ar/settings/gsheets/${countryCode}`, {
+  return request<ArGsheetConfig>('/management/report-ar/settings/gsheets', {
+    method: 'POST', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function updateArGsheet(id: number, input: {
+  countryCode?: string;
+  spreadsheetId: string;
+  sheetName: string;
+  spreadsheetUrl?: string;
+  isActive?: boolean;
+}) {
+  return request<ArGsheetConfig>(`/management/report-ar/settings/gsheets/${id}`, {
     method: 'PUT', auth: true, body: JSON.stringify(input),
   });
 }
@@ -509,6 +536,15 @@ export type SystemSettingsStatus = {
 
 export async function getSystemSettings() {
   return request<SystemSettingsStatus>('/management/settings/system', { auth: true });
+}
+
+export type ServiceAccountStatus = {
+  hasServiceKey: boolean;
+  clientEmail: string | null;
+};
+
+export async function getServiceAccountStatus() {
+  return request<ServiceAccountStatus>('/management/settings/system/service-account-status', { auth: true });
 }
 
 export async function updateSystemServiceAccount(serviceKeyJson: string | null) {
@@ -569,7 +605,7 @@ export async function deleteCurrencyRate(currency: string) {
   });
 }
 
-export async function resendInvite(userId: string) {
+export async function resendInvite(userId: number) {
   return request<{ ok: boolean }>(`/management/users/${userId}/resend-invite`, {
     method: 'POST',
     auth: true,
@@ -588,7 +624,7 @@ export async function setPasswordWithToken(token: string, password: string, name
 }
 
 export async function updateMyProfile(name: string) {
-  return request<{ id: string; email: string; name: string | null }>('/auth/me/profile', {
+  return request<{ id: number; email: string; name: string | null }>('/auth/me/profile', {
     method: 'PUT',
     auth: true,
     body: JSON.stringify({ name }),

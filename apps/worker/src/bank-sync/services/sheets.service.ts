@@ -46,9 +46,10 @@ export class SheetsService {
       return { skipped: true, reason: 'no_gsheet_config', accountName: account.accountName };
     }
 
-    // Global service key and template come from BankJobSettings
+    // Template comes from BankJobSettings; service key is the app-wide one in SystemSettings
     const globalSettings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
-    const serviceKeyJson = globalSettings?.googleServiceKeyJson ?? null;
+    const systemSettings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
+    const serviceKeyJson = systemSettings?.googleServiceKeyJson ?? null;
     const templateSheetName = globalSettings?.googleTemplateSheet ?? null;
     const templateSpreadsheetId = globalSettings?.googleTemplateSpreadsheetId ?? null;
 

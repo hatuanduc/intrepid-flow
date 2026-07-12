@@ -18,6 +18,7 @@ function toUserItem(user: UserListRow) {
     isActive: user.isActive,
     hasPassword: user.hasPassword,
     roles: user.roles.map((item: { role: RoleSummary }) => item.role),
+    permissions: user.permissions.map((item) => item.permission),
   };
 }
 
@@ -72,6 +73,16 @@ export class UsersService {
       }
     }
 
+    const permissionIds = input.permissionIds ?? [];
+    if (permissionIds.length > 0) {
+      const permissionCount = await this.prisma.permission.count({
+        where: { id: { in: permissionIds } },
+      });
+      if (permissionCount !== permissionIds.length) {
+        throw new UnprocessableEntityException('PERMISSION_NOT_FOUND');
+      }
+    }
+
     // Random placeholder password — user can't login until they set their own via invite
     const placeholderPw = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
 
@@ -84,6 +95,9 @@ export class UsersService {
         isActive: true,
         roles: {
           create: input.roleIds.map((roleId) => ({ roleId })),
+        },
+        permissions: {
+          create: permissionIds.map((permissionId) => ({ permissionId })),
         },
       },
       ...userListArgs,
@@ -98,7 +112,7 @@ export class UsersService {
     return toUserItem(created);
   }
 
-  async resendInvite(userId: string) {
+  async resendInvite(userId: number) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true, email: true, name: true, hasPassword: true },
@@ -115,7 +129,7 @@ export class UsersService {
     return { ok: true };
   }
 
-  async updateUser(userId: string, input: UpdateUserInput) {
+  async updateUser(userId: number, input: UpdateUserInput) {
     const existed = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -128,6 +142,15 @@ export class UsersService {
       });
       if (roleCount !== input.roleIds.length) {
         throw new UnprocessableEntityException('ROLE_NOT_FOUND');
+      }
+    }
+
+    if (input.permissionIds) {
+      const permissionCount = await this.prisma.permission.count({
+        where: { id: { in: input.permissionIds } },
+      });
+      if (permissionCount !== input.permissionIds.length) {
+        throw new UnprocessableEntityException('PERMISSION_NOT_FOUND');
       }
     }
 
@@ -146,6 +169,12 @@ export class UsersService {
               create: input.roleIds.map((roleId) => ({ roleId })),
             }
           : undefined,
+        permissions: input.permissionIds
+          ? {
+              deleteMany: {},
+              create: input.permissionIds.map((permissionId) => ({ permissionId })),
+            }
+          : undefined,
       },
       ...userListArgs,
     });
@@ -153,13 +182,13 @@ export class UsersService {
     return toUserItem(updated);
   }
 
-  async deleteUser(userId: string) {
+  async deleteUser(userId: number) {
     const existed = await this.prisma.user.findUnique({ where: { id: userId }, select: { id: true } });
     if (!existed) throw new NotFoundException('USER_NOT_FOUND');
     await this.prisma.user.delete({ where: { id: userId } });
   }
 
-  async impersonateUser(adminId: string, targetUserId: string) {
+  async impersonateUser(adminId: number, targetUserId: number) {
     const target = await this.prisma.user.findUnique({
       where: { id: targetUserId },
       select: { id: true, email: true, name: true, isActive: true, hasPassword: true },
@@ -180,7 +209,7 @@ export class UsersService {
     key: string;
     name: string;
     description?: string;
-    permissionIds: string[];
+    permissionIds: number[];
   }) {
     const existed = await this.prisma.role.findUnique({
       where: { key: input.key },
@@ -210,11 +239,11 @@ export class UsersService {
   }
 
   async updateRole(
-    roleId: string,
+    roleId: number,
     input: {
       name?: string;
       description?: string;
-      permissionIds?: string[];
+      permissionIds?: number[];
     },
   ) {
     const role = await this.prisma.role.findUnique({

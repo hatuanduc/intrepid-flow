@@ -3,39 +3,45 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  getArSettings, updateArSettings,
-  listArGsheets, upsertArGsheet,
-  type ArSettings, type ArGsheetConfig,
+  listArGsheets, createArGsheet, updateArGsheet,
+  type ArGsheetConfig,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import AccessDenied from '../../../components/common/AccessDenied';
 import PageLoader from '../../../components/common/PageLoader';
+import ServiceAccountShareInfo from '../../../components/common/ServiceAccountShareInfo';
+import Tooltip from '../../../components/common/Tooltip';
 import { useToast } from '../../../components/common/Toast';
+import { useT } from '../../../lib/i18n';
+import { extractSpreadsheetId, isValidSpreadsheetId } from '../../../lib/googleSheets';
 import s from './ReportArSettingsPage.module.css';
 
 type Tab = 'connect' | 'gsheets';
+type T = ReturnType<typeof useT>['t'];
 
 export default function ReportArSettingsPage() {
   const canConfig = useHasPermission('report_ar:config');
   const router = useRouter();
   const toast = useToast();
+  const { t } = useT();
   const [tab, setTab] = useState<Tab>('gsheets');
   const [loading, setLoading] = useState(true);
-  const [settings, setSettings] = useState<ArSettings | null>(null);
   const [gsheets, setGsheets] = useState<ArGsheetConfig[]>([]);
 
   async function load() {
     setLoading(true);
     try {
-      const [s, g] = await Promise.all([getArSettings(), listArGsheets()]);
-      setSettings(s);
+      const g = await listArGsheets();
       setGsheets(g);
     } finally {
       setLoading(false);
     }
   }
 
-  useEffect(() => { if (canConfig) load(); }, [canConfig]);
+  useEffect(() => {
+    // Deferred a tick so load()'s internal setState isn't synchronous with the effect itself.
+    if (canConfig) Promise.resolve().then(() => load());
+  }, [canConfig]);
 
   if (!canConfig) return <AccessDenied />;
   if (loading) return <PageLoader />;
@@ -48,13 +54,13 @@ export default function ReportArSettingsPage() {
             <path d="M10 13L5 8l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
           </svg>
         </button>
-        <h1 className={s.pageTitle}>Cài đặt AR Report</h1>
+        <h1 className={s.pageTitle}>{t('reportArSettings.title')}</h1>
       </div>
 
       <div className={s.tabs}>
         {([
-          ['gsheets', 'Google Sheets'],
-          ['connect', 'Kết nối'],
+          ['gsheets', t('reportArSettings.tabGsheets')],
+          ['connect', t('reportArSettings.tabConnect')],
         ] as [Tab, string][]).map(([key, label]) => (
           <button
             key={key}
@@ -66,102 +72,25 @@ export default function ReportArSettingsPage() {
         ))}
       </div>
 
-      {tab === 'connect' && settings && (
-        <ConnectTab
-          settings={settings}
-          onSaved={(s) => { setSettings(s); toast.success('Đã lưu thông tin kết nối.'); }}
-          toast={toast}
-        />
-      )}
+      {tab === 'connect' && <ConnectTab />}
       {tab === 'gsheets' && (
         <GsheetsTab
           gsheets={gsheets}
           onSaved={() => load()}
           toast={toast}
+          t={t}
         />
       )}
     </div>
   );
 }
 
-// ─── Tab: Kết nối ─────────────────────────────────────────────────────────────
+// ─── Tab: Connection ────────────────────────────────────────────────────────
 
-function ConnectTab({
-  settings,
-  onSaved,
-  toast,
-}: {
-  settings: ArSettings;
-  onSaved: (s: ArSettings) => void;
-  toast: ReturnType<typeof useToast>;
-}) {
-  const [serviceKey, setServiceKey] = useState('');
-  const [showInput, setShowInput] = useState(!settings.hasServiceKey);
-  const [saving, setSaving] = useState(false);
-
-  async function save() {
-    setSaving(true);
-    try {
-      const result = await updateArSettings({ googleServiceKeyJson: serviceKey.trim() || null });
-      onSaved(result);
-      setServiceKey('');
-      setShowInput(false);
-    } catch {
-      toast.error('Lưu thất bại. Vui lòng thử lại.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
+function ConnectTab() {
   return (
     <div className={s.section}>
-      <div className={s.card}>
-        <div className={s.cardTitle}>Google Service Account</div>
-        <p className={s.cardDesc}>
-          Service account cần có quyền đọc (Viewer) trên Google Spreadsheet chứa dữ liệu AR.
-        </p>
-
-        <div className={s.statusRow}>
-          <span className={s.statusLabel}>Trạng thái key:</span>
-          {settings.hasServiceKey
-            ? <span className={s.badgeActive}>Đã cấu hình</span>
-            : <span className={s.badgeInactive}>Chưa cấu hình</span>
-          }
-          {settings.hasServiceKey && !showInput && (
-            <button className={s.linkBtn} onClick={() => setShowInput(true)}>
-              Thay thế
-            </button>
-          )}
-        </div>
-
-        {showInput && (
-          <>
-            <div className={s.field}>
-              <label className={s.label}>
-                {settings.hasServiceKey ? 'Service Account JSON mới' : 'Service Account JSON'}
-              </label>
-              <textarea
-                className={s.textarea}
-                placeholder={'{"type": "service_account", "project_id": "...", ...}'}
-                value={serviceKey}
-                onChange={e => setServiceKey(e.target.value)}
-                rows={8}
-                autoFocus
-              />
-            </div>
-            <div className={s.formActions}>
-              {settings.hasServiceKey && (
-                <button className={s.btnSecondary} onClick={() => { setShowInput(false); setServiceKey(''); }}>
-                  Hủy
-                </button>
-              )}
-              <button className={s.btnPrimary} onClick={save} disabled={saving || !serviceKey.trim()}>
-                {saving ? 'Đang lưu...' : 'Lưu key'}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
+      <ServiceAccountShareInfo />
     </div>
   );
 }
@@ -172,10 +101,12 @@ function GsheetsTab({
   gsheets,
   onSaved,
   toast,
+  t,
 }: {
   gsheets: ArGsheetConfig[];
   onSaved: () => void;
   toast: ReturnType<typeof useToast>;
+  t: T;
 }) {
   const [editingCode, setEditingCode] = useState<string | null>(null);
   const [addingNew, setAddingNew] = useState(false);
@@ -190,14 +121,14 @@ function GsheetsTab({
     <div className={s.section}>
       <div className={s.sectionHeader}>
         <div>
-          <div className={s.sectionTitle}>Spreadsheet theo quốc gia</div>
-          <div className={s.sectionDesc}>Mỗi quốc gia liên kết với một Google Spreadsheet chứa dữ liệu AR.</div>
+          <div className={s.sectionTitle}>{t('reportArSettings.spreadsheetByCountryTitle')}</div>
+          <div className={s.sectionDesc}>{t('reportArSettings.spreadsheetByCountryDesc')}</div>
         </div>
-        <button className={s.btnPrimary} onClick={openNew}>+ Thêm</button>
+        <button className={s.btnPrimary} onClick={openNew}>{t('reportArSettings.addBtn')}</button>
       </div>
 
       {gsheets.length === 0 && !addingNew ? (
-        <div className={s.empty}>Chưa có cấu hình nào. Thêm spreadsheet để bắt đầu.</div>
+        <div className={s.empty}>{t('reportArSettings.emptyGsheets')}</div>
       ) : (
         <div className={s.configList}>
           {gsheets.map(g => (
@@ -206,15 +137,15 @@ function GsheetsTab({
                 <span className={s.countryBadge}>{g.countryCode}</span>
                 <div className={s.configDetails}>
                   <span className={s.configId}>{g.spreadsheetId}</span>
-                  <span className={s.configMeta}>Sheet: {g.sheetName}</span>
+                  <span className={s.configMeta}>{t('reportArSettings.sheetMeta', { name: g.sheetName })}</span>
                 </div>
               </div>
               <div className={s.configActions}>
                 {g.isActive
-                  ? <span className={s.badgeActive}>Đang bật</span>
-                  : <span className={s.badgeInactive}>Tắt</span>
+                  ? <span className={s.badgeActive}>{t('reportArSettings.active')}</span>
+                  : <span className={s.badgeInactive}>{t('reportArSettings.inactive')}</span>
                 }
-                <button className={s.editBtn} onClick={() => openEdit(g.countryCode)}>Sửa</button>
+                <button className={s.editBtn} onClick={() => openEdit(g.countryCode)}>{t('reportArSettings.edit')}</button>
               </div>
             </div>
           ))}
@@ -227,6 +158,7 @@ function GsheetsTab({
           onClose={closeForm}
           onSaved={() => { closeForm(); onSaved(); }}
           toast={toast}
+          t={t}
         />
       )}
     </div>
@@ -238,43 +170,50 @@ function GsheetForm({
   onClose,
   onSaved,
   toast,
+  t,
 }: {
   initial: ArGsheetConfig | null;
   onClose: () => void;
   onSaved: () => void;
   toast: ReturnType<typeof useToast>;
+  t: T;
 }) {
   const [countryCode, setCountryCode] = useState(initial?.countryCode ?? '');
   const [spreadsheetId, setSpreadsheetId] = useState(initial?.spreadsheetId ?? '');
   const [sheetName, setSheetName] = useState(initial?.sheetName ?? 'TH');
-  const [spreadsheetUrl, setSpreadsheetUrl] = useState(initial?.spreadsheetUrl ?? '');
   const [isActive, setIsActive] = useState(initial?.isActive ?? true);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  function validate() {
+  function validate(cleanId: string) {
     const errs: Record<string, string> = {};
-    if (!countryCode.trim()) errs.countryCode = 'Vui lòng nhập country code.';
-    if (!spreadsheetId.trim()) errs.spreadsheetId = 'Vui lòng nhập Spreadsheet ID.';
-    if (!sheetName.trim()) errs.sheetName = 'Vui lòng nhập tên sheet.';
+    if (!countryCode.trim()) errs.countryCode = t('reportArSettings.countryCodeRequired');
+    if (!cleanId) errs.spreadsheetId = t('reportArSettings.spreadsheetIdRequired');
+    else if (!isValidSpreadsheetId(cleanId)) errs.spreadsheetId = t('reportArSettings.spreadsheetIdInvalid');
+    if (!sheetName.trim()) errs.sheetName = t('reportArSettings.sheetNameRequired');
     return errs;
   }
 
   async function save() {
-    const errs = validate();
+    const cleanId = extractSpreadsheetId(spreadsheetId);
+    const errs = validate(cleanId);
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
+    setSpreadsheetId(cleanId);
     setSaving(true);
     try {
-      await upsertArGsheet(countryCode.trim().toUpperCase(), {
-        spreadsheetId: spreadsheetId.trim(),
+      const body = {
+        countryCode: countryCode.trim().toUpperCase(),
+        spreadsheetId: cleanId,
         sheetName: sheetName.trim(),
-        spreadsheetUrl: spreadsheetUrl.trim() || undefined,
         isActive,
-      });
-      toast.success(initial ? 'Đã cập nhật cấu hình.' : 'Đã thêm cấu hình.');
+      };
+      if (initial) await updateArGsheet(initial.id, body);
+      else await createArGsheet(body);
+      toast.success(initial ? t('reportArSettings.configUpdated') : t('reportArSettings.configAdded'));
       onSaved();
-    } catch {
-      toast.error('Lưu thất bại. Vui lòng thử lại.');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      toast.error(code === 'COUNTRY_CODE_EXISTS' ? t('reportArSettings.countryCodeExists') : t('reportArSettings.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -282,24 +221,23 @@ function GsheetForm({
 
   return (
     <div className={s.formCard}>
-      <div className={s.formTitle}>{initial ? 'Chỉnh sửa cấu hình' : 'Thêm cấu hình mới'}</div>
+      <div className={s.formTitle}>{initial ? t('reportArSettings.editConfigTitle') : t('reportArSettings.addConfigTitle')}</div>
 
       <div className={s.formGrid}>
         <div className={s.field}>
-          <label className={s.label}>Country Code *</label>
+          <label className={s.label}>{t('reportArSettings.countryCodeLabel')}</label>
           <input
             className={`${s.input} ${errors.countryCode ? s.inputError : ''}`}
             value={countryCode}
             onChange={e => { setCountryCode(e.target.value.toUpperCase()); setErrors(p => { const n = {...p}; delete n.countryCode; return n; }); }}
             placeholder="TH"
-            disabled={!!initial}
             maxLength={5}
           />
           {errors.countryCode && <span className={s.fieldError}>{errors.countryCode}</span>}
         </div>
 
         <div className={s.field}>
-          <label className={s.label}>Sheet Name *</label>
+          <label className={s.label}>{t('reportArSettings.sheetNameLabel')}</label>
           <input
             className={`${s.input} ${errors.sheetName ? s.inputError : ''}`}
             value={sheetName}
@@ -311,28 +249,22 @@ function GsheetForm({
       </div>
 
       <div className={s.field}>
-        <label className={s.label}>Spreadsheet ID *</label>
+        <label className={s.label}>
+          {t('reportArSettings.spreadsheetIdLabel')}
+          <Tooltip>{t('reportArSettings.spreadsheetIdTooltip')}</Tooltip>
+        </label>
         <input
           className={`${s.input} ${errors.spreadsheetId ? s.inputError : ''}`}
           value={spreadsheetId}
           onChange={e => { setSpreadsheetId(e.target.value); setErrors(p => { const n = {...p}; delete n.spreadsheetId; return n; }); }}
-          placeholder="1wQFumTUIQCKs2fR4Q4q3xVR4a8QIGYPjcJ1LLcs6bNw"
+          onBlur={e => setSpreadsheetId(extractSpreadsheetId(e.target.value))}
+          placeholder={t('reportArSettings.spreadsheetIdPlaceholder')}
         />
         {errors.spreadsheetId && <span className={s.fieldError}>{errors.spreadsheetId}</span>}
       </div>
 
-      <div className={s.field}>
-        <label className={s.label}>Spreadsheet URL (tùy chọn)</label>
-        <input
-          className={s.input}
-          value={spreadsheetUrl}
-          onChange={e => setSpreadsheetUrl(e.target.value)}
-          placeholder="https://docs.google.com/spreadsheets/d/..."
-        />
-      </div>
-
       <div className={s.toggleRow}>
-        <span className={s.toggleLabel}>Đang bật</span>
+        <span className={s.toggleLabel}>{t('reportArSettings.activeToggleLabel')}</span>
         <button
           className={`${s.toggle} ${isActive ? s.toggleOn : ''}`}
           onClick={() => setIsActive(v => !v)}
@@ -341,9 +273,9 @@ function GsheetForm({
       </div>
 
       <div className={s.formActions}>
-        <button className={s.btnSecondary} onClick={onClose}>Hủy</button>
+        <button className={s.btnSecondary} onClick={onClose}>{t('reportArSettings.cancel')}</button>
         <button className={s.btnPrimary} onClick={save} disabled={saving}>
-          {saving ? 'Đang lưu...' : 'Lưu'}
+          {saving ? t('reportArSettings.saving') : t('reportArSettings.save')}
         </button>
       </div>
     </div>
