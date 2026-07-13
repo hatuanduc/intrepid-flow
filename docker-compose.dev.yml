@@ -12,6 +12,7 @@ services:
       - "5433:5432"
     volumes:
       - intrepid_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
