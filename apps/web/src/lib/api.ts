@@ -346,6 +346,12 @@ export async function retryBankJob(id: string, stepKey?: 'bank_sync' | 'sheets_s
   });
 }
 
+export async function cancelBankJob(id: string) {
+  return request<{ ok: boolean }>(`/management/bank-statement/jobs/${id}/cancel`, {
+    method: 'POST', auth: true,
+  });
+}
+
 export async function deleteBankJob(id: string) {
   return request<{ ok: boolean }>(`/management/bank-statement/jobs/${id}`, {
     method: 'DELETE', auth: true,

@@ -146,6 +146,7 @@ export const en = {
     status_syncing_sheets: 'Syncing Sheets',
     status_completed: 'Completed',
     status_failed: 'Failed',
+    status_cancelled: 'Cancelled',
     syncSummary: '{synced}/{total} synced to Sheets',
   },
 
@@ -183,6 +184,10 @@ export const en = {
     hideRaw: '▴ Hide technical details',
     retryDivider: '↺ Retry · {time}',
     activityLog: 'Activity log',
+    cancel: 'Cancel job',
+    cancelling: 'Cancelling...',
+    cancelSuccess: 'Job cancelled.',
+    cancelFailed: 'Failed to cancel. Please try again.',
     retryFailed: 'Retry failed. Please try again.',
     deleteFailed: 'Delete failed. Please try again.',
     deleteSuccess: 'Job deleted successfully.',

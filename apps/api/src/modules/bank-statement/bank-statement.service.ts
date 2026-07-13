@@ -481,11 +481,24 @@ export class BankStatementService implements OnModuleInit {
     return toDto(updated);
   }
 
+  async cancelJob(publicId: string): Promise<{ ok: boolean }> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+      throw new ConflictException('JOB_ALREADY_TERMINAL');
+    }
+    await this.prisma.bankSyncJob.update({
+      where: { id: job.id },
+      data: { status: 'cancelled', completedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
   async softDeleteJob(publicId: string): Promise<{ ok: boolean }> {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
-    if (!['completed', 'failed'].includes(job.status)) {
-      throw new NotFoundException('JOB_STILL_ACTIVE');
+    if (!['completed', 'failed', 'cancelled'].includes(job.status)) {
+      throw new ConflictException('JOB_STILL_ACTIVE');
     }
     await this.prisma.bankSyncJob.update({ where: { id: job.id }, data: { isDeleted: true } });
     return { ok: true };

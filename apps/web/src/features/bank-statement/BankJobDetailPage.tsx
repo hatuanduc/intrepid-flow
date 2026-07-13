@@ -4,7 +4,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
-  getBankJob, retryBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
+  getBankJob, retryBankJob, cancelBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
   getJobAccountTransactions, getBankJobStats,
   type BankSyncJob, type JobAccountSummary, type JobTransaction, type JobStats,
 } from '../../lib/api';
@@ -30,9 +30,10 @@ const ACCOUNT_COLORS: Record<string, string> = {
 function StatusBadge({ status }: { status: string }) {
   const { t } = useT();
   const cls = status === 'completed' ? s.badgeSuccess
-    : status === 'failed'           ? s.badgeError
-    : status === 'waiting_2fa'      ? s.badgeWarn
-    : status === 'pending'          ? s.badgeDefault
+    : status === 'failed'            ? s.badgeError
+    : status === 'cancelled'         ? s.badgeCancelled
+    : status === 'waiting_2fa'       ? s.badgeWarn
+    : status === 'pending'           ? s.badgeDefault
     : ['checking_session', 'logging_in', 'authenticated', 'discovering_accounts',
        'downloading', 'storing', 'syncing_sheets'].includes(status) ? s.badgeRunning
     : s.badgeDefault;
@@ -64,7 +65,7 @@ function SheetsSyncBadge({
 }
 
 function isActive(status: string) {
-  return !['completed', 'failed'].includes(status);
+  return !['completed', 'failed', 'cancelled'].includes(status);
 }
 
 function isRunning(status: string) {
@@ -150,8 +151,9 @@ export default function BankJobDetailPage() {
   const [job, setJob]           = useState<BankSyncJob | null>(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  const [retrying, setRetrying] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [retrying, setRetrying]   = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [deleting, setDeleting]   = useState(false);
   const [showRaw, setShowRaw]   = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [openSteps, setOpenSteps]         = useState<Set<string>>(new Set());
@@ -187,7 +189,7 @@ export default function BankJobDetailPage() {
           if (running) setOpenSteps(new Set([running.key]));
         }
         startSse(data);
-        if (['completed', 'failed'].includes(data.status)) {
+        if (['completed', 'failed', 'cancelled'].includes(data.status)) {
           getBankJobSummary(id).then(setSummary).catch(() => {});
           getBankJobStats(id).then(setStats).catch(() => {});
         }
@@ -252,6 +254,18 @@ export default function BankJobDetailPage() {
       toast.error(t('bankJob.retryFailed'));
     } finally {
       setRetrying(false);
+    }
+  }
+
+  async function handleCancel() {
+    if (!job) return;
+    setCancelling(true);
+    try {
+      await cancelBankJob(job.id);
+      toast.success(t('bankJob.cancelSuccess'));
+    } catch {
+      toast.error(t('bankJob.cancelFailed'));
+      setCancelling(false);
     }
   }
 
@@ -353,7 +367,7 @@ export default function BankJobDetailPage() {
               <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy ? t('bankJob.manual') : t('bankJob.automatic')}</p>
             </div>
             <div className={s.headerActions}>
-              {['failed', 'completed'].includes(job.status) && canRun && (
+              {['failed', 'completed', 'cancelled'].includes(job.status) && canRun && (
                 <button
                   className={s.btnPrimary}
                   disabled={retrying}
@@ -362,7 +376,16 @@ export default function BankJobDetailPage() {
                   {retrying ? t('bankJob.retrying') : t('bankJob.retryAll')}
                 </button>
               )}
-              {['completed', 'failed'].includes(job.status) && canRun && (
+              {isActive(job.status) && canRun && (
+                <button
+                  className={s.btnWarn}
+                  disabled={cancelling}
+                  onClick={handleCancel}
+                >
+                  {cancelling ? t('bankJob.cancelling') : t('bankJob.cancel')}
+                </button>
+              )}
+              {['completed', 'failed', 'cancelled'].includes(job.status) && canRun && (
                 <button
                   className={s.btnDanger}
                   disabled={deleting}

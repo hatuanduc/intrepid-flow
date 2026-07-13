@@ -115,10 +115,22 @@ export class BankSyncService {
 
       const msg = (err as Error).message ?? 'Unknown error';
 
-      // Mark the currently running step as failed
-      const current = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { steps: true } });
+      // Mark the currently running step as failed/cancelled
+      const current = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true, steps: true } });
       const currentSteps = parseSteps(current?.steps);
       const runningStep = currentSteps.find(s => s.status === 'running');
+
+      if (current?.status === JOB_STATUS.CANCELLED || msg === 'JOB_CANCELLED') {
+        if (runningStep) {
+          await this.updateStep(jobId, runningStep.key, {
+            status: 'failed',
+            completedAt: new Date().toISOString(),
+            errorMessage: 'Cancelled by user',
+          });
+        }
+        return; // Status already set to cancelled by API — don't throw
+      }
+
       if (runningStep) {
         await this.updateStep(jobId, runningStep.key, {
           status: 'failed',
@@ -271,6 +283,12 @@ export class BankSyncService {
       await this.log(jobId, `${groupName} (${pl(groupAccounts.length, 'account number')}):`, 'bank_sync');
 
       for (const account of groupAccounts) {
+        const cancelCheck = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true } });
+        if (cancelCheck?.status === JOB_STATUS.CANCELLED) {
+          await this.log(jobId, 'Job cancelled by user.', 'bank_sync', 'warn');
+          throw new Error('JOB_CANCELLED');
+        }
+
         await this.log(jobId, `  → Fetching ${account.accountNumber}...`, 'bank_sync');
 
         let excelBuffer: Buffer | null;

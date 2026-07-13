@@ -168,9 +168,16 @@ export class BankStatementController {
     return this.service.retryJob(id, String(req.authUser.id), body.stepKey);
   }
 
+  @Post('jobs/:id/cancel')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Cancel một job đang chạy hoặc đang chờ' })
+  cancelJob(@Param('id') id: string) {
+    return this.service.cancelJob(id);
+  }
+
   @Delete('jobs/:id')
   @HasPermission('bank_statement:run')
-  @ApiOperation({ summary: 'Soft-delete một job (chỉ completed/failed)' })
+  @ApiOperation({ summary: 'Soft-delete một job (chỉ completed/failed/cancelled)' })
   deleteJob(@Param('id') id: string) {
     return this.service.softDeleteJob(id);
   }
@@ -182,7 +189,7 @@ export class BankStatementController {
   streamJob(@Param('id') id: string): Observable<MessageEvent> {
     return interval(2000).pipe(
       switchMap(() => from(this.service.getJobDetail(id))),
-      takeWhile(job => !['completed', 'failed'].includes(job.status), true),
+      takeWhile(job => !['completed', 'failed', 'cancelled'].includes(job.status), true),
       map(job => ({ data: job }) as MessageEvent),
     );
   }

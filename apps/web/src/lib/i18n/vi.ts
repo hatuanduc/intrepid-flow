@@ -148,6 +148,7 @@ export const vi: Translations = {
     status_syncing_sheets: 'Sync GSheets',
     status_completed: 'Hoàn thành',
     status_failed: 'Thất bại',
+    status_cancelled: 'Đã hủy',
     syncSummary: 'Đã đồng bộ {synced}/{total}',
   },
 
@@ -185,6 +186,10 @@ export const vi: Translations = {
     hideRaw: '▴ Ẩn chi tiết kỹ thuật',
     retryDivider: '↺ Chạy lại · {time}',
     activityLog: 'Nhật ký hoạt động',
+    cancel: 'Hủy job',
+    cancelling: 'Đang hủy...',
+    cancelSuccess: 'Đã hủy job.',
+    cancelFailed: 'Hủy thất bại. Vui lòng thử lại.',
     retryFailed: 'Chạy lại thất bại. Vui lòng thử lại.',
     deleteFailed: 'Xóa thất bại. Vui lòng thử lại.',
     deleteSuccess: 'Đã xóa job thành công.',

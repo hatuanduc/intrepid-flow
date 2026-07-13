@@ -12,6 +12,7 @@ export const JOB_STATUS = {
   SYNCING_SHEETS: 'syncing_sheets',
   COMPLETED: 'completed',
   FAILED: 'failed',
+  CANCELLED: 'cancelled',
 } as const;
 
 export type JobStatus = (typeof JOB_STATUS)[keyof typeof JOB_STATUS];
