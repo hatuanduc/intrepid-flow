@@ -42,7 +42,7 @@ export const ReportArIcon = (
 );
 export const MetricsGroupIcon = (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-    <path d="M1.5 10.5C1.5 10.5 3 7 5 8.5C7 10 7.5 5 9.5 5.5C11 5.8 12.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M1.5 10.5C1.5 10.5 3 7 5 8.5C7 10 7.5 5 9.5 5.5S11 5.8 12.5 4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
     <circle cx="12.5" cy="3.5" r="1" stroke="currentColor" strokeWidth="1.1"/>
   </svg>
 );

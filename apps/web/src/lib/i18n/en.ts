@@ -167,7 +167,7 @@ export const en = {
     statsSynced: 'Synced to Sheets',
     statsFailed: 'Failed',
     statsNotSynced: 'Not synced yet',
-    statsNoData: 'No data to sync',
+    statsNoData: 'Already up to date',
     sheetsSync_pending: 'Not synced yet',
     sheetsSync_completed: 'Synced',
     sheetsSync_failed: 'Sync failed',

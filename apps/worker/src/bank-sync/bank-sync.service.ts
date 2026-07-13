@@ -327,6 +327,7 @@ export class BankSyncService {
           withNew++;
         } else {
           alreadyUpToDate++;
+          await this.upsertJobAccount(jobId, account.id, { sheetsSyncStatus: 'no_data' });
         }
       }
     }

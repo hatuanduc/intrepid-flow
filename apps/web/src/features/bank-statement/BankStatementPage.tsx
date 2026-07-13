@@ -107,7 +107,6 @@ export default function BankStatementPage() {
       router.push('/bank-statement/jobs/' + job.id);
     } catch {
       toast.error(t('bankStatement.triggerFailed'));
-    } finally {
       setTriggering(false);
     }
   }

@@ -169,7 +169,7 @@ export const vi: Translations = {
     statsSynced: 'Đã đồng bộ Sheets',
     statsFailed: 'Lỗi',
     statsNotSynced: 'Chưa đồng bộ',
-    statsNoData: 'Không có giao dịch',
+    statsNoData: 'Đã cập nhật',
     sheetsSync_pending: 'Chưa đồng bộ',
     sheetsSync_completed: 'Đã lên Sheets',
     sheetsSync_failed: 'Lỗi đồng bộ',

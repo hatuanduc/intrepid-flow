@@ -354,8 +354,12 @@ export class PlaywrightService {
     await searchInput.click();
     await searchInput.fill(accountNumber);
 
-    const firstResult = await page.waitForSelector(SELECTORS.switcherItem, { timeout: 8_000 }).catch(() => null);
-    if (!firstResult) {
+    // Use a Locator (not ElementHandle) so Playwright re-queries the DOM at click
+    // time — HSBC re-renders the switcher list while filtering, causing stale handles.
+    const firstResult = page.locator(SELECTORS.switcherItem).first();
+    try {
+      await firstResult.waitFor({ state: 'visible', timeout: 8_000 });
+    } catch {
       this.logger.warn(`Account ${accountNumber} not found in switcher — skipping`);
       return null;
     }
@@ -442,22 +446,22 @@ export class PlaywrightService {
     const toStr = formatDate(dateTo);
 
     // Strategy 1: standard text inputs appeared inside the picker popup
-    const inputs = await page.$$('input[placeholder*="dd/mm"], input[class*="date-input"], .date-picker input[type="text"]');
-    if (inputs.length >= 2) {
-      await inputs[0].click({ clickCount: 3 });
-      await inputs[0].fill(fromStr);
-      await inputs[1].click({ clickCount: 3 });
-      await inputs[1].fill(toStr);
+    const inputLoc = page.locator('input[placeholder*="dd/mm"], input[class*="date-input"], .date-picker input[type="text"]');
+    if (await inputLoc.count() >= 2) {
+      await inputLoc.nth(0).click({ clickCount: 3 });
+      await inputLoc.nth(0).fill(fromStr);
+      await inputLoc.nth(1).click({ clickCount: 3 });
+      await inputLoc.nth(1).fill(toStr);
       return;
     }
 
     // Strategy 2: .change-dateformat spans are the interactive elements
-    const spans = await page.$$('.change-dateformat');
-    if (spans.length >= 2) {
-      await spans[0].click();
+    const spanLoc = page.locator('.change-dateformat');
+    if (await spanLoc.count() >= 2) {
+      await spanLoc.nth(0).click();
       await page.keyboard.press('Control+a');
       await page.keyboard.type(fromStr);
-      await spans[1].click();
+      await spanLoc.nth(1).click();
       await page.keyboard.press('Control+a');
       await page.keyboard.type(toStr);
       return;
