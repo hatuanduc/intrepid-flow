@@ -30,11 +30,16 @@ export const vi: Translations = {
     account: 'Tài khoản',
     settings: 'Cài đặt',
     signOut: 'Đăng xuất',
-    notifications: 'Thông báo',
     searchPlaceholder: 'Tìm kiếm...',
     searchNotFound: 'Không tìm thấy "{query}"',
     searchResults: 'Kết quả',
     searchNavigate: 'Điều hướng',
+  },
+
+  notifications: {
+    title: 'Thông báo',
+    markAllRead: 'Đánh dấu tất cả đã đọc',
+    empty: 'Chưa có thông báo nào',
   },
 
   login: {

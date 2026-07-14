@@ -646,3 +646,29 @@ export async function changeMyPassword(currentPassword: string, newPassword: str
     body: JSON.stringify({ currentPassword, newPassword }),
   });
 }
+
+export type AppNotification = {
+  id: number;
+  type: 'job_completed' | 'job_failed' | 'job_waiting_2fa';
+  title: string;
+  body: string | null;
+  jobId: number | null;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export async function listNotifications() {
+  return request<{ items: AppNotification[] }>('/notifications', { auth: true });
+}
+
+export async function getUnreadNotificationCount() {
+  return request<{ count: number }>('/notifications/unread-count', { auth: true });
+}
+
+export async function markNotificationRead(id: number) {
+  return request<AppNotification>(`/notifications/${id}/read`, { method: 'PATCH', auth: true });
+}
+
+export async function markAllNotificationsRead() {
+  return request<{ ok: boolean }>('/notifications/read-all', { method: 'PATCH', auth: true });
+}

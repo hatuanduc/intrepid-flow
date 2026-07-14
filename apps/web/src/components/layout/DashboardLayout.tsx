@@ -6,7 +6,8 @@ import { useState, useRef, useEffect } from 'react';
 import { clearToken, isImpersonating } from '../../lib/auth';
 import ImpersonationBanner from '../common/ImpersonationBanner';
 import s from './DashboardLayout.module.css';
-import { BellIcon, ChevronDownIcon, GearIcon, PinIcon } from '../icons';
+import { ChevronDownIcon, GearIcon, PinIcon } from '../icons';
+import NotificationBell from './NotificationBell';
 import { useT } from '../../lib/i18n';
 import {
   MAIN_NAV, FEATURE_NAV, NAV_GROUPS, MORE_NAV, ALL_PINNABLE, ALL_SEARCH_ITEMS,
@@ -405,7 +406,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
         <SearchBar />
 
         <div className={s.rightActions}>
-          <button className={s.iconBtn} title={t('layout.notifications')}><BellIcon /></button>
+          <NotificationBell />
           <button className={s.iconBtn} title={t('layout.settings')} onClick={() => router.push('/settings')}><GearIcon /></button>
         </div>
       </header>

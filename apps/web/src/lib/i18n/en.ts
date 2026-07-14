@@ -28,11 +28,16 @@ export const en = {
     account: 'Account',
     settings: 'Settings',
     signOut: 'Sign out',
-    notifications: 'Notifications',
     searchPlaceholder: 'Search...',
     searchNotFound: 'No results for "{query}"',
     searchResults: 'Results',
     searchNavigate: 'Navigate',
+  },
+
+  notifications: {
+    title: 'Notifications',
+    markAllRead: 'Mark all as read',
+    empty: 'No notifications yet',
   },
 
   login: {

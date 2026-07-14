@@ -8,17 +8,18 @@ datasource db {
 }
 
 model User {
-  id          Int         @id @default(autoincrement())
-  email       String      @unique
-  name        String?
-  password    String
-  isActive    Boolean     @default(true) @map("is_active")
-  hasPassword Boolean     @default(true) @map("has_password")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-  roles       UserRole[]
-  permissions UserPermission[]
-  invite      UserInvite?
+  id            Int              @id @default(autoincrement())
+  email         String           @unique
+  name          String?
+  password      String
+  isActive      Boolean          @default(true) @map("is_active")
+  hasPassword   Boolean          @default(true) @map("has_password")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  roles         UserRole[]
+  permissions   UserPermission[]
+  invite        UserInvite?
+  notifications Notification[]
 
   @@map("users")
 }
@@ -283,4 +284,22 @@ model SystemSettings {
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("system_settings")
+}
+
+// ─── Notifications (bell) ─────────────────────────────────────────────────────
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  type      String   // job_completed | job_failed | job_waiting_2fa
+  title     String
+  body      String?
+  jobId     Int?     @map("job_id")
+  isRead    Boolean  @default(false) @map("is_read")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
 }

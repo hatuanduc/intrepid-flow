@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
+import Redis from 'ioredis';
 import { JOB_STATUS, FAIL_REASON } from './constants';
 import { PlaywrightService, computeDateRange, type DiscoveredAccount } from './services/playwright.service';
 import { ExcelService, type TransactionRow } from './services/excel.service';
@@ -44,6 +45,10 @@ function bankNameForCode(countryCode: string): string {
 export class BankSyncService {
   private readonly logger = new Logger(BankSyncService.name);
   private readonly prisma = new PrismaClient();
+  private readonly redis = new Redis({
+    host: process.env.REDIS_HOST ?? 'localhost',
+    port: Number(process.env.REDIS_PORT ?? 6379),
+  });
 
   constructor(
     private readonly playwright: PlaywrightService,
@@ -105,11 +110,13 @@ export class BankSyncService {
       if (sheetsSyncFailed) {
         await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, 'GSheets sync failed for one or more accounts');
         await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets.', undefined, 'error');
+        await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', 'Một hoặc nhiều tài khoản đồng bộ Google Sheets thất bại.');
         return;
       }
 
       await this.updateJob(jobId, JOB_STATUS.COMPLETED);
       await this.log(jobId, 'Job completed successfully.', undefined, 'success');
+      await this.notify(jobId, 'job_completed', 'Đồng bộ sao kê hoàn tất', 'Job đồng bộ bank statement đã chạy xong thành công.');
     } catch (err) {
       try { await this.playwright.close(); } catch { /* ignore */ }
 
@@ -140,6 +147,7 @@ export class BankSyncService {
       }
 
       await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, msg);
+      await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', msg);
       throw err;
     }
   }
@@ -236,6 +244,7 @@ export class BankSyncService {
       await this.playwright.login(username);
       await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, 'bank_sync');
       await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
+      await this.notify(jobId, 'job_waiting_2fa', 'HSBCnet cần xác nhận đăng nhập', 'Mở app HSBCnet trên điện thoại để xác nhận đăng nhập.');
       await this.playwright.wait2FA();
       await this.log(jobId, '2FA confirmed.', 'bank_sync', 'success');
       await this.playwright.saveSession();
@@ -632,6 +641,19 @@ export class BankSyncService {
       SET logs = logs || ${JSON.stringify([entry])}::jsonb
       WHERE id = ${jobId}
     `;
+  }
+
+  // Notifies the user who triggered/retried this job — no-op for unattended cron runs
+  // (triggeredBy is null), since there's no one to show a bell notification to.
+  private async notify(jobId: number, type: string, title: string, body?: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { triggeredBy: true } });
+    if (!job?.triggeredBy) return;
+
+    const userId = Number(job.triggeredBy);
+    const notification = await this.prisma.notification.create({
+      data: { userId, type, title, body, jobId },
+    });
+    await this.redis.publish('notifications', JSON.stringify({ userId, notification }));
   }
 }
 
