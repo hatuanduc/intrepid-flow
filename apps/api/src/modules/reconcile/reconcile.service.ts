@@ -1,4 +1,4 @@
-import { Injectable, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import type { CellValue } from 'exceljs';
 import * as os from 'os';
@@ -52,8 +52,18 @@ export class ReconcileService {
 
   async runFilterMerge(
     invoiceFiles: UploadedInvoiceFile[],
-    opts: FilterMergeOptions,
+    outputFileName: string,
   ): Promise<{ path: string; filename: string }> {
+    const settings = await this.getSettings();
+    const opts: FilterMergeOptions = {
+      headerRow: settings.headerRow,
+      salesColumn: settings.salesColumn,
+      taxColumn: settings.taxColumn,
+      noteColumn: settings.noteColumn,
+      customerColumn: settings.customerColumn,
+      outputFileName,
+    };
+
     const dictCustomer = await this.getMasterCustomerMapFromDb();
 
     const totals: Totals = { retailSales: 0, retailTax: 0, serviceSales: 0, serviceTax: 0 };
@@ -108,12 +118,35 @@ export class ReconcileService {
     return { path: outPath, filename: sanitizeOutputFileName(opts.outputFileName) };
   }
 
-  async getMasterCustomerInfo(): Promise<{ count: number; updatedAt: string | null }> {
-    const [count, latest] = await Promise.all([
-      this.prisma.masterCustomerMapping.count(),
+  async getSettings() {
+    const settings = await this.prisma.reconcileSettings.findUnique({ where: { id: 'default' } });
+    if (!settings) throw new NotFoundException('RECONCILE_SETTINGS_NOT_FOUND');
+    return settings;
+  }
+
+  async updateSettings(data: {
+    headerRow: number;
+    salesColumn: string;
+    taxColumn: string;
+    noteColumn: string;
+    customerColumn: string;
+  }) {
+    return this.prisma.reconcileSettings.update({ where: { id: 'default' }, data });
+  }
+
+  async getMasterCustomerInfo(): Promise<{
+    count: number;
+    updatedAt: string | null;
+    items: { brandName: string; customerName: string }[];
+  }> {
+    const [rows, latest] = await Promise.all([
+      this.prisma.masterCustomerMapping.findMany({
+        orderBy: { brandName: 'asc' },
+        select: { brandName: true, customerName: true },
+      }),
       this.prisma.masterCustomerMapping.findFirst({ orderBy: { updatedAt: 'desc' }, select: { updatedAt: true } }),
     ]);
-    return { count, updatedAt: latest?.updatedAt.toISOString() ?? null };
+    return { count: rows.length, updatedAt: latest?.updatedAt.toISOString() ?? null, items: rows };
   }
 
   async replaceMasterCustomerData(
@@ -158,46 +191,40 @@ export class ReconcileService {
     customerCol: string,
   ): Promise<Map<string, string>> {
     const map = new Map<string, string>();
-    const reader = new ExcelJS.stream.xlsx.WorkbookReader(file.path, {});
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(file.path);
+    const worksheet = workbook.worksheets[0];
 
-    let sheetIndex = 0;
-    for await (const worksheet of reader) {
-      const isFirstSheet = sheetIndex++ === 0;
-      let headerIdx: Map<string, number> | null = null;
-      let brandIdx: number | undefined;
-      let custIdx: number | undefined;
-      let rowNum = 0;
+    let headerIdx: Map<string, number> | null = null;
+    let brandIdx: number | undefined;
+    let custIdx: number | undefined;
 
-      for await (const row of worksheet) {
-        rowNum++;
-        if (!isFirstSheet) continue; // still iterate to fully drain the stream
+    worksheet.eachRow((row, rowNum) => {
+      const values = row.values as CellValue[];
 
-        const values = row.values as CellValue[];
-
-        if (rowNum === 1) {
-          headerIdx = this.buildHeaderIndex(values);
-          brandIdx = headerIdx.get(brandCol.trim().toLowerCase());
-          custIdx = headerIdx.get(customerCol.trim().toLowerCase());
-          if (brandIdx === undefined) {
-            throw new UnprocessableEntityException(
-              `Không tìm thấy cột "${brandCol}" trong file Master Customer "${file.originalName}".`,
-            );
-          }
-          if (custIdx === undefined) {
-            throw new UnprocessableEntityException(
-              `Không tìm thấy cột "${customerCol}" trong file Master Customer "${file.originalName}".`,
-            );
-          }
-          continue;
+      if (rowNum === 1) {
+        headerIdx = this.buildHeaderIndex(values);
+        brandIdx = headerIdx.get(brandCol.trim().toLowerCase());
+        custIdx = headerIdx.get(customerCol.trim().toLowerCase());
+        if (brandIdx === undefined) {
+          throw new UnprocessableEntityException(
+            `Không tìm thấy cột "${brandCol}" trong file Master Customer "${file.originalName}".`,
+          );
         }
-
-        if (brandIdx === undefined || custIdx === undefined) continue;
-
-        const brand = cellToString(values[brandIdx]).trim().toUpperCase();
-        const customer = cellToString(values[custIdx]).trim().toUpperCase();
-        if (brand && !map.has(brand)) map.set(brand, customer);
+        if (custIdx === undefined) {
+          throw new UnprocessableEntityException(
+            `Không tìm thấy cột "${customerCol}" trong file Master Customer "${file.originalName}".`,
+          );
+        }
+        return;
       }
-    }
+
+      if (brandIdx === undefined || custIdx === undefined) return;
+
+      const brand = cellToString(values[brandIdx]).trim().toUpperCase();
+      const customer = cellToString(values[custIdx]).trim().toUpperCase();
+      if (brand && !map.has(brand)) map.set(brand, customer);
+    });
 
     return map;
   }
@@ -217,83 +244,76 @@ export class ReconcileService {
       ) => void;
     },
   ): Promise<void> {
-    const reader = new ExcelJS.stream.xlsx.WorkbookReader(file.path, {});
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(file.path);
+    const worksheet = workbook.worksheets[0];
 
-    let sheetIndex = 0;
-    for await (const worksheet of reader) {
-      const isFirstSheet = sheetIndex++ === 0;
+    let fileLastCol = 0;
+    let salesIdx = 0;
+    let taxIdx = 0;
+    let noteIdx = 0;
+    let customerIdx = 0;
 
-      let fileLastCol = 0;
-      let salesIdx = 0;
-      let taxIdx = 0;
-      let noteIdx = 0;
-      let customerIdx = 0;
-      let rowNum = 0;
+    worksheet.eachRow((row, rowNum) => {
+      const values = row.values as CellValue[];
 
-      for await (const row of worksheet) {
-        rowNum++;
-        if (!isFirstSheet) continue; // still iterate to fully drain the stream
+      if (rowNum === opts.headerRow) {
+        fileLastCol = values.length - 1;
+        const headerIdx = this.buildHeaderIndex(values);
 
-        const values = row.values as CellValue[];
+        const sIdx = headerIdx.get(opts.salesColumn.trim().toLowerCase());
+        const tIdx = headerIdx.get(opts.taxColumn.trim().toLowerCase());
+        const nIdx = headerIdx.get(opts.noteColumn.trim().toLowerCase());
+        const cIdx = headerIdx.get(opts.customerColumn.trim().toLowerCase());
 
-        if (rowNum === opts.headerRow) {
-          fileLastCol = values.length - 1;
-          const headerIdx = this.buildHeaderIndex(values);
-
-          const sIdx = headerIdx.get(opts.salesColumn.trim().toLowerCase());
-          const tIdx = headerIdx.get(opts.taxColumn.trim().toLowerCase());
-          const nIdx = headerIdx.get(opts.noteColumn.trim().toLowerCase());
-          const cIdx = headerIdx.get(opts.customerColumn.trim().toLowerCase());
-
-          if (sIdx === undefined) {
-            throw new UnprocessableEntityException(
-              `Không tìm thấy cột doanh số "${opts.salesColumn}" trong file "${file.originalName}".`,
-            );
-          }
-          if (tIdx === undefined) {
-            throw new UnprocessableEntityException(
-              `Không tìm thấy cột thuế "${opts.taxColumn}" trong file "${file.originalName}".`,
-            );
-          }
-          if (nIdx === undefined) {
-            throw new UnprocessableEntityException(
-              `Không tìm thấy cột ghi chú "${opts.noteColumn}" trong file "${file.originalName}".`,
-            );
-          }
-
-          salesIdx = sIdx;
-          taxIdx = tIdx;
-          noteIdx = nIdx;
-          customerIdx = cIdx ?? 0;
-
-          callbacks.onHeader(values.slice(0, fileLastCol + 1), salesIdx, taxIdx);
-          continue;
+        if (sIdx === undefined) {
+          throw new UnprocessableEntityException(
+            `Không tìm thấy cột doanh số "${opts.salesColumn}" trong file "${file.originalName}".`,
+          );
+        }
+        if (tIdx === undefined) {
+          throw new UnprocessableEntityException(
+            `Không tìm thấy cột thuế "${opts.taxColumn}" trong file "${file.originalName}".`,
+          );
+        }
+        if (nIdx === undefined) {
+          throw new UnprocessableEntityException(
+            `Không tìm thấy cột ghi chú "${opts.noteColumn}" trong file "${file.originalName}".`,
+          );
         }
 
-        if (rowNum < opts.headerRow || fileLastCol === 0) continue;
+        salesIdx = sIdx;
+        taxIdx = tIdx;
+        noteIdx = nIdx;
+        customerIdx = cIdx ?? 0;
 
-        const noteVal = cellToString(values[noteIdx]).trim();
-        if (noteVal === '') continue; // blank Note -> skip entirely (no detail row, no aggregation)
-
-        const salesVal = cellToNumber(values[salesIdx]);
-        const taxVal = cellToNumber(values[taxIdx]);
-
-        let customerName: string;
-        let type: RowType;
-
-        if (noteVal.startsWith('Retail_')) {
-          type = 'RETAIL';
-          const brand = extractBrandFromNote(noteVal, rowNum);
-          customerName = dictCustomer.get(brand) ?? brand;
-        } else {
-          const rawCustomer = customerIdx > 0 ? cellToString(values[customerIdx]).trim() : '';
-          customerName = rawCustomer ? rawCustomer.toUpperCase() : `UNDEFINED-${rowNum}`;
-          type = noteVal.startsWith('Service_') ? 'SERVICE' : 'OTHER';
-        }
-
-        callbacks.onRow(values.slice(0, fileLastCol + 1), type, customerName, salesVal, taxVal);
+        callbacks.onHeader(values.slice(0, fileLastCol + 1), salesIdx, taxIdx);
+        return;
       }
-    }
+
+      if (rowNum < opts.headerRow || fileLastCol === 0) return;
+
+      const noteVal = cellToString(values[noteIdx]).trim();
+      if (noteVal === '') return; // blank Note -> skip entirely (no detail row, no aggregation)
+
+      const salesVal = cellToNumber(values[salesIdx]);
+      const taxVal = cellToNumber(values[taxIdx]);
+
+      let customerName: string;
+      let type: RowType;
+
+      if (noteVal.startsWith('Retail_')) {
+        type = 'RETAIL';
+        const brand = extractBrandFromNote(noteVal, rowNum);
+        customerName = dictCustomer.get(brand) ?? brand;
+      } else {
+        const rawCustomer = customerIdx > 0 ? cellToString(values[customerIdx]).trim() : '';
+        customerName = rawCustomer ? rawCustomer.toUpperCase() : `UNDEFINED-${rowNum}`;
+        type = noteVal.startsWith('Service_') ? 'SERVICE' : 'OTHER';
+      }
+
+      callbacks.onRow(values.slice(0, fileLastCol + 1), type, customerName, salesVal, taxVal);
+    });
   }
 
   private async buildOutputWorkbook(

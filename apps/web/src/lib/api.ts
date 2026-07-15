@@ -728,10 +728,39 @@ export async function runReconcileFilterMerge(formData: FormData): Promise<{ blo
   return { blob, filename };
 }
 
-export type MasterCustomerInfo = { count: number; updatedAt: string | null };
+export type MasterCustomerItem = { brandName: string; customerName: string };
+export type MasterCustomerInfo = { count: number; updatedAt: string | null; items: MasterCustomerItem[] };
 
 export async function getMasterCustomerInfo() {
   return request<MasterCustomerInfo>('/management/reconcile/master-customer', { auth: true });
+}
+
+export type ReconcileSettings = {
+  id: string;
+  headerRow: number;
+  salesColumn: string;
+  taxColumn: string;
+  noteColumn: string;
+  customerColumn: string;
+  updatedAt: string;
+};
+
+export async function getReconcileSettings() {
+  return request<ReconcileSettings>('/management/reconcile/settings', { auth: true });
+}
+
+export async function updateReconcileSettings(body: {
+  headerRow: number;
+  salesColumn: string;
+  taxColumn: string;
+  noteColumn: string;
+  customerColumn: string;
+}) {
+  return request<ReconcileSettings>('/management/reconcile/settings', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(body),
+  });
 }
 
 export async function replaceMasterCustomerFile(formData: FormData): Promise<MasterCustomerInfo> {

@@ -127,6 +127,23 @@ const GROUPS: Group[] = [
       },
     ],
   },
+  {
+    labelKey: 'groupTools',
+    cards: [
+      {
+        titleKey: 'reconcileTitle',
+        descKey: 'reconcileDesc',
+        href: '/settings/reconcile',
+        icon: (
+          <svg width="18" height="18" viewBox="0 0 14 14" fill="none">
+            <path d="M1.5 3.5h11M3.5 3.5v7a1 1 0 001 1h5a1 1 0 001-1v-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M5.5 1.5h3l.7 2h-4.4z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+            <path d="M5.5 6.5h3M5.5 8.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+          </svg>
+        ),
+      },
+    ],
+  },
 ];
 
 export default function SettingsRoot() {

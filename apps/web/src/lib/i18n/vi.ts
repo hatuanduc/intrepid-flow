@@ -18,6 +18,8 @@ export const vi: Translations = {
     currency: 'Tỉ giá',
     notificationsSettings: 'Thông báo',
     reconcile: 'Reconcile',
+    settingsReconcile: 'Reconcile',
+    tool: 'Tool',
     settingsGroup: 'Cài đặt',
     settingsConnectionsGroup: 'Cài đặt › Kết nối',
   },
@@ -532,9 +534,12 @@ export const vi: Translations = {
     masterDropzoneSub: 'Dùng để map brand Retail sang tên khách hàng, tối đa 60MB',
     masterInfoCount: 'Đã lưu {count} brand · Cập nhật lúc {date}',
     masterInfoEmpty: 'Chưa có dữ liệu Master Customer.',
-    masterReplaceButton: 'Cập nhật lại',
+    masterImportButton: '+ Nhập file',
     masterReplaceSuccess: 'Đã cập nhật dữ liệu Master Customer.',
     masterReplaceError: 'Cập nhật thất bại. Vui lòng thử lại.',
+    masterSearchPlaceholder: 'Tìm brand, tên khách hàng...',
+    masterTableBrand: 'Brand',
+    masterTableCustomer: 'Tên khách hàng',
     columnMappingLabel: 'Cấu hình cột',
     headerRowLabel: 'Dòng tiêu đề (*)',
     salesColumnLabel: 'Cột doanh số',
@@ -553,6 +558,16 @@ export const vi: Translations = {
     errorOutputFileName: 'Vui lòng nhập tên file kết quả.',
     errorFileTooLarge: 'File "{name}" vượt quá 60MB.',
     errorTooManyFiles: 'Chỉ được chọn tối đa 5 file hóa đơn.',
+    settingsSummaryLabel: 'Cấu hình hiện tại',
+    settingsLink: 'Cài đặt →',
+    settingsSummaryText: 'Dòng tiêu đề: {headerRow} · Doanh số: "{salesColumn}" · Thuế: "{taxColumn}" · Ghi chú: "{noteColumn}" · Khách hàng: "{customerColumn}"',
+  },
+
+  reconcileSettings: {
+    title: 'Cài đặt Reconcile',
+    editButton: 'Chỉnh sửa cấu hình cột',
+    saveSuccess: 'Đã lưu cài đặt.',
+    saveError: 'Lưu thất bại. Vui lòng thử lại.',
   },
 
   settingsHub: {
@@ -582,5 +597,9 @@ export const vi: Translations = {
 
     notificationsTitle: 'Thông báo',
     notificationsDesc: 'Bật thông báo trên màn hình khi tài khoản đăng nhập thành công.',
+
+    groupTools: 'Công cụ',
+    reconcileTitle: 'Reconcile',
+    reconcileDesc: 'Cấu hình cột và dữ liệu Master Customer dùng cho công cụ Lọc & gộp hóa đơn.',
   },
 };

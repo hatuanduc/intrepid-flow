@@ -40,94 +40,44 @@
   margin-bottom: 12px;
 }
 .cardHead .cardTitle { margin: 0; }
-.masterInfoText {
-  font-size: 13px;
-  color: var(--color-secondary);
-  margin: 0;
-}
 
-/* ── Dropzone ── */
-.dropzone {
-  border: 1.5px dashed var(--color-border-strong);
-  border-radius: 8px;
-  background: var(--bg-page);
-  padding: 24px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+/* ── Two-column layout: form on the left, settings hint on the right ── */
+.layout {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 24px;
+  align-items: start;
 }
-.dropzone:hover { border-color: var(--color-accent-active); background: var(--color-accent-light); }
-.dropzoneActive {
-  border-color: var(--color-accent-active);
-  background: var(--color-accent-light);
+@media (max-width: 768px) {
+  .layout { grid-template-columns: 1fr; }
 }
-.dropzoneIcon { color: var(--color-subtle); margin-bottom: 8px; }
-.dropzoneHint {
-  font-size: 13px;
-  color: var(--color-secondary);
-  margin: 0;
-}
-.dropzoneSub {
-  font-size: 12px;
-  color: var(--color-muted);
-  margin: 4px 0 0;
-}
-.hiddenInput { display: none; }
+.main { max-width: 480px; }
 
-/* ── File list ── */
-.fileList {
+.hintRow {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
+  gap: 2px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border-light);
 }
-.fileRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  border: 1px solid var(--color-border-light);
-  border-radius: 6px;
-  background: var(--bg-page);
+.hintRowLast { border-bottom: none; }
+.hintLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
-.fileIcon { color: var(--color-muted); flex-shrink: 0; }
-.fileInfo { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
-.fileName {
+.hintValue {
   font-size: 13px;
   font-weight: 500;
   color: var(--color-ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  word-break: break-word;
 }
-.fileSize {
-  font-size: 12px;
-  color: var(--color-muted);
-}
-.fileRemoveBtn {
-  width: 24px;
-  height: 24px;
-  border: none;
-  background: none;
-  border-radius: 6px;
-  cursor: pointer;
-  color: var(--color-muted);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-.fileRemoveBtn:hover { background: var(--bg-subtle); color: #df1b41; }
 
-/* ── Form grid ── */
-.formGrid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-}
-@media (max-width: 768px) {
-  .formGrid { grid-template-columns: 1fr; }
-}
+/* ── File list wrapper — shared component styles ── */
+.fileList { composes: fileList from '../../components/common/FileDropzone.module.css'; }
+
 .field { display: flex; flex-direction: column; gap: 6px; }
 .label {
   font-size: 13px;

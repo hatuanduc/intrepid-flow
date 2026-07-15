@@ -59,15 +59,18 @@ export const ReconcileIcon = (
     <path d="M5.5 6.5h3M5.5 8.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
   </svg>
 );
+export const ToolIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M9.5 1.5a3 3 0 00-3.7 3.7L1.5 9.5v2h2l4.3-4.3a3 3 0 003.7-3.7L9.7 5.2 8.8 4.3l1.7-1.7z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
 
 /* ── Nav definitions (labels are i18n keys, translated in DashboardLayout) ── */
 export const MAIN_NAV: NavItem[] = [
   { label: 'nav.overview', href: '/', icon: HomeIcon },
 ];
 
-export const FEATURE_NAV: NavItem[] = [
-  { label: 'nav.reconcile', href: '/reconcile', icon: ReconcileIcon },
-];
+export const FEATURE_NAV: NavItem[] = [];
 
 export const NAV_GROUPS: NavGroupDef[] = [
   {
@@ -89,6 +92,13 @@ export const NAV_GROUPS: NavGroupDef[] = [
     icon: MetricsGroupIcon,
     children: [
       { label: 'nav.bankMetrics', href: '/bank-metrics', icon: BankMetricsIcon },
+    ],
+  },
+  {
+    label: 'nav.tool',
+    icon: ToolIcon,
+    children: [
+      { label: 'nav.reconcile', href: '/reconcile', icon: ReconcileIcon },
     ],
   },
 ];
@@ -145,6 +155,7 @@ const SETTINGS_SEARCH: SearchEntry[] = [
   { label: 'nav.settingsBankStatement', href: '/settings/job/bank-statement', icon: BankIcon,         breadcrumb: 'nav.settingsGroup' },
   { label: 'nav.settingsReportAr',      href: '/settings/job/report-ar',      icon: ReportArIcon,     breadcrumb: 'nav.settingsGroup' },
   { label: 'nav.notificationsSettings', href: '/settings/notifications',      icon: NotificationsIcon, breadcrumb: 'nav.settingsGroup' },
+  { label: 'nav.settingsReconcile',     href: '/settings/reconcile',          icon: ReconcileIcon,    breadcrumb: 'nav.settingsGroup' },
 ];
 
 // Flat list for search

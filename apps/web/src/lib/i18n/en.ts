@@ -16,6 +16,8 @@ export const en = {
     currency: 'Exchange Rates',
     notificationsSettings: 'Notifications',
     reconcile: 'Reconcile',
+    settingsReconcile: 'Reconcile',
+    tool: 'Tool',
     settingsGroup: 'Settings',
     settingsConnectionsGroup: 'Settings › Connections',
   },
@@ -535,9 +537,12 @@ export const en = {
     masterDropzoneSub: 'Maps Retail brand codes to a customer name, 60MB max',
     masterInfoCount: '{count} brands saved · Last updated {date}',
     masterInfoEmpty: 'No Master Customer data saved yet.',
-    masterReplaceButton: 'Replace',
+    masterImportButton: '+ Import',
     masterReplaceSuccess: 'Master Customer data updated.',
     masterReplaceError: 'Update failed. Please try again.',
+    masterSearchPlaceholder: 'Search brand, customer name...',
+    masterTableBrand: 'Brand',
+    masterTableCustomer: 'Customer name',
     columnMappingLabel: 'Column mapping',
     headerRowLabel: 'Header row (*)',
     salesColumnLabel: 'Sales column',
@@ -556,6 +561,16 @@ export const en = {
     errorOutputFileName: 'Please enter an output file name.',
     errorFileTooLarge: 'File "{name}" exceeds 60MB.',
     errorTooManyFiles: 'You can select up to 5 invoice files.',
+    settingsSummaryLabel: 'Current settings',
+    settingsLink: 'Settings →',
+    settingsSummaryText: 'Header row: {headerRow} · Sales: "{salesColumn}" · Tax: "{taxColumn}" · Note: "{noteColumn}" · Customer: "{customerColumn}"',
+  },
+
+  reconcileSettings: {
+    title: 'Reconcile Settings',
+    editButton: 'Edit column mapping',
+    saveSuccess: 'Settings saved.',
+    saveError: 'Save failed. Please try again.',
   },
 
   settingsHub: {
@@ -585,6 +600,10 @@ export const en = {
 
     notificationsTitle: 'Notifications',
     notificationsDesc: 'Enable on-screen notifications when an account signs in successfully.',
+
+    groupTools: 'Tools',
+    reconcileTitle: 'Reconcile',
+    reconcileDesc: 'Column mapping and Master Customer data used by the Filter & Merge Invoices tool.',
   },
 };
 

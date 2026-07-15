@@ -13,7 +13,7 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@intrepid.com';
+  const email = process.env.SEED_ADMIN_EMAIL ?? 'adminintrepid@gmail.com';
   const password = process.env.SEED_ADMIN_PASSWORD ?? 'intrepid';
   const hashed = bcrypt.hashSync(password, 10);
   const corePermissions = [
@@ -186,6 +186,14 @@ async function main() {
     update: {},
   });
   console.log('Seeded default VND currency rate');
+
+  // ─── Reconcile Settings (defaults) ──────────────────────────────────────────
+  await prisma.reconcileSettings.upsert({
+    where: { id: 'default' },
+    create: { id: 'default' },
+    update: {},
+  });
+  console.log('Reconcile settings defaults seeded');
 }
 
 main()

@@ -316,3 +316,17 @@ model MasterCustomerMapping {
 
   @@map("master_customer_mappings")
 }
+
+// Column-mapping "setup" for the Filter & Merge tool — rarely changes, edited from
+// Settings > Reconcile rather than on the tool's run page.
+model ReconcileSettings {
+  id             String   @id @default("default")
+  headerRow      Int      @default(1) @map("header_row")
+  salesColumn    String   @default("Doanh số bán chưa thuế VNĐ") @map("sales_column")
+  taxColumn      String   @default("Thuế GTGT đầu ra VNĐ") @map("tax_column")
+  noteColumn     String   @default("Ghi chú") @map("note_column")
+  customerColumn String   @default("Tên khách hàng") @map("customer_column")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("reconcile_settings")
+}

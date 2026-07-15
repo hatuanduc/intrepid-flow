@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, Post, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors,
+  BadRequestException, Body, Controller, Get, Post, Put, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -15,6 +15,7 @@ import { HasPermission } from '../../common/decorators/has-permission.decorator'
 import { ReconcileService } from './reconcile.service';
 import { FilterMergeDto } from './dto/filter-merge.dto';
 import { ReplaceMasterCustomerDto } from './dto/replace-master-customer.dto';
+import { UpdateReconcileSettingsDto } from './dto/update-reconcile-settings.dto';
 
 const MAX_FILE_SIZE = 60 * 1024 * 1024; // 60MB per file
 
@@ -34,14 +35,9 @@ export class ReconcileController {
       type: 'object',
       properties: {
         files: { type: 'array', items: { type: 'string', format: 'binary' } },
-        headerRow: { type: 'integer', example: 1 },
-        salesColumn: { type: 'string' },
-        taxColumn: { type: 'string' },
-        noteColumn: { type: 'string' },
-        customerColumn: { type: 'string' },
         outputFileName: { type: 'string' },
       },
-      required: ['files', 'headerRow', 'salesColumn', 'taxColumn', 'noteColumn', 'customerColumn', 'outputFileName'],
+      required: ['files', 'outputFileName'],
     },
   })
   @UseInterceptors(FileFieldsInterceptor(
@@ -68,7 +64,7 @@ export class ReconcileController {
     const tempPaths = invoiceFiles.map(f => f.path);
 
     try {
-      const { path: outPath, filename } = await this.service.runFilterMerge(invoiceFiles, body);
+      const { path: outPath, filename } = await this.service.runFilterMerge(invoiceFiles, body.outputFileName);
       tempPaths.push(outPath);
 
       const buffer = await fs.readFile(outPath);
@@ -82,6 +78,20 @@ export class ReconcileController {
     }
   }
 
+  @Get('settings')
+  @HasPermission('reconcile:view')
+  @ApiOperation({ summary: 'Xem cấu hình cột hiện tại của công cụ Reconcile' })
+  async getSettings() {
+    return this.service.getSettings();
+  }
+
+  @Put('settings')
+  @HasPermission('reconcile:config')
+  @ApiOperation({ summary: 'Cập nhật cấu hình cột của công cụ Reconcile' })
+  async updateSettings(@Body() body: UpdateReconcileSettingsDto) {
+    return this.service.updateSettings(body);
+  }
+
   @Get('master-customer')
   @HasPermission('reconcile:view')
   @ApiOperation({ summary: 'Xem thông tin dữ liệu Master Customer đã lưu (số brand, cập nhật lúc)' })
@@ -90,7 +100,7 @@ export class ReconcileController {
   }
 
   @Post('master-customer')
-  @HasPermission('reconcile:run')
+  @HasPermission('reconcile:config')
   @ApiOperation({ summary: 'Thay thế toàn bộ dữ liệu Master Customer bằng file mới upload' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
