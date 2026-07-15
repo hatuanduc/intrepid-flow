@@ -18,3 +18,4 @@ apps/worker/sessions/
 *.tfstate.backup
 tfplan
 !infra/aws/bootstrap/terraform.tfstate
+macro-powertool/*

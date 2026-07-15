@@ -1,17 +1,20 @@
+'use client';
+
 import React from 'react';
 import Link from 'next/link';
+import { useT } from '../../lib/i18n';
 import s from './SettingsHub.module.css';
 
-type Card = { title: string; desc: string; href: string; icon: React.ReactNode };
-type Group = { label: string; cards: Card[] };
+type Card = { titleKey: string; descKey: string; href: string; icon: React.ReactNode };
+type Group = { labelKey: string; cards: Card[] };
 
 const GROUPS: Group[] = [
   {
-    label: 'Người dùng & quyền hạn',
+    labelKey: 'groupUsers',
     cards: [
       {
-        title: 'Tài khoản người dùng',
-        desc: 'Tạo, sửa và quản lý tài khoản nhân viên, gán vai trò trong hệ thống.',
+        titleKey: 'usersTitle',
+        descKey: 'usersDesc',
         href: '/settings/users',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -21,8 +24,8 @@ const GROUPS: Group[] = [
         ),
       },
       {
-        title: 'Vai trò',
-        desc: 'Tạo và cấu hình vai trò, gán nhóm quyền cho từng chức danh.',
+        titleKey: 'rolesTitle',
+        descKey: 'rolesDesc',
         href: '/settings/roles',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -35,11 +38,11 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    label: 'Kết nối',
+    labelKey: 'groupConnections',
     cards: [
       {
-        title: 'Google Service Account',
-        desc: 'Cấu hình service account JSON dùng chung cho tất cả tích hợp Google Sheets trong hệ thống.',
+        titleKey: 'gsheetTitle',
+        descKey: 'gsheetDesc',
         href: '/settings/connections',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -50,8 +53,8 @@ const GROUPS: Group[] = [
         ),
       },
       {
-        title: 'HSBCnet',
-        desc: 'Cấu hình tên đăng nhập HSBCnet để hệ thống tự động đăng nhập và tải sao kê.',
+        titleKey: 'hsbcTitle',
+        descKey: 'hsbcDesc',
         href: '/settings/job/bank-statement',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -62,9 +65,9 @@ const GROUPS: Group[] = [
         ),
       },
       {
-        title: 'Tỉ giá',
-        desc: 'Quản lý tỉ giá hối đoái quy đổi về USD, tự động cập nhật hàng tháng.',
-        href: '/settings/geography',
+        titleKey: 'currencyTitle',
+        descKey: 'currencyDesc',
+        href: '/settings/currency',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
             <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/>
@@ -76,11 +79,11 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    label: 'Quy trình tự động',
+    labelKey: 'groupWorkflows',
     cards: [
       {
-        title: 'Sao kê ngân hàng',
-        desc: 'Lịch chạy tự động, cột dữ liệu và mapping quốc gia cho module sao kê.',
+        titleKey: 'bankStatementTitle',
+        descKey: 'bankStatementDesc',
         href: '/settings/job/bank-statement',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -93,11 +96,11 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    label: 'Báo cáo',
+    labelKey: 'groupReports',
     cards: [
       {
-        title: 'Báo cáo AR',
-        desc: 'Cấu hình lịch chạy và mapping cho module báo cáo công nợ phải thu.',
+        titleKey: 'reportArTitle',
+        descKey: 'reportArDesc',
         href: '/settings/job/report-ar',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -109,11 +112,11 @@ const GROUPS: Group[] = [
     ],
   },
   {
-    label: 'Hệ thống',
+    labelKey: 'groupSystem',
     cards: [
       {
-        title: 'Thông báo',
-        desc: 'Bật thông báo trên màn hình khi tài khoản đăng nhập thành công.',
+        titleKey: 'notificationsTitle',
+        descKey: 'notificationsDesc',
         href: '/settings/notifications',
         icon: (
           <svg width="18" height="18" viewBox="0 0 16 16" fill="none">
@@ -127,22 +130,24 @@ const GROUPS: Group[] = [
 ];
 
 export default function SettingsRoot() {
+  const { t } = useT();
+
   return (
     <div className={s.page}>
       {GROUPS.map((group) => (
-        <div key={group.label} className={s.group}>
-          <p className={s.groupTitle}>{group.label}</p>
+        <div key={group.labelKey} className={s.group}>
+          <p className={s.groupTitle}>{t(`settingsHub.${group.labelKey}`)}</p>
           <div className={s.grid}>
             {group.cards.map((card) => (
               <Link
-                key={card.href + card.title}
+                key={card.href + card.titleKey}
                 href={card.href}
                 className={s.card}
               >
                 <span className={s.cardIcon}>{card.icon}</span>
                 <span className={s.cardBody}>
-                  <span className={s.cardTitle}>{card.title}</span>
-                  <span className={s.cardDesc}>{card.desc}</span>
+                  <span className={s.cardTitle}>{t(`settingsHub.${card.titleKey}`)}</span>
+                  <span className={s.cardDesc}>{t(`settingsHub.${card.descKey}`)}</span>
                 </span>
               </Link>
             ))}

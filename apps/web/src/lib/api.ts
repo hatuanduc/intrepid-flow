@@ -673,3 +673,68 @@ export async function markNotificationRead(id: number) {
 export async function markAllNotificationsRead() {
   return request<{ ok: boolean }>('/notifications/read-all', { method: 'PATCH', auth: true });
 }
+
+// ─── Reconcile ────────────────────────────────────────────────────────────────
+// Bypasses request() on purpose: this call sends multipart/form-data (not JSON)
+// and reads a binary file back (not JSON), so it needs its own auth/error handling.
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8Match) {
+    try { return decodeURIComponent(utf8Match[1]); } catch { /* fall through */ }
+  }
+  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+  return plainMatch ? plainMatch[1] : fallback;
+}
+
+async function multipartFetch(path: string, formData: FormData): Promise<Response> {
+  let baseUrl = getApiBaseUrl();
+  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
+
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers, // no content-type — the browser sets the multipart boundary itself
+    body: formData,
+    cache: 'no-store',
+  });
+
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== 'undefined') window.location.replace('/login');
+    throw new Error('UNAUTHORIZED');
+  }
+
+  if (!res.ok) {
+    let message = `Request failed: ${res.status}`;
+    try {
+      const data = await res.json() as { message?: string };
+      if (data?.message) message = data.message;
+    } catch { /* body wasn't JSON */ }
+    throw new Error(message);
+  }
+
+  return res;
+}
+
+export async function runReconcileFilterMerge(formData: FormData): Promise<{ blob: Blob; filename: string }> {
+  const res = await multipartFetch('/management/reconcile/filter-merge', formData);
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(res.headers.get('content-disposition'), 'service_invoices_merged.xlsx');
+  return { blob, filename };
+}
+
+export type MasterCustomerInfo = { count: number; updatedAt: string | null };
+
+export async function getMasterCustomerInfo() {
+  return request<MasterCustomerInfo>('/management/reconcile/master-customer', { auth: true });
+}
+
+export async function replaceMasterCustomerFile(formData: FormData): Promise<MasterCustomerInfo> {
+  const res = await multipartFetch('/management/reconcile/master-customer', formData);
+  return res.json() as Promise<MasterCustomerInfo>;
+}

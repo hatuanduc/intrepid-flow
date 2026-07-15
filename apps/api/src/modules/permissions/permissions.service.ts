@@ -14,6 +14,8 @@ const CORE_PERMISSIONS = [
   { key: 'bank_statement:config',   module: 'bank_statement',  action: 'config',      label: 'Cấu hình sao kê ngân hàng' },
   { key: 'report_ar:view',          module: 'report_ar',       action: 'view',        label: 'Xem báo cáo AR' },
   { key: 'report_ar:config',        module: 'report_ar',       action: 'config',      label: 'Cấu hình báo cáo AR' },
+  { key: 'reconcile:view',          module: 'reconcile',       action: 'view',        label: 'Xem công cụ Reconcile' },
+  { key: 'reconcile:run',           module: 'reconcile',       action: 'run',         label: 'Chạy gộp hóa đơn' },
   { key: 'system:config',           module: 'system',          action: 'config',      label: 'Cấu hình hệ thống (kết nối, secret keys)' },
 ];
 
@@ -39,6 +41,7 @@ const CORE_ROLES = [
       'roles:view', 'permissions:view',
       'bank_statement:view', 'bank_statement:run', 'bank_statement:config',
       'report_ar:view', 'report_ar:config',
+      'reconcile:view', 'reconcile:run',
     ],
   },
   {
@@ -51,6 +54,7 @@ const CORE_ROLES = [
       'dashboard:view',
       'bank_statement:view', 'bank_statement:run',
       'report_ar:view',
+      'reconcile:view', 'reconcile:run',
     ],
   },
   {
@@ -63,6 +67,7 @@ const CORE_ROLES = [
       'dashboard:view',
       'bank_statement:view',
       'report_ar:view',
+      'reconcile:view',
     ],
   },
 ];

@@ -52,13 +52,22 @@ export const BankMetricsIcon = (
     <path d="M3.5 11.5V8M6.5 11.5V5.5M9.5 11.5V3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
   </svg>
 );
+export const ReconcileIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M1.5 3.5h11M3.5 3.5v7a1 1 0 001 1h5a1 1 0 001-1v-7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M5.5 1.5h3l.7 2h-4.4z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <path d="M5.5 6.5h3M5.5 8.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
 
 /* ── Nav definitions (labels are i18n keys, translated in DashboardLayout) ── */
 export const MAIN_NAV: NavItem[] = [
   { label: 'nav.overview', href: '/', icon: HomeIcon },
 ];
 
-export const FEATURE_NAV: NavItem[] = [];
+export const FEATURE_NAV: NavItem[] = [
+  { label: 'nav.reconcile', href: '/reconcile', icon: ReconcileIcon },
+];
 
 export const NAV_GROUPS: NavGroupDef[] = [
   {
@@ -114,7 +123,7 @@ const GSheetIcon = (
     <path d="M9 1v3.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
-const GeographyIcon = (
+const CurrencyIcon = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.3"/>
     <path d="M8 2c0 0-3 2-3 6s3 6 3 6M8 2c0 0 3 2 3 6s-3 6-3 6" stroke="currentColor" strokeWidth="1.3"/>
@@ -132,7 +141,7 @@ const SETTINGS_SEARCH: SearchEntry[] = [
   { label: 'nav.users',                 href: '/settings/users',              icon: UsersIcon,        breadcrumb: 'nav.settingsGroup' },
   { label: 'nav.roles',                 href: '/settings/roles',              icon: RolesIcon,        breadcrumb: 'nav.settingsGroup' },
   { label: 'nav.connections',           href: '/settings/connections',        icon: GSheetIcon,       breadcrumb: 'nav.settingsConnectionsGroup' },
-  { label: 'nav.geography',             href: '/settings/geography',          icon: GeographyIcon,    breadcrumb: 'nav.settingsConnectionsGroup' },
+  { label: 'nav.currency',              href: '/settings/currency',           icon: CurrencyIcon,     breadcrumb: 'nav.settingsConnectionsGroup' },
   { label: 'nav.settingsBankStatement', href: '/settings/job/bank-statement', icon: BankIcon,         breadcrumb: 'nav.settingsGroup' },
   { label: 'nav.settingsReportAr',      href: '/settings/job/report-ar',      icon: ReportArIcon,     breadcrumb: 'nav.settingsGroup' },
   { label: 'nav.notificationsSettings', href: '/settings/notifications',      icon: NotificationsIcon, breadcrumb: 'nav.settingsGroup' },

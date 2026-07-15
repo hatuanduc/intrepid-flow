@@ -303,3 +303,16 @@ model Notification {
   @@index([userId, isRead])
   @@map("notifications")
 }
+
+// ─── Reconcile Module ──────────────────────────────────────────────────────────
+
+// Master Customer brand -> customer-name lookup, replaced wholesale via the
+// Reconcile page's "Cập nhật lại" upload (rarely changes).
+model MasterCustomerMapping {
+  id           Int      @id @default(autoincrement())
+  brandName    String   @unique @map("brand_name")
+  customerName String   @map("customer_name")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("master_customer_mappings")
+}

@@ -7,59 +7,24 @@ import {
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import { useToast } from '../../../components/common/Toast';
+import { useT } from '../../../lib/i18n';
 import AccessDenied from '../../../components/common/AccessDenied';
 import PageLoader from '../../../components/common/PageLoader';
-import s from './GeographyPage.module.css';
+import s from './CurrencyPage.module.css';
 
-const AVAILABLE_CURRENCIES = [
-  { code: 'AUD', name: 'Đô-la Úc' },
-  { code: 'BGN', name: 'Lev Bulgaria' },
-  { code: 'BRL', name: 'Real Brazil' },
-  { code: 'CAD', name: 'Đô-la Canada' },
-  { code: 'CHF', name: 'Franc Thụy Sĩ' },
-  { code: 'CNY', name: 'Nhân dân tệ' },
-  { code: 'CZK', name: 'Koruna Czech' },
-  { code: 'DKK', name: 'Krone Đan Mạch' },
-  { code: 'EUR', name: 'Euro' },
-  { code: 'GBP', name: 'Bảng Anh' },
-  { code: 'HKD', name: 'Đô-la Hong Kong' },
-  { code: 'HUF', name: 'Forint Hungary' },
-  { code: 'IDR', name: 'Rupiah Indonesia' },
-  { code: 'ILS', name: 'Shekel Israel' },
-  { code: 'INR', name: 'Rupee Ấn Độ' },
-  { code: 'ISK', name: 'Króna Iceland' },
-  { code: 'JPY', name: 'Yên Nhật' },
-  { code: 'KRW', name: 'Won Hàn Quốc' },
-  { code: 'MXN', name: 'Peso Mexico' },
-  { code: 'MYR', name: 'Ringgit Malaysia' },
-  { code: 'NOK', name: 'Krone Na Uy' },
-  { code: 'NZD', name: 'Đô-la New Zealand' },
-  { code: 'PHP', name: 'Peso Philippines' },
-  { code: 'PLN', name: 'Zloty Ba Lan' },
-  { code: 'RON', name: 'Leu Romania' },
-  { code: 'SEK', name: 'Krona Thụy Điển' },
-  { code: 'SGD', name: 'Đô-la Singapore' },
-  { code: 'THB', name: 'Baht Thái Lan' },
-  { code: 'TRY', name: 'Lira Thổ Nhĩ Kỳ' },
-  { code: 'USD', name: 'Đô-la Mỹ' },
-  { code: 'VND', name: 'Đồng Việt Nam' },
-  { code: 'ZAR', name: 'Rand Nam Phi' },
+const CURRENCY_CODES = [
+  'AUD', 'BGN', 'BRL', 'CAD', 'CHF', 'CNY', 'CZK', 'DKK', 'EUR', 'GBP',
+  'HKD', 'HUF', 'IDR', 'ILS', 'INR', 'ISK', 'JPY', 'KRW', 'MXN', 'MYR',
+  'NOK', 'NZD', 'PHP', 'PLN', 'RON', 'SEK', 'SGD', 'THB', 'TRY', 'USD',
+  'VND', 'ZAR',
 ];
+const CURRENCY_CODE_SET = new Set(CURRENCY_CODES);
 
-function fmtDateTime(iso: string) {
-  const d = new Date(iso);
-  return d.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
-    + ' ' + d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-}
-function fmtDate(iso: string) {
-  return new Date(iso).toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-}
-
-const CURRENCY_MAP = Object.fromEntries(AVAILABLE_CURRENCIES.map(c => [c.code, c]));
-
-export default function GeographyPage() {
+export default function CurrencyPage() {
   const canConfig = useHasPermission('system:config');
   const toast = useToast();
+  const { t, lang } = useT();
+  const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
 
   const [loading, setLoading] = useState(true);
   const [currencyData, setCurrencyData] = useState<CurrencyData | null>(null);
@@ -83,9 +48,22 @@ export default function GeographyPage() {
 
   if (!canConfig) return <AccessDenied />;
 
+  function fmtDateTime(iso: string) {
+    const d = new Date(iso);
+    return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ' ' + d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
+  }
+  function fmtDate(iso: string) {
+    return new Date(iso).toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' });
+  }
+  function currencyName(code: string) {
+    return t(`currencySettings.currencyNames.${code}`);
+  }
+
   const existingCodes = new Set(currencyData?.rates.map(r => r.currency) ?? []);
-  const pickerOptions = AVAILABLE_CURRENCIES
-    .filter(c => !existingCodes.has(c.code))
+  const pickerOptions = CURRENCY_CODES
+    .filter(code => !existingCodes.has(code))
+    .map(code => ({ code, name: currencyName(code) }))
     .filter(c =>
       currencySearch === '' ||
       c.code.toLowerCase().includes(currencySearch.toLowerCase()) ||
@@ -96,8 +74,8 @@ export default function GeographyPage() {
     setCurrencyRefreshing(true);
     try {
       setCurrencyData(await refreshCurrencyRates());
-      toast.success('Tỉ giá đã được cập nhật.');
-    } catch { toast.error('Cập nhật thất bại. Vui lòng thử lại.'); }
+      toast.success(t('currencySettings.refreshSuccess'));
+    } catch { toast.error(t('currencySettings.refreshFailed')); }
     finally { setCurrencyRefreshing(false); }
   }
 
@@ -105,16 +83,16 @@ export default function GeographyPage() {
     setAddingCurrency(false);
     try {
       setCurrencyData(await addCurrencyRate(code));
-      toast.success(`Đã thêm tỉ giá ${code}.`);
-    } catch { toast.error(`Thêm ${code} thất bại. Vui lòng thử lại.`); }
+      toast.success(t('currencySettings.addSuccess', { code }));
+    } catch { toast.error(t('currencySettings.addFailed', { code })); }
   }
 
   async function handleDeleteRate(currency: string) {
     setDeletingRate(currency);
     try {
       setCurrencyData(await deleteCurrencyRate(currency));
-      toast.success(`Đã xóa tỉ giá ${currency}.`);
-    } catch { toast.error(`Xóa ${currency} thất bại.`); }
+      toast.success(t('currencySettings.deleteSuccess', { code: currency }));
+    } catch { toast.error(t('currencySettings.deleteFailed', { code: currency })); }
     finally { setDeletingRate(null); }
   }
 
@@ -123,38 +101,38 @@ export default function GeographyPage() {
       const settings = await updateCurrencySettings({ autoUpdateDay });
       setCurrencyData(prev => prev ? { ...prev, settings } : prev);
       setDayEditing(false);
-      toast.success('Đã lưu ngày cập nhật.');
-    } catch { toast.error('Lưu thất bại.'); }
+      toast.success(t('currencySettings.daySaved'));
+    } catch { toast.error(t('currencySettings.daySaveFailed')); }
   }
 
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <h1 className={s.pageTitle}>Tỉ giá</h1>
+        <h1 className={s.pageTitle}>{t('currencySettings.title')}</h1>
       </div>
 
       {loading ? <PageLoader /> : (
         <div className={s.section}>
           <div className={s.sectionHead}>
             <div>
-              <p className={s.sectionTitle}>Tỉ giá hối đoái → USD</p>
+              <p className={s.sectionTitle}>{t('currencySettings.sectionTitle')}</p>
               <p className={s.sectionDesc}>
-                Tỉ giá lấy từ frankfurter.app (ECB). Tự động làm mới cho các đơn vị đang dùng trong hệ thống.
+                {t('currencySettings.sectionDesc')}
                 {currencyData?.settings?.lastUpdatedAt && (
-                  <> Cập nhật lần cuối: <strong>{fmtDateTime(currencyData.settings.lastUpdatedAt)}</strong>.</>
+                  <> {t('currencySettings.lastUpdated', { date: fmtDateTime(currencyData.settings.lastUpdatedAt) })}</>
                 )}
               </p>
             </div>
             <div className={s.ratesActions}>
               <button className={s.btnSecondary} onClick={handleRefreshRates} disabled={currencyRefreshing}>
-                {currencyRefreshing ? 'Đang cập nhật...' : 'Cập nhật'}
+                {currencyRefreshing ? t('currencySettings.refreshing') : t('currencySettings.refresh')}
               </button>
               <div className={s.addCurrencyWrap}>
                 <button
                   className={s.btnSecondary}
                   onClick={() => { setAddingCurrency(v => !v); setCurrencySearch(''); }}
                 >
-                  + Thêm
+                  {t('currencySettings.addCurrency')}
                 </button>
                 {addingCurrency && (
                   <>
@@ -163,7 +141,7 @@ export default function GeographyPage() {
                       <div className={s.pickerSearch}>
                         <input
                           className={s.pickerSearchInput}
-                          placeholder="Tìm kiếm tiền tệ..."
+                          placeholder={t('currencySettings.searchPlaceholder')}
                           value={currencySearch}
                           onChange={e => setCurrencySearch(e.target.value)}
                           autoFocus
@@ -171,7 +149,7 @@ export default function GeographyPage() {
                       </div>
                       <div className={s.pickerList}>
                         {pickerOptions.length === 0 ? (
-                          <div className={s.pickerEmpty}>Không có kết quả.</div>
+                          <div className={s.pickerEmpty}>{t('currencySettings.noResults')}</div>
                         ) : pickerOptions.map(c => (
                           <button
                             key={c.code}
@@ -192,7 +170,7 @@ export default function GeographyPage() {
           </div>
 
           <div className={s.autoUpdateRow}>
-            <span className={s.autoUpdateLabel}>Tự động cập nhật vào ngày</span>
+            <span className={s.autoUpdateLabel}>{t('currencySettings.autoUpdateLabel')}</span>
             {dayEditing ? (
               <>
                 <select
@@ -204,50 +182,48 @@ export default function GeographyPage() {
                     <option key={d} value={d}>{d}</option>
                   ))}
                 </select>
-                <span className={s.autoUpdateLabel}>mỗi tháng</span>
-                <button className={s.btnTiny} onClick={handleSaveDay}>Lưu</button>
+                <span className={s.autoUpdateLabel}>{t('currencySettings.perMonth')}</span>
+                <button className={s.btnTiny} onClick={handleSaveDay}>{t('currencySettings.save')}</button>
                 <button className={s.btnTinyGhost} onClick={() => {
                   setAutoUpdateDay(currencyData?.settings?.autoUpdateDay ?? 1);
                   setDayEditing(false);
-                }}>Hủy</button>
+                }}>{t('currencySettings.cancel')}</button>
               </>
             ) : (
               <>
                 <strong className={s.dayValue}>{autoUpdateDay}</strong>
-                <span className={s.autoUpdateLabel}>mỗi tháng</span>
-                <button className={s.btnTinyGhost} onClick={() => setDayEditing(true)}>Thay đổi</button>
+                <span className={s.autoUpdateLabel}>{t('currencySettings.perMonth')}</span>
+                <button className={s.btnTinyGhost} onClick={() => setDayEditing(true)}>{t('currencySettings.change')}</button>
                 {currencyData?.settings?.nextUpdateAt && (
-                  <span className={s.nextUpdate}>· Tiếp theo: {fmtDate(currencyData.settings.nextUpdateAt)}</span>
+                  <span className={s.nextUpdate}>{t('currencySettings.nextUpdate', { date: fmtDate(currencyData.settings.nextUpdateAt) })}</span>
                 )}
               </>
             )}
           </div>
 
           {!currencyData || currencyData.rates.length === 0 ? (
-            <div className={s.empty}>
-              Chưa có tỉ giá. Nhấn &ldquo;Cập nhật&rdquo; hoặc &ldquo;+ Thêm&rdquo; để thêm đơn vị tiền tệ.
-            </div>
+            <div className={s.empty}>{t('currencySettings.empty')}</div>
           ) : (
             <div className={s.tableWrap}>
               <table className={s.table}>
                 <thead>
                   <tr>
-                    <th className={s.th}>Tiền tệ</th>
-                    <th className={s.th}>Tỉ giá</th>
-                    <th className={s.th}>Cập nhật lúc</th>
+                    <th className={s.th}>{t('currencySettings.tableCurrency')}</th>
+                    <th className={s.th}>{t('currencySettings.tableRate')}</th>
+                    <th className={s.th}>{t('currencySettings.tableUpdatedAt')}</th>
                     <th className={s.th} />
                   </tr>
                 </thead>
                 <tbody>
                   {currencyData.rates.map(r => {
-                    const meta = CURRENCY_MAP[r.currency];
+                    const known = CURRENCY_CODE_SET.has(r.currency);
                     return (
                     <tr key={r.currency} className={s.trStatic}>
                       <td className={s.td}>
                         <div className={s.currencyCell}>
-                          {meta && <img src={`https://wise.com/web-art/assets/flags/${r.currency.toLowerCase()}.svg`} className={s.flagImg} alt="" />}
+                          {known && <img src={`https://wise.com/web-art/assets/flags/${r.currency.toLowerCase()}.svg`} className={s.flagImg} alt="" />}
                           <span className={s.currencyTag}>{r.currency}</span>
-                          {meta && <span className={s.currencyName}>{meta.name}</span>}
+                          {known && <span className={s.currencyName}>{currencyName(r.currency)}</span>}
                         </div>
                       </td>
                       <td className={s.td}>
@@ -262,7 +238,7 @@ export default function GeographyPage() {
                           onClick={() => handleDeleteRate(r.currency)}
                           disabled={deletingRate === r.currency}
                         >
-                          {deletingRate === r.currency ? '...' : 'Xóa'}
+                          {deletingRate === r.currency ? '...' : t('currencySettings.delete')}
                         </button>
                       </td>
                     </tr>
