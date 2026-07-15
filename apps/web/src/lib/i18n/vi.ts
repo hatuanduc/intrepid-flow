@@ -15,6 +15,8 @@ export const vi: Translations = {
     roles: 'Vai trò',
     settingsBankStatement: 'Sao kê NH',
     settingsReportAr: 'AR Report',
+    geography: 'Tỉ giá',
+    notificationsSettings: 'Thông báo',
     settingsGroup: 'Cài đặt',
     settingsConnectionsGroup: 'Cài đặt › Kết nối',
   },

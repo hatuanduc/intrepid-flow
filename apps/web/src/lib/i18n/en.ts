@@ -13,6 +13,8 @@ export const en = {
     roles: 'Roles',
     settingsBankStatement: 'Bank Statement',
     settingsReportAr: 'AR Report',
+    geography: 'Exchange Rates',
+    notificationsSettings: 'Notifications',
     settingsGroup: 'Settings',
     settingsConnectionsGroup: 'Settings › Connections',
   },

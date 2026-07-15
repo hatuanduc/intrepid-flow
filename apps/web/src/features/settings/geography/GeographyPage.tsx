@@ -42,6 +42,7 @@ const AVAILABLE_CURRENCIES = [
   { code: 'THB', name: 'Baht Thái Lan' },
   { code: 'TRY', name: 'Lira Thổ Nhĩ Kỳ' },
   { code: 'USD', name: 'Đô-la Mỹ' },
+  { code: 'VND', name: 'Đồng Việt Nam' },
   { code: 'ZAR', name: 'Rand Nam Phi' },
 ];
 
@@ -251,7 +252,7 @@ export default function GeographyPage() {
                       </td>
                       <td className={s.td}>
                         <span className={s.rateValue}>
-                          1 {r.currency} = {Number(r.rateToUsd).toFixed(r.currency === 'IDR' ? 6 : 4)} USD
+                          1 {r.currency} = {Number(r.rateToUsd).toFixed(['IDR', 'VND'].includes(r.currency) ? 6 : 4)} USD
                         </span>
                       </td>
                       <td className={s.td}><span className={s.metaText}>{fmtDateTime(r.updatedAt)}</span></td>

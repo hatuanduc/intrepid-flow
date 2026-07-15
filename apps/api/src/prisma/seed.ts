@@ -176,6 +176,16 @@ async function main() {
     });
   }
   console.log(`Seeded ${BANK_ACCOUNT_NAMES.length} bank account names`);
+
+  // ─── Currency Rates (defaults) ──────────────────────────────────────────────
+  // VND is not published by frankfurter.app (ECB reference rates), so it can't be
+  // auto-refreshed like other currencies — seed a default rate here instead.
+  await prisma.currencyRate.upsert({
+    where: { currency: 'VND' },
+    create: { currency: 'VND', rateToUsd: '0.0000385' },
+    update: {},
+  });
+  console.log('Seeded default VND currency rate');
 }
 
 main()
