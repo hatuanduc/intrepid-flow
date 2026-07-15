@@ -54,6 +54,7 @@ export type BankSyncJobDto = {
   id: string;
   status: string;
   triggeredBy: string | null;
+  triggeredByName: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
   errorMessage: string | null;
@@ -83,6 +84,15 @@ function computeJobStats(accounts: JobAccountRow[]): JobStatsDto | null {
   };
 }
 
+// triggeredBy is either the literal 'cron' (scheduled run) or a stringified user id
+// (manual trigger/retry) — never a display name itself, so the caller resolves it
+// against a batched user lookup and we just look it up here.
+function resolveTriggeredByName(triggeredBy: string | null, nameByUserId: Map<number, string>): string | null {
+  if (!triggeredBy || triggeredBy === 'cron') return null;
+  const id = Number(triggeredBy);
+  return Number.isFinite(id) ? (nameByUserId.get(id) ?? null) : null;
+}
+
 function toDto(job: {
   publicId: string;
   status: string;
@@ -94,7 +104,7 @@ function toDto(job: {
   steps: unknown;
   createdAt: Date;
   durationMsTotal?: number;
-}, accounts: JobAccountRow[] = []): BankSyncJobDto {
+}, accounts: JobAccountRow[] = [], nameByUserId: Map<number, string> = new Map()): BankSyncJobDto {
   // durationMsTotal accumulates across retries (each retry resets startedAt, so a
   // naive completedAt - startedAt diff would only reflect the last attempt).
   // Fall back to the raw diff for jobs created before this field existed.
@@ -108,6 +118,7 @@ function toDto(job: {
     id: job.publicId,
     status: job.status,
     triggeredBy: job.triggeredBy,
+    triggeredByName: resolveTriggeredByName(job.triggeredBy, nameByUserId),
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     errorMessage: job.errorMessage,
@@ -410,6 +421,22 @@ export class BankStatementService implements OnModuleInit {
     return toDto(dbRecord);
   }
 
+  private async nameByUserIdFor(triggeredByValues: (string | null)[]): Promise<Map<number, string>> {
+    const userIds = Array.from(new Set(
+      triggeredByValues
+        .filter((v): v is string => !!v && v !== 'cron')
+        .map(Number)
+        .filter(Number.isFinite),
+    ));
+    if (userIds.length === 0) return new Map();
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    return new Map(users.map(u => [u.id, u.name ?? u.email]));
+  }
+
   async listJobs(limit = 50): Promise<BankSyncJobDto[]> {
     const jobs = await this.prisma.bankSyncJob.findMany({
       where: { isDeleted: false },
@@ -428,14 +455,17 @@ export class BankStatementService implements OnModuleInit {
       accountsByJob.set(a.jobId, list);
     }
 
-    return jobs.map(job => toDto(job, accountsByJob.get(job.id) ?? []));
+    const nameByUserId = await this.nameByUserIdFor(jobs.map(j => j.triggeredBy));
+
+    return jobs.map(job => toDto(job, accountsByJob.get(job.id) ?? [], nameByUserId));
   }
 
   async getJobDetail(publicId: string): Promise<BankSyncJobDto> {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
     const accounts = await this.prisma.bankSyncJobAccount.findMany({ where: { jobId: job.id } });
-    return toDto(job, accounts);
+    const nameByUserId = await this.nameByUserIdFor([job.triggeredBy]);
+    return toDto(job, accounts, nameByUserId);
   }
 
   async retryJob(publicId: string, retriedBy: string, stepKey?: StepKey): Promise<BankSyncJobDto> {

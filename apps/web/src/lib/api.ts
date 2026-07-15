@@ -315,6 +315,7 @@ export type BankSyncJob = {
   id: string;
   status: string;
   triggeredBy: string | null;
+  triggeredByName: string | null;
   startedAt: string | null;
   completedAt: string | null;
   errorMessage: string | null;
@@ -652,13 +653,13 @@ export type AppNotification = {
   type: 'job_completed' | 'job_failed' | 'job_waiting_2fa';
   title: string;
   body: string | null;
-  jobId: number | null;
+  jobPublicId: string | null;
   isRead: boolean;
   createdAt: string;
 };
 
-export async function listNotifications() {
-  return request<{ items: AppNotification[] }>('/notifications', { auth: true });
+export async function listNotifications(skip = 0, take = 15) {
+  return request<{ items: AppNotification[]; hasMore: boolean }>(`/notifications?skip=${skip}&take=${take}`, { auth: true });
 }
 
 export async function getUnreadNotificationCount() {

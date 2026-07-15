@@ -66,6 +66,11 @@ export class BankSyncService {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId } });
     const steps = parseSteps(job?.steps);
 
+    // Reset to the moment the worker actually starts processing — the API only sets
+    // startedAt at enqueue time, which can be much earlier than pickup if the job sat
+    // waiting in the queue (e.g. worker was offline), inflating the computed duration.
+    await this.prisma.bankSyncJob.update({ where: { id: jobId }, data: { startedAt: new Date() } });
+
     const step1Done = steps.find(s => s.key === 'bank_sync')?.status === 'completed';
     const step2Done = steps.find(s => s.key === 'sheets_sync')?.status === 'completed';
 
@@ -85,6 +90,7 @@ export class BankSyncService {
 
       // ── Step 2: Sync to Google Sheets ───────────────────────────────────────
       let sheetsSyncFailed = false;
+      let sheetsFailedCount = 0;
       if (!step2Done) {
         if (accountRows.size === 0) {
           await this.log(jobId, 'No new transactions — GSheets sync not needed.', 'sheets_sync', 'success');
@@ -99,6 +105,7 @@ export class BankSyncService {
           await this.log(jobId, `Syncing ${pl(accountRows.size, 'account number')} to Google Sheets...`, 'sheets_sync');
           const sheetsResult = await this.runSheetsSync(jobId, accountRows);
           sheetsSyncFailed = sheetsResult.failed > 0;
+          sheetsFailedCount = sheetsResult.failed;
           await this.updateStep(jobId, 'sheets_sync', {
             status: sheetsSyncFailed ? 'failed' : 'completed',
             completedAt: new Date().toISOString(),
@@ -110,13 +117,13 @@ export class BankSyncService {
       if (sheetsSyncFailed) {
         await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, 'GSheets sync failed for one or more accounts');
         await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets.', undefined, 'error');
-        await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', 'Một hoặc nhiều tài khoản đồng bộ Google Sheets thất bại.');
+        await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', `${sheetsFailedCount} tài khoản lỗi khi đồng bộ Google Sheets.`);
         return;
       }
 
       await this.updateJob(jobId, JOB_STATUS.COMPLETED);
       await this.log(jobId, 'Job completed successfully.', undefined, 'success');
-      await this.notify(jobId, 'job_completed', 'Đồng bộ sao kê hoàn tất', 'Job đồng bộ bank statement đã chạy xong thành công.');
+      await this.notify(jobId, 'job_completed', 'Đồng bộ sao kê hoàn tất', `${accountRows.size} tài khoản đã đồng bộ.`);
     } catch (err) {
       try { await this.playwright.close(); } catch { /* ignore */ }
 
@@ -644,14 +651,19 @@ export class BankSyncService {
   }
 
   // Notifies the user who triggered/retried this job — no-op for unattended cron runs
-  // (triggeredBy is null), since there's no one to show a bell notification to.
+  // (triggeredBy is the literal 'cron', not a user id), since there's no one to show
+  // a bell notification to.
   private async notify(jobId: number, type: string, title: string, body?: string) {
-    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { triggeredBy: true } });
-    if (!job?.triggeredBy) return;
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { triggeredBy: true, publicId: true } });
+    if (!job?.triggeredBy || job.triggeredBy === 'cron') return;
 
     const userId = Number(job.triggeredBy);
+    if (!Number.isFinite(userId)) return;
+    // Short job code appended so two jobs completing close together don't render as
+    // identical entries in the notification bell — see NotificationBell.tsx.
+    const jobCode = `#${job.publicId.slice(-6)}`;
     const notification = await this.prisma.notification.create({
-      data: { userId, type, title, body, jobId },
+      data: { userId, type, title, body: body ? `${body} • ${jobCode}` : jobCode, jobPublicId: job.publicId },
     });
     await this.redis.publish('notifications', JSON.stringify({ userId, notification }));
   }

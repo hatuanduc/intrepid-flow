@@ -8,6 +8,9 @@ dist/
 .DS_Store
 data/
 
+# Playwright session state (contains bank login cookies/localStorage)
+apps/worker/sessions/
+
 # Terraform
 .terraform/
 .terraform.lock.hcl

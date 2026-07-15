@@ -5,7 +5,7 @@ export class NotificationResponseDto {
   @ApiProperty() type!: string;
   @ApiProperty() title!: string;
   @ApiProperty({ nullable: true }) body!: string | null;
-  @ApiProperty({ nullable: true }) jobId!: number | null;
+  @ApiProperty({ nullable: true }) jobPublicId!: string | null;
   @ApiProperty() isRead!: boolean;
   @ApiProperty() createdAt!: Date;
 }

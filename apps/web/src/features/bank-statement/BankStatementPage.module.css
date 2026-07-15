@@ -15,6 +15,13 @@
 .btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
 .btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* Status filter chips */
+.chips        { composes: chips        from '../../styles/ui.module.css'; }
+.chip         { composes: chip         from '../../styles/ui.module.css'; }
+.chipSelected { composes: chipSelected from '../../styles/ui.module.css'; }
+.chipLabel    { composes: chipLabel    from '../../styles/ui.module.css'; }
+.chipCount    { composes: chipCount    from '../../styles/ui.module.css'; }
+
 /* Table */
 .tableWrap { background: var(--bg-surface); overflow: visible; }
 .table { width: 100%; border-collapse: collapse; }
@@ -32,8 +39,16 @@
 .table tbody tr { cursor: pointer; }
 
 .triggerLabel { font-size: 12px; color: var(--color-muted); }
-.syncSummary { font-size: 12px; color: var(--color-muted); margin-left: 8px; }
-.td .syncSummary { display: inline-block; }
+
+/* Sync progress meter (table column) — single ratio against a limit */
+.meterWrap  { display: flex; align-items: center; gap: 8px; }
+.meterTrack {
+  width: 56px; height: 6px; border-radius: 3px; flex-shrink: 0;
+  background: var(--color-accent-light); overflow: hidden;
+}
+.meterFill  { height: 100%; border-radius: 3px; background: var(--color-accent); }
+.meterLabel { font-size: 12px; color: var(--color-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.meterEmpty { font-size: 12px; color: var(--color-subtle); }
 
 /* Status badges */
 .badge {
@@ -198,10 +213,21 @@
   word-break: break-all; white-space: pre-wrap; margin-top: 2px;
 }
 
+.btnSecondary  { composes: btnSecondary  from '../../styles/ui.module.css'; }
+.btnDanger     { composes: btnDanger     from '../../styles/ui.module.css'; }
+.modalOverlay  { composes: modalOverlay  from '../../styles/ui.module.css'; }
+.modal         { composes: modal         from '../../styles/ui.module.css'; }
+.modalTitle    { composes: modalTitle    from '../../styles/ui.module.css'; }
+.modalDesc     { composes: modalDesc     from '../../styles/ui.module.css'; }
+.modalActions  { composes: modalActions  from '../../styles/ui.module.css'; }
+.modalError    { composes: modalError    from '../../styles/ui.module.css'; }
+
 @media (max-width: 768px) {
   .page { padding: 16px; }
   .pageHeader { flex-direction: column; align-items: stretch; }
   .btnPrimary { width: 100%; justify-content: center; }
   .table th:nth-child(2) { display: none; }
   .table td:nth-child(2) { display: none; }
+  .table th:nth-child(4) { display: none; }
+  .table td:nth-child(4) { display: none; }
 }

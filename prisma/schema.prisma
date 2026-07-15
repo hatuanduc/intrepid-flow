@@ -289,14 +289,14 @@ model SystemSettings {
 // ─── Notifications (bell) ─────────────────────────────────────────────────────
 
 model Notification {
-  id        Int      @id @default(autoincrement())
-  userId    Int      @map("user_id")
-  type      String   // job_completed | job_failed | job_waiting_2fa
-  title     String
-  body      String?
-  jobId     Int?     @map("job_id")
-  isRead    Boolean  @default(false) @map("is_read")
-  createdAt DateTime @default(now()) @map("created_at")
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  type        String   // job_completed | job_failed | job_waiting_2fa
+  title       String
+  body        String?
+  jobPublicId String?  @map("job_public_id") // BankSyncJob.publicId — matches the /bank-statement/jobs/:id route
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

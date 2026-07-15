@@ -34,12 +34,14 @@ export class NotificationsService implements OnModuleDestroy {
     return this.subject.asObservable();
   }
 
-  list(userId: number) {
-    return this.prisma.notification.findMany({
+  async list(userId: number, skip: number, take: number) {
+    const rows = await this.prisma.notification.findMany({
       where: { userId },
       orderBy: { createdAt: 'desc' },
-      take: 30,
+      skip,
+      take: take + 1,
     });
+    return { items: rows.slice(0, take), hasMore: rows.length > take };
   }
 
   unreadCount(userId: number) {

@@ -16,6 +16,15 @@ import s from './BankStatementPage.module.css';
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
 
+type StatusFilter = 'all' | 'completed' | 'failed' | 'running' | 'cancelled';
+
+function statusGroup(status: string): Exclude<StatusFilter, 'all'> {
+  if (status === 'completed') return 'completed';
+  if (status === 'failed') return 'failed';
+  if (status === 'cancelled') return 'cancelled';
+  return 'running'; // pending, waiting_2fa, checking_session, logging_in, authenticated, discovering_accounts, downloading, storing, syncing_sheets
+}
+
 function StatusBadge({ status }: { status: string }) {
   const { t } = useT();
   const cls = status === 'completed' ? s.badgeSuccess
@@ -31,17 +40,29 @@ function StatusBadge({ status }: { status: string }) {
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—';
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const totalMin = Math.floor(totalSec / 60);
+  if (totalMin < 60) return `${totalMin}m ${totalSec % 60}s`;
+  const totalHour = Math.floor(totalMin / 60);
+  if (totalHour < 24) return `${totalHour}h ${totalMin % 60}m`;
+  const days = Math.floor(totalHour / 24);
+  return `${days}d ${totalHour % 24}h`;
 }
 
-function SyncSummary({ stats }: { stats: JobStats | null }) {
-  const { t } = useT();
-  if (!stats || stats.totalAccounts === 0) return null;
+// Compact linear meter for the table column — a single ratio against a limit,
+// not part-to-whole, so one accent hue on a lighter same-ramp track (not the
+// multi-status stacked bar used on the job detail page).
+function SyncMeter({ stats }: { stats: JobStats | null }) {
+  if (!stats || stats.totalAccounts === 0) return <span className={s.meterEmpty}>—</span>;
+  const pct = Math.round((stats.synced / stats.totalAccounts) * 100);
   return (
-    <span className={s.syncSummary}>
-      {t('bankStatement.syncSummary', { synced: stats.synced, total: stats.totalAccounts })}
-    </span>
+    <div className={s.meterWrap} title={`${stats.synced}/${stats.totalAccounts} synced to Sheets`}>
+      <div className={s.meterTrack}>
+        <div className={s.meterFill} style={{ width: `${pct}%` }} />
+      </div>
+      <span className={s.meterLabel}>{stats.synced}/{stats.totalAccounts}</span>
+    </div>
   );
 }
 
@@ -53,6 +74,36 @@ function formatDateTime(iso: string | null): string {
   const hh   = String(d.getHours()).padStart(2, '0');
   const min  = String(d.getMinutes()).padStart(2, '0');
   return `${dd}/${mm}/${d.getFullYear()} ${hh}:${min}`;
+}
+
+/* ── Confirm delete modal ── */
+function ConfirmDeleteModal({
+  job, deleting, error, onConfirm, onCancel,
+}: {
+  job: BankSyncJob;
+  deleting: boolean;
+  error: string | null;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  const { t } = useT();
+  return (
+    <div className={s.modalOverlay} onClick={onCancel}>
+      <div className={s.modal} onClick={e => e.stopPropagation()}>
+        <p className={s.modalTitle}>{t('bankStatement.confirmDeleteTitle')}</p>
+        <p className={s.modalDesc}>
+          {t('bankStatement.confirmDeleteDesc', { time: formatDateTime(job.createdAt) })}
+        </p>
+        {error && <div className={s.modalError}>{error}</div>}
+        <div className={s.modalActions}>
+          <button className={s.btnSecondary} onClick={onCancel} disabled={deleting}>{t('common.cancel')}</button>
+          <button className={s.btnDanger} onClick={onConfirm} disabled={deleting}>
+            {deleting ? t('bankStatement.deleting') : t('common.delete')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // ─── Main page ────────────────────────────────────────────────────────────────
@@ -70,7 +121,10 @@ export default function BankStatementPage() {
   const [triggering, setTriggering] = useState(false);
   const [retryingId, setRetryingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BankSyncJob | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [filter, setFilter] = useState<StatusFilter>('all');
   const menuRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
@@ -124,18 +178,31 @@ export default function BankStatementPage() {
     }
   }
 
-  async function handleDelete(id: string) {
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
     setDeletingId(id);
+    setDeleteError(null);
     try {
       await deleteBankJob(id);
       setJobs(prev => prev.filter(j => j.id !== id));
+      setDeleteTarget(null);
+      toast.success(t('bankStatement.deleteSuccess'));
     } catch {
-      toast.error(t('bankStatement.deleteFailed'));
+      setDeleteError(t('bankStatement.deleteFailed'));
     } finally {
       setDeletingId(null);
-      setOpenMenu(null);
     }
   }
+
+  const chips: Array<{ key: StatusFilter; label: string; count: number }> = [
+    { key: 'all',       label: t('bankStatement.filterAll'),       count: jobs.length },
+    { key: 'completed', label: t('bankStatement.filterCompleted'), count: jobs.filter(j => statusGroup(j.status) === 'completed').length },
+    { key: 'failed',    label: t('bankStatement.filterFailed'),    count: jobs.filter(j => statusGroup(j.status) === 'failed').length },
+    { key: 'running',   label: t('bankStatement.filterRunning'),   count: jobs.filter(j => statusGroup(j.status) === 'running').length },
+    { key: 'cancelled', label: t('bankStatement.filterCancelled'), count: jobs.filter(j => statusGroup(j.status) === 'cancelled').length },
+  ];
+  const filteredJobs = filter === 'all' ? jobs : jobs.filter(j => statusGroup(j.status) === filter);
 
   return (
     <div className={s.page}>
@@ -147,7 +214,7 @@ export default function BankStatementPage() {
               {jobs[0] && (
                 <p className={s.pageSubtitle}>
                   {t('bankStatement.lastRun')}: {formatDateTime(jobs[0].createdAt)} · <StatusBadge status={jobs[0].status} />
-                  <SyncSummary stats={jobs[0].stats} />
+                  <SyncMeter stats={jobs[0].stats} />
                 </p>
               )}
             </div>
@@ -169,6 +236,22 @@ export default function BankStatementPage() {
           {jobs.length === 0 ? (
             <div className={s.empty}>{t('bankStatement.noJobs')}</div>
           ) : (
+            <>
+            <div className={s.chips}>
+              {chips.map(c => (
+                <button
+                  key={c.key}
+                  className={`${s.chip} ${filter === c.key ? s.chipSelected : ''}`}
+                  onClick={() => setFilter(c.key)}
+                >
+                  <span className={s.chipLabel}>{c.label}</span>
+                  <span className={s.chipCount}>{c.count}</span>
+                </button>
+              ))}
+            </div>
+            {filteredJobs.length === 0 ? (
+              <div className={s.empty}>{t('bankStatement.noJobsFiltered')}</div>
+            ) : (
             <div className={s.tableWrap}>
               <table className={s.table}>
                 <thead>
@@ -176,25 +259,26 @@ export default function BankStatementPage() {
                     <th className={s.th}>{t('bankStatement.time')}</th>
                     <th className={s.th}>{t('bankStatement.triggeredBy')}</th>
                     <th className={s.th}>{t('bankStatement.status')}</th>
+                    <th className={s.th}>{t('bankStatement.syncProgress')}</th>
                     <th className={s.th}>{t('bankStatement.duration')}</th>
                     <th className={s.th} style={{ width: 40 }} />
                   </tr>
                 </thead>
                 <tbody>
-                  {jobs.map(job => {
+                  {filteredJobs.map(job => {
                     const isDone = ['completed', 'failed'].includes(job.status);
                     return (
                     <tr key={job.id} onClick={() => router.push('/bank-statement/jobs/' + job.id)}>
                       <td className={s.td}>{formatDateTime(job.createdAt)}</td>
                       <td className={s.td}>
                         <span className={s.triggerLabel}>
-                          {job.triggeredBy ? t('bankStatement.manual') : t('bankStatement.automatic')}
+                          {job.triggeredBy === 'cron' ? t('bankStatement.schedule') : job.triggeredByName ?? t('bankStatement.manual')}
                         </span>
                       </td>
                       <td className={s.td}>
                         <StatusBadge status={job.status} />
-                        <SyncSummary stats={job.stats} />
                       </td>
+                      <td className={s.td}><SyncMeter stats={job.stats} /></td>
                       <td className={s.td}>{formatDuration(job.durationMs)}</td>
                       <td className={s.td} onClick={e => e.stopPropagation()}>
                         {isDone && canRun && (
@@ -216,10 +300,9 @@ export default function BankStatementPage() {
                                 )}
                                 <button
                                   className={`${s.moreItem} ${s.moreItemDanger}`}
-                                  disabled={deletingId === job.id}
-                                  onClick={() => handleDelete(job.id)}
+                                  onClick={() => { setOpenMenu(null); setDeleteError(null); setDeleteTarget(job); }}
                                 >
-                                  {deletingId === job.id ? t('bankStatement.deleting') : t('common.delete')}
+                                  {t('common.delete')}
                                 </button>
                               </div>
                             )}
@@ -232,8 +315,20 @@ export default function BankStatementPage() {
                 </tbody>
               </table>
             </div>
+            )}
+            </>
           )}
         </>
+      )}
+
+      {deleteTarget && (
+        <ConfirmDeleteModal
+          job={deleteTarget}
+          deleting={deletingId === deleteTarget.id}
+          error={deleteError}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteTarget(null)}
+        />
       )}
     </div>
   );

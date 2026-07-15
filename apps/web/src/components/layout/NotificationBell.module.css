@@ -67,6 +67,12 @@
   text-align: center;
 }
 
+.loadingMore {
+  display: flex;
+  justify-content: center;
+  padding: 10px 0;
+}
+
 .item {
   display: flex;
   align-items: flex-start;

@@ -74,8 +74,14 @@ function isRunning(status: string) {
 
 function formatDuration(ms: number | null): string {
   if (ms == null) return '—';
-  if (ms < 60_000) return `${Math.round(ms / 1000)}s`;
-  return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
+  const totalSec = Math.round(ms / 1000);
+  if (totalSec < 60) return `${totalSec}s`;
+  const totalMin = Math.floor(totalSec / 60);
+  if (totalMin < 60) return `${totalMin}m ${totalSec % 60}s`;
+  const totalHour = Math.floor(totalMin / 60);
+  if (totalHour < 24) return `${totalHour}h ${totalMin % 60}m`;
+  const days = Math.floor(totalHour / 24);
+  return `${days}d ${totalHour % 24}h`;
 }
 
 function formatDateTime(iso: string | null): string {
@@ -137,6 +143,52 @@ const LOG_LEVEL_MSG: Record<LogLevel, string> = {
   error:   'logNodeMsgErr',
 };
 
+// ─── Sync progress bar (part-to-whole: sheets-sync status across all accounts) ─
+// Status colors match the existing badge/log-dot conventions elsewhere in the app
+// (StatusBadge, .logNodeDot*) — reserved meaning, not a generic categorical ramp.
+
+const PROGRESS_SEGMENT_COLOR = {
+  synced:  '#059669', // good
+  failed:  '#df1b41', // critical
+  pending: '#eab308', // warning
+  noData:  '#c4cdd6', // neutral
+} as const;
+
+function SyncProgressBar({ stats, t }: { stats: JobStats; t: (key: string, params?: Record<string, string | number>) => string }) {
+  const total = stats.totalAccounts;
+  if (total === 0) return null;
+
+  const segments = [
+    { key: 'synced' as const,  count: stats.synced,                              label: t('bankJob.statsSynced') },
+    { key: 'failed' as const,  count: stats.syncFailed + stats.downloadFailed,   label: t('bankJob.statsFailed') },
+    { key: 'pending' as const, count: stats.syncPending + stats.syncSkipped,     label: t('bankJob.statsNotSynced') },
+    { key: 'noData' as const,  count: stats.syncNoData,                          label: t('bankJob.statsNoData') },
+  ].filter(seg => seg.count > 0);
+
+  return (
+    <div className={s.progressWrap}>
+      <div className={s.progressTrack}>
+        {segments.map(seg => (
+          <span
+            key={seg.key}
+            className={s.progressSegment}
+            style={{ width: `${(seg.count / total) * 100}%`, background: PROGRESS_SEGMENT_COLOR[seg.key] }}
+            title={`${seg.label}: ${seg.count}/${total}`}
+          />
+        ))}
+      </div>
+      <div className={s.progressLegend}>
+        {segments.map(seg => (
+          <span key={seg.key} className={s.progressLegendItem}>
+            <span className={s.progressDot} style={{ background: PROGRESS_SEGMENT_COLOR[seg.key] }} />
+            {seg.label} · {seg.count}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function BankJobDetailPage() {
@@ -154,6 +206,8 @@ export default function BankJobDetailPage() {
   const [retrying, setRetrying]   = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [deleting, setDeleting]   = useState(false);
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showRaw, setShowRaw]   = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
   const [openSteps, setOpenSteps]         = useState<Set<string>>(new Set());
@@ -272,12 +326,13 @@ export default function BankJobDetailPage() {
   async function handleDelete() {
     if (!job) return;
     setDeleting(true);
+    setDeleteError(null);
     try {
       await deleteBankJob(job.id);
       toast.success(t('bankJob.deleteSuccess'));
       router.push('/bank-statement');
     } catch {
-      toast.error(t('bankJob.deleteFailed'));
+      setDeleteError(t('bankJob.deleteFailed'));
       setDeleting(false);
     }
   }
@@ -364,7 +419,7 @@ export default function BankJobDetailPage() {
           <div className={s.pageHeader}>
             <div>
               <h1 className={s.pageTitle}>{t('bankJob.title')}</h1>
-              <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy ? t('bankJob.manual') : t('bankJob.automatic')}</p>
+              <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy === 'cron' ? t('bankStatement.schedule') : job.triggeredByName ?? t('bankJob.manual')}</p>
             </div>
             <div className={s.headerActions}>
               {['failed', 'completed', 'cancelled'].includes(job.status) && canRun && (
@@ -388,10 +443,9 @@ export default function BankJobDetailPage() {
               {['completed', 'failed', 'cancelled'].includes(job.status) && canRun && (
                 <button
                   className={s.btnDanger}
-                  disabled={deleting}
-                  onClick={handleDelete}
+                  onClick={() => { setDeleteError(null); setConfirmDeleteOpen(true); }}
                 >
-                  {deleting ? t('bankJob.deleting') : t('bankJob.delete')}
+                  {t('bankJob.delete')}
                 </button>
               )}
             </div>
@@ -419,6 +473,8 @@ export default function BankJobDetailPage() {
 
           {/* Sync stats */}
           {stats && stats.totalAccounts > 0 && (
+            <>
+            <SyncProgressBar stats={stats} t={t} />
             <div className={s.statsGrid}>
               <div className={s.statCard}>
                 <span className={s.statValue}>{stats.downloaded}</span>
@@ -447,6 +503,7 @@ export default function BankJobDetailPage() {
                 </div>
               )}
             </div>
+            </>
           )}
 
           {/* Account summary table */}
@@ -524,6 +581,26 @@ export default function BankJobDetailPage() {
           />
         )}
       </RightPanel>
+
+      {confirmDeleteOpen && job && (
+        <div className={s.modalOverlay} onClick={() => !deleting && setConfirmDeleteOpen(false)}>
+          <div className={s.modal} onClick={e => e.stopPropagation()}>
+            <p className={s.modalTitle}>{t('bankStatement.confirmDeleteTitle')}</p>
+            <p className={s.modalDesc}>
+              {t('bankStatement.confirmDeleteDesc', { time: formatDateTime(job.createdAt) })}
+            </p>
+            {deleteError && <div className={s.modalError}>{deleteError}</div>}
+            <div className={s.modalActions}>
+              <button className={s.btnSecondary} onClick={() => setConfirmDeleteOpen(false)} disabled={deleting}>
+                {t('common.cancel')}
+              </button>
+              <button className={s.btnDanger} onClick={handleDelete} disabled={deleting}>
+                {deleting ? t('bankJob.deleting') : t('bankJob.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

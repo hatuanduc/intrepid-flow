@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, UseGuards, Req, Sse, MessageEvent } from '@nestjs/common';
+import { Controller, Get, Patch, Param, Query, UseGuards, Req, Sse, MessageEvent } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery, ApiResponse } from '@nestjs/swagger';
 import { Observable } from 'rxjs';
 import { filter, map } from 'rxjs/operators';
@@ -14,11 +14,12 @@ export class NotificationsController {
   constructor(private readonly service: NotificationsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'Danh sách thông báo gần nhất của tôi' })
+  @ApiOperation({ summary: 'Danh sách thông báo của tôi (phân trang)' })
+  @ApiQuery({ name: 'skip', required: false })
+  @ApiQuery({ name: 'take', required: false })
   @ApiResponse({ status: 200, type: NotificationResponseDto, isArray: true })
-  async list(@Req() req: any) {
-    const items = await this.service.list(req.authUser.id);
-    return { items };
+  list(@Req() req: any, @Query('skip') skip?: string, @Query('take') take?: string) {
+    return this.service.list(req.authUser.id, skip ? Number(skip) : 0, take ? Number(take) : 15);
   }
 
   @Get('unread-count')

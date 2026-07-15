@@ -203,11 +203,11 @@
 .logNodeDotErr  { background: #df1b41; }
 .logNodeDotOk   { background: #059669; }
 .logNodeDotWarn { background: #eab308; }
-.logNodeBody { flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.logNodeMsg { font-size: 12px; color: var(--color-secondary); line-height: 1.45; word-break: break-word; }
+.logNodeBody { flex: 1; display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.logNodeMsg { flex: 1; min-width: 0; font-size: 12px; color: var(--color-secondary); line-height: 1.45; word-break: break-word; }
 .logNodeMsgErr  { color: #9b1c1c; font-weight: 500; }
 .logNodeMsgWarn { color: #854d0e; font-weight: 500; }
-.logNodeTime { font-size: 11px; color: var(--color-muted); }
+.logNodeTime { flex-shrink: 0; width: 52px; text-align: right; font-size: 11px; color: var(--color-muted); font-variant-numeric: tabular-nums; }
 
 .showMoreBtn {
   font-size: 12px; font-weight: 500; color: var(--color-accent-active);
@@ -307,6 +307,22 @@
 .txTable tbody tr:hover .txTdDebit,
 .txTable tbody tr:hover .txTdFetched { background: var(--bg-hover); }
 
+/* Sync progress bar — part-to-whole summary above the stat cards */
+.progressWrap { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.progressTrack {
+  display: flex; align-items: stretch; gap: 2px;
+  height: 10px; border-radius: 5px; overflow: hidden; background: var(--bg-subtle);
+}
+.progressSegment { height: 100%; }
+.progressTrack .progressSegment:first-child { border-top-left-radius: 5px; border-bottom-left-radius: 5px; }
+.progressTrack .progressSegment:last-child  { border-top-right-radius: 5px; border-bottom-right-radius: 5px; }
+.progressLegend { display: flex; flex-wrap: wrap; gap: 14px; }
+.progressLegendItem {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; color: var(--color-secondary);
+}
+.progressDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 /* Job stats cards */
 .statsGrid {
   display: grid;
@@ -324,6 +340,13 @@
 .statValueErr { color: #df1b41; }
 .statValuePending { color: #92400e; }
 .statLabel { font-size: 12px; color: var(--color-muted); }
+
+.modalOverlay { composes: modalOverlay from '../../styles/ui.module.css'; }
+.modal        { composes: modal        from '../../styles/ui.module.css'; }
+.modalTitle   { composes: modalTitle   from '../../styles/ui.module.css'; }
+.modalDesc    { composes: modalDesc    from '../../styles/ui.module.css'; }
+.modalActions { composes: modalActions from '../../styles/ui.module.css'; }
+.modalError   { composes: modalError   from '../../styles/ui.module.css'; }
 
 @media (max-width: 768px) {
   .page { padding: 16px; }
