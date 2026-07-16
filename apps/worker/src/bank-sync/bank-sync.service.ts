@@ -210,15 +210,30 @@ export class BankSyncService {
           accountName: accountNameEntry.name,
           accountCode: accountNameEntry.accountCode,
           currency: acc.currency,
+          // HSBC is the source of truth — an account seen again in this run is live
+          // again even if we'd previously deactivated it.
+          isActive: true,
         },
       });
       synced++;
     }
 
+    // HSBC is the source of truth: any account still marked active in our DB but absent
+    // from this discovery run is presumably closed/removed on HSBC's side. Deactivate it
+    // so the download loop below (which only fetches isActive accounts) stops trying to
+    // look it up every run — a stale account number there just fails loudly with "not
+    // found in HSBC's account list" instead of being skipped cleanly.
+    const discoveredNumbers = discovered.map(a => a.accountNumber);
+    const deactivated = await this.prisma.bankAccount.updateMany({
+      where: { isActive: true, accountNumber: { notIn: discoveredNumbers } },
+      data: { isActive: false },
+    });
+
     const newCount = discovered.filter(a => !existingNumbers.has(a.accountNumber)).length;
     await this.log(
       jobId,
-      `Account discovery: ${discovered.length} found, ${synced} synced (${newCount} new, ${synced - newCount} updated).`,
+      `Account discovery: ${discovered.length} found, ${synced} synced (${newCount} new, ${synced - newCount} updated)`
+        + (deactivated.count > 0 ? `, ${deactivated.count} deactivated (no longer on HSBC).` : '.'),
       'bank_sync',
       'success',
     );

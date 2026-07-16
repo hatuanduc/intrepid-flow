@@ -30,6 +30,8 @@ const SELECTORS = {
   // Transaction list / filter
   specifyDateRange: 'span#showing_actual_range_quick_link',
   dateRangeWidget:  '[id*="rangeDate"]',
+  dateFromInput:    '#dateFieldFrom-field',
+  dateToInput:      '#dateFieldTo-field',
   applyBtn:         'input.form__control-button[type="submit"]',
   noTransactions:   'p.table__error-message',
 
@@ -131,6 +133,12 @@ export class PlaywrightService {
         return false;
       }
 
+      // If the login form is already showing, we know we're logged out immediately —
+      // no need to burn the full 5s waiting for a dashboard element that provably
+      // can't appear on this page.
+      const onLoginPage = await page.$(SELECTORS.usernameInput);
+      if (onLoginPage) return false;
+
       const elAfter = await page.waitForSelector(SELECTORS.dashboardEl, { timeout: 5_000 }).catch(() => null);
       return elAfter !== null;
     } catch {
@@ -142,8 +150,14 @@ export class PlaywrightService {
     if (!username) throw new Error('HSBCNET_USERNAME is not configured');
     const page = this.requirePage();
 
-    this.logger.log(`Navigating to ${HSBCNET_URL}`);
-    await page.goto(HSBCNET_URL, { waitUntil: 'load', timeout: 30_000 });
+    // isLoggedIn() (called right before this) already navigates to HSBCNET_URL and leaves
+    // us sitting on the login form when logged out — reloading it here would just re-fetch
+    // and re-render the same heavy page for no reason, adding several seconds of dead time.
+    const alreadyOnLoginPage = await page.$(SELECTORS.usernameInput) !== null;
+    if (!alreadyOnLoginPage) {
+      this.logger.log(`Navigating to ${HSBCNET_URL}`);
+      await page.goto(HSBCNET_URL, { waitUntil: 'load', timeout: 30_000 });
+    }
 
     // Step 1: fill username
     const usernameInput = await page.waitForSelector(SELECTORS.usernameInput, { timeout: 10_000 }).catch(() => null);
@@ -365,33 +379,46 @@ export class PlaywrightService {
     this.logger.log(`${accountNumber}: switcher item clicked — waiting for page to update`);
 
     // ── Step 2: Open date filter ──────────────────────────────────────────────
-    // Both elements are required — without them fillDateRange() has nothing real to
-    // type into and falls back to blind keyboard input, which HSBC rejects (Export
+    // "Specify date range" is required — without it fillDateRange() has nothing real
+    // to type into and falls back to blind keyboard input, which HSBC rejects (Export
     // stays disabled without a valid date range). Fail loudly instead of continuing.
-    const specifyLink = await page.waitForSelector(SELECTORS.specifyDateRange, { timeout: 10_000 }).catch(() => null);
-    if (!specifyLink) {
+    const specifyLink = page.locator(SELECTORS.specifyDateRange);
+    const specifyLinkVisible = await specifyLink.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
+    if (!specifyLinkVisible) {
       this.logger.error(`"Specify date range" link not found — selector: "${SELECTORS.specifyDateRange}", URL: ${page.url()}`);
       throw new Error('Could not find the date range option on the HSBC page.');
     }
-    await specifyLink.click();
+    try {
+      await this.clickWithRetry(specifyLink, 'Specify date range link', 3);
+    } catch (err) {
+      this.logger.error(`[${accountNumber}] "Specify date range" click failed — ${(err as Error).message}`);
+      throw new Error('Could not find the date range option on the HSBC page.');
+    }
     await page.waitForTimeout(400);
 
-    // Click the date range combobox to open the picker
-    const rangeWidget = await page.waitForSelector(SELECTORS.dateRangeWidget, { timeout: 6_000 }).catch(() => null);
-    if (!rangeWidget) {
-      this.logger.error(`Date range widget not found — selector: "${SELECTORS.dateRangeWidget}", URL: ${page.url()}`);
-      throw new Error('Could not find the date range picker on the HSBC page.');
+    // Some HSBC layouts show an extra combobox that must be clicked to reveal the
+    // From/To inputs — but the current layout reveals them directly after clicking
+    // "Specify date range" above, so this is best-effort, not required.
+    const rangeWidget = await page.waitForSelector(SELECTORS.dateRangeWidget, { timeout: 3_000 }).catch(() => null);
+    if (rangeWidget) {
+      await rangeWidget.click();
+      await page.waitForTimeout(400);
     }
-    await rangeWidget.click();
-    await page.waitForTimeout(400);
 
     // ── Step 3: Fill in dates ─────────────────────────────────────────────────
     await this.fillDateRange(page, dateFrom, dateTo);
 
-    // ── Step 4: Apply filter ──────────────────────────────────────────────────
-    const applyBtn = await page.waitForSelector(SELECTORS.applyBtn, { timeout: 6_000 });
-    await applyBtn.click();
-    await page.waitForLoadState('load', { timeout: 20_000 }).catch(() => {});
+    // ── Step 4: Wait for the auto-triggered search ────────────────────────────
+    // Typing the "to" date fires HSBC's own search — no separate Apply click needed.
+    // The generic "Apply" button (applyBtn) belongs to the Amount range filter, not
+    // the date range, so it's only clicked here as a best-effort fallback in case a
+    // future layout variant still requires it.
+    await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
+    const applyBtn = await page.waitForSelector(SELECTORS.applyBtn, { timeout: 2_000 }).catch(() => null);
+    if (applyBtn) {
+      await applyBtn.click();
+      await page.waitForLoadState('load', { timeout: 20_000 }).catch(() => {});
+    }
 
     // ── Step 5: Check for empty results ──────────────────────────────────────
     const noTxnEl = await page.$(SELECTORS.noTransactions);
@@ -403,7 +430,7 @@ export class PlaywrightService {
 
     // ── Step 6: Export → Excel ────────────────────────────────────────────────
     try {
-      await page.click(SELECTORS.exportTrigger);
+      await this.clickWithRetry(page.locator(SELECTORS.exportTrigger), 'Export button', 3);
     } catch (err) {
       // Playwright's own error includes its full actionability call log (dozens of
       // lines) — useful for us, meaningless and alarming to an end user reading the
@@ -426,7 +453,12 @@ export class PlaywrightService {
       ctx.once('page', (newPage) => newPage.once('download', done)); // case: new tab
     });
 
-    await excelBtn.click();
+    try {
+      await this.clickWithRetry(excelBtn, 'Excel export option', 3);
+    } catch (err) {
+      this.logger.error(`[${accountNumber}] Excel option click failed — ${(err as Error).message}`);
+      throw new Error(`Could not find or click the Excel export option for ${accountNumber} on the HSBC page.`);
+    }
 
     const download = await downloadPromise;
     const tmpPath = await download.path();
@@ -453,7 +485,20 @@ export class PlaywrightService {
     const fromStr = formatDate(dateFrom);
     const toStr = formatDate(dateTo);
 
-    // Strategy 1: standard text inputs appeared inside the picker popup
+    // Strategy 1: verified From/To inputs (DevTools-confirmed IDs). Filled via
+    // fillAndVerify() rather than a plain .fill() — the "to" field is known to
+    // sometimes swallow its first click while the widget is mid-re-render, silently
+    // leaving the field empty with no error; verifying + retrying catches that
+    // instead of continuing on to a confusing failure several steps later.
+    const fromInput = page.locator(SELECTORS.dateFromInput);
+    const toInput = page.locator(SELECTORS.dateToInput);
+    if (await fromInput.count() > 0 && await toInput.count() > 0) {
+      await this.fillAndVerify(fromInput, fromStr, 'Date from');
+      await this.fillAndVerify(toInput, toStr, 'Date to');
+      return;
+    }
+
+    // Strategy 2: standard text inputs appeared inside the picker popup
     const inputLoc = page.locator('input[placeholder*="dd/mm"], input[class*="date-input"], .date-picker input[type="text"]');
     if (await inputLoc.count() >= 2) {
       await inputLoc.nth(0).click({ clickCount: 3 });
@@ -463,7 +508,7 @@ export class PlaywrightService {
       return;
     }
 
-    // Strategy 2: .change-dateformat spans are the interactive elements
+    // Strategy 3: .change-dateformat spans are the interactive elements
     const spanLoc = page.locator('.change-dateformat');
     if (await spanLoc.count() >= 2) {
       await spanLoc.nth(0).click();
@@ -475,11 +520,63 @@ export class PlaywrightService {
       return;
     }
 
-    // Strategy 3: keyboard type into focused widget after click
+    // Strategy 4: keyboard type into focused widget after click
     await page.keyboard.type(fromStr);
     await page.keyboard.press('Tab');
     await page.keyboard.type(toStr);
     await page.keyboard.press('Tab');
+  }
+
+  /**
+   * Click, then fill, then read the value back — HSBC's widgets have occasionally
+   * swallowed a click while mid-re-render, leaving a field silently empty with no
+   * thrown error. Retries with fresh clicks if the value didn't stick, and fails
+   * loudly with the actual-vs-expected value if it still doesn't after all attempts.
+   */
+  private async fillAndVerify(
+    locator: import('playwright').Locator,
+    value: string,
+    label: string,
+    attempts = 3,
+  ): Promise<void> {
+    let lastActual = '';
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      await locator.click();
+      await locator.click({ clickCount: 3 });
+      await locator.fill(value);
+      lastActual = await locator.inputValue().catch(() => '');
+      if (lastActual === value) return;
+      this.logger.warn(`${label}: fill did not stick (attempt ${attempt}/${attempts}) — expected "${value}", got "${lastActual}"`);
+      await new Promise(r => setTimeout(r, 400));
+    }
+    throw new Error(`Could not fill "${label}" — value stayed "${lastActual}" instead of "${value}" after ${attempts} attempts.`);
+  }
+
+  /**
+   * Click with retries — covers the case where a critical-path element renders
+   * slower than the script runs (element exists but isn't yet interactive/stable).
+   * Fails loudly with a clear label after exhausting all attempts, instead of
+   * surfacing Playwright's raw actionability-check error to the caller.
+   */
+  private async clickWithRetry(
+    locator: import('playwright').Locator,
+    label: string,
+    attempts = 3,
+    timeoutMs = 5_000,
+  ): Promise<void> {
+    let lastErr: unknown;
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await locator.click({ timeout: timeoutMs });
+        return;
+      } catch (err) {
+        lastErr = err;
+        const msg = err instanceof Error ? err.message.split('\n')[0] : String(err);
+        this.logger.warn(`${label}: click failed (attempt ${attempt}/${attempts}) — ${msg}`);
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    throw new Error(`Could not find or click "${label}" after ${attempts} attempts — ${lastErr instanceof Error ? lastErr.message.split('\n')[0] : String(lastErr)}`);
   }
 
   private requirePage(): import('playwright').Page {

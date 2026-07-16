@@ -471,7 +471,7 @@ export class BankStatementService implements OnModuleInit {
   async retryJob(publicId: string, retriedBy: string, stepKey?: StepKey): Promise<BankSyncJobDto> {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
-    if (!['failed', 'completed'].includes(job.status)) throw new ConflictException('JOB_STILL_ACTIVE');
+    if (!['failed', 'completed', 'cancelled'].includes(job.status)) throw new ConflictException('JOB_STILL_ACTIVE');
 
     const steps = parseSteps(job.steps);
 
