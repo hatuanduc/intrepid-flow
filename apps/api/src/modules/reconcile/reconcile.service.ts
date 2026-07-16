@@ -1,13 +1,15 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import type { CellValue } from 'exceljs';
+import { fork, type ChildProcess } from 'child_process';
 import * as os from 'os';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { cellToNumber, cellToString, extractBrandFromNote, sanitizeOutputFileName } from './reconcile-filter.util';
-
-export type RowType = 'RETAIL' | 'SERVICE' | 'OTHER';
+import {
+  buildHeaderIndex, cellToString, deserializeCellValue, sanitizeOutputFileName,
+  type RowType, type SerializedCellValue,
+} from './reconcile-filter.util';
 
 export interface UploadedInvoiceFile {
   path: string;
@@ -35,6 +37,16 @@ interface Totals {
   retailTax: number;
   serviceSales: number;
   serviceTax: number;
+}
+
+// Mirrors the shape workers/invoice-file-worker.ts sends back over IPC on success.
+interface InvoiceWorkerData {
+  detailHeader: SerializedCellValue[];
+  salesColIdx: number;
+  taxColIdx: number;
+  totals: Totals;
+  aggregates: AggregateEntry[];
+  detailRows: SerializedCellValue[][];
 }
 
 const MONEY_FORMAT = '#,##0.00';
@@ -65,6 +77,7 @@ export class ReconcileService {
     };
 
     const dictCustomer = await this.getMasterCustomerMapFromDb();
+    const masterMap: [string, string][] = [...dictCustomer.entries()];
 
     const totals: Totals = { retailSales: 0, retailTax: 0, serviceSales: 0, serviceTax: 0 };
     const aggregates = new Map<string, AggregateEntry>();
@@ -73,35 +86,33 @@ export class ReconcileService {
     let salesColOut = 0;
     let taxColOut = 0;
 
+    // Each file is processed in its own short-lived child process (see runInvoiceFileWorker) —
+    // sequentially, not in parallel, to keep peak memory bounded to ~one file at a time.
     for (const file of invoiceFiles) {
-      await this.processInvoiceFile(file, opts, dictCustomer, {
-        onHeader: (headerValues, salesIdx, taxIdx) => {
-          if (detailHeader === null) {
-            detailHeader = headerValues;
-            salesColOut = salesIdx;
-            taxColOut = taxIdx;
-          }
-        },
-        onRow: (values, type, customerName, salesVal, taxVal) => {
-          const key = `${customerName}|${type}`;
-          const entry = aggregates.get(key) ?? { customerName, typeLabel: type, sales: 0, tax: 0 };
-          entry.sales += salesVal;
-          entry.tax += taxVal;
-          aggregates.set(key, entry);
+      const result = await this.runInvoiceFileWorker(file, opts, masterMap);
 
-          if (type === 'RETAIL') {
-            totals.retailSales += salesVal;
-            totals.retailTax += taxVal;
-            // Retail rows are totaled but never copied to the detail sheet (legacy behavior).
-          } else {
-            if (type === 'SERVICE') {
-              totals.serviceSales += salesVal;
-              totals.serviceTax += taxVal;
-            }
-            detailRows.push(values);
-          }
-        },
-      });
+      if (detailHeader === null) {
+        detailHeader = result.detailHeader.map(deserializeCellValue);
+        salesColOut = result.salesColIdx;
+        taxColOut = result.taxColIdx;
+      }
+
+      totals.retailSales += result.totals.retailSales;
+      totals.retailTax += result.totals.retailTax;
+      totals.serviceSales += result.totals.serviceSales;
+      totals.serviceTax += result.totals.serviceTax;
+
+      for (const entry of result.aggregates) {
+        const key = `${entry.customerName}|${entry.typeLabel}`;
+        const existing = aggregates.get(key) ?? { customerName: entry.customerName, typeLabel: entry.typeLabel, sales: 0, tax: 0 };
+        existing.sales += entry.sales;
+        existing.tax += entry.tax;
+        aggregates.set(key, existing);
+      }
+
+      for (const row of result.detailRows) {
+        detailRows.push(row.map(deserializeCellValue));
+      }
     }
 
     const outPath = path.join(os.tmpdir(), `reconcile-out-${randomUUID()}.xlsx`);
@@ -175,16 +186,6 @@ export class ReconcileService {
     return new Map(rows.map(r => [r.brandName, r.customerName]));
   }
 
-  private buildHeaderIndex(headerValues: CellValue[]): Map<string, number> {
-    const map = new Map<string, number>();
-    for (let i = 1; i < headerValues.length; i++) {
-      const v = headerValues[i];
-      const text = cellToString(v).trim();
-      if (text) map.set(text.toLowerCase(), i); // keep last occurrence, like the old headerDict
-    }
-    return map;
-  }
-
   private async readMasterCustomerMap(
     file: UploadedInvoiceFile,
     brandCol: string,
@@ -203,17 +204,17 @@ export class ReconcileService {
       const values = row.values as CellValue[];
 
       if (rowNum === 1) {
-        headerIdx = this.buildHeaderIndex(values);
+        headerIdx = buildHeaderIndex(values);
         brandIdx = headerIdx.get(brandCol.trim().toLowerCase());
         custIdx = headerIdx.get(customerCol.trim().toLowerCase());
         if (brandIdx === undefined) {
           throw new UnprocessableEntityException(
-            `Không tìm thấy cột "${brandCol}" trong file Master Customer "${file.originalName}".`,
+            `Không tìm thấy cột "${brandCol}" trong file Master Customer "${file.originalName}" (dòng tiêu đề: 1).`,
           );
         }
         if (custIdx === undefined) {
           throw new UnprocessableEntityException(
-            `Không tìm thấy cột "${customerCol}" trong file Master Customer "${file.originalName}".`,
+            `Không tìm thấy cột "${customerCol}" trong file Master Customer "${file.originalName}" (dòng tiêu đề: 1).`,
           );
         }
         return;
@@ -229,91 +230,68 @@ export class ReconcileService {
     return map;
   }
 
-  private async processInvoiceFile(
+  // Runs one invoice file's parsing in a dedicated child process (workers/invoice-file-worker.ts).
+  // Two reasons this isn't done in-process: (1) ExcelJS's streaming reader is memory-efficient but
+  // was found to break on the 2nd+ sequential read within a single process — a fresh process per
+  // file sidesteps that entirely; (2) the OS reclaims 100% of that file's memory the instant the
+  // child exits, instead of depending on this long-lived server process's GC timing.
+  private async runInvoiceFileWorker(
     file: UploadedInvoiceFile,
     opts: FilterMergeOptions,
-    dictCustomer: Map<string, string>,
-    callbacks: {
-      onHeader: (headerValues: CellValue[], salesColIdx: number, taxColIdx: number) => void;
-      onRow: (
-        values: CellValue[],
-        type: RowType,
-        customerName: string,
-        salesVal: number,
-        taxVal: number,
-      ) => void;
-    },
-  ): Promise<void> {
-    const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.readFile(file.path);
-    const worksheet = workbook.worksheets[0];
+    masterMap: [string, string][],
+  ): Promise<InvoiceWorkerData> {
+    const isTs = __filename.endsWith('.ts');
+    const workerPath = path.join(__dirname, 'workers', isTs ? 'invoice-file-worker.ts' : 'invoice-file-worker.js');
+    const execArgv = isTs ? ['--require', 'tsx/cjs'] : ['--max-old-space-size=1024'];
 
-    let fileLastCol = 0;
-    let salesIdx = 0;
-    let taxIdx = 0;
-    let noteIdx = 0;
-    let customerIdx = 0;
+    let child: ChildProcess | undefined;
+    try {
+      return await new Promise<InvoiceWorkerData>((resolve, reject) => {
+        child = fork(workerPath, [], { execArgv, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
 
-    worksheet.eachRow((row, rowNum) => {
-      const values = row.values as CellValue[];
+        const timeout = setTimeout(() => {
+          child?.kill();
+          reject(new UnprocessableEntityException(
+            `Xử lý file "${file.originalName}" quá lâu (quá 5 phút), đã hủy.`,
+          ));
+        }, 5 * 60 * 1000);
 
-      if (rowNum === opts.headerRow) {
-        fileLastCol = values.length - 1;
-        const headerIdx = this.buildHeaderIndex(values);
+        child.on('message', (msg: { ok: true; data: InvoiceWorkerData } | { ok: false; error: string }) => {
+          clearTimeout(timeout);
+          if (msg.ok) resolve(msg.data);
+          else reject(new UnprocessableEntityException(msg.error));
+        });
 
-        const sIdx = headerIdx.get(opts.salesColumn.trim().toLowerCase());
-        const tIdx = headerIdx.get(opts.taxColumn.trim().toLowerCase());
-        const nIdx = headerIdx.get(opts.noteColumn.trim().toLowerCase());
-        const cIdx = headerIdx.get(opts.customerColumn.trim().toLowerCase());
+        child.on('error', err => {
+          clearTimeout(timeout);
+          reject(new UnprocessableEntityException(
+            `Không thể xử lý file "${file.originalName}": ${err.message}`,
+          ));
+        });
 
-        if (sIdx === undefined) {
-          throw new UnprocessableEntityException(
-            `Không tìm thấy cột doanh số "${opts.salesColumn}" trong file "${file.originalName}".`,
-          );
-        }
-        if (tIdx === undefined) {
-          throw new UnprocessableEntityException(
-            `Không tìm thấy cột thuế "${opts.taxColumn}" trong file "${file.originalName}".`,
-          );
-        }
-        if (nIdx === undefined) {
-          throw new UnprocessableEntityException(
-            `Không tìm thấy cột ghi chú "${opts.noteColumn}" trong file "${file.originalName}".`,
-          );
-        }
+        child.on('exit', code => {
+          clearTimeout(timeout);
+          if (code !== 0 && code !== null) {
+            reject(new UnprocessableEntityException(
+              `Xử lý file "${file.originalName}" thất bại (tiến trình con thoát với mã lỗi ${code}).`,
+            ));
+          }
+        });
 
-        salesIdx = sIdx;
-        taxIdx = tIdx;
-        noteIdx = nIdx;
-        customerIdx = cIdx ?? 0;
-
-        callbacks.onHeader(values.slice(0, fileLastCol + 1), salesIdx, taxIdx);
-        return;
-      }
-
-      if (rowNum < opts.headerRow || fileLastCol === 0) return;
-
-      const noteVal = cellToString(values[noteIdx]).trim();
-      if (noteVal === '') return; // blank Note -> skip entirely (no detail row, no aggregation)
-
-      const salesVal = cellToNumber(values[salesIdx]);
-      const taxVal = cellToNumber(values[taxIdx]);
-
-      let customerName: string;
-      let type: RowType;
-
-      if (noteVal.startsWith('Retail_')) {
-        type = 'RETAIL';
-        const brand = extractBrandFromNote(noteVal, rowNum);
-        customerName = dictCustomer.get(brand) ?? brand;
-      } else {
-        const rawCustomer = customerIdx > 0 ? cellToString(values[customerIdx]).trim() : '';
-        customerName = rawCustomer ? rawCustomer.toUpperCase() : `UNDEFINED-${rowNum}`;
-        type = noteVal.startsWith('Service_') ? 'SERVICE' : 'OTHER';
-      }
-
-      callbacks.onRow(values.slice(0, fileLastCol + 1), type, customerName, salesVal, taxVal);
-    });
+        child.send({
+          filePath: file.path,
+          originalName: file.originalName,
+          headerRow: opts.headerRow,
+          salesColumn: opts.salesColumn,
+          taxColumn: opts.taxColumn,
+          noteColumn: opts.noteColumn,
+          customerColumn: opts.customerColumn,
+          masterMap,
+        });
+      });
+    } finally {
+      child?.kill();
+    }
   }
 
   private async buildOutputWorkbook(

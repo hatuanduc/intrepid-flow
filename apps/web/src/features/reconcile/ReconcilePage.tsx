@@ -25,7 +25,6 @@ export default function ReconcilePage() {
 
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([]);
   const [invoiceDropActive, setInvoiceDropActive] = useState(false);
-  const [outputFileName, setOutputFileName] = useState('service_invoices_merged.xlsx');
 
   const [settings, setSettings] = useState<ReconcileSettings | null>(null);
   const [masterInfo, setMasterInfo] = useState<MasterCustomerInfo | null>(null);
@@ -79,7 +78,6 @@ export default function ReconcilePage() {
   function validate(): Record<string, string> {
     const errs: Record<string, string> = {};
     if (invoiceFiles.length === 0) errs.invoiceFiles = t('reconcile.errorNoFiles');
-    if (!outputFileName.trim()) errs.outputFileName = t('reconcile.errorOutputFileName');
     return errs;
   }
 
@@ -91,7 +89,6 @@ export default function ReconcilePage() {
 
     const formData = new FormData();
     invoiceFiles.forEach(f => formData.append('files', f));
-    formData.append('outputFileName', outputFileName);
 
     setProcessing(true);
     try {
@@ -143,18 +140,6 @@ export default function ReconcilePage() {
                 ))}
               </div>
             )}
-          </div>
-
-          <div className={s.card}>
-            <div className={s.field}>
-              <label className={s.label}>{t('reconcile.outputFileNameLabel')}</label>
-              <input
-                className={`${s.input} ${fieldErrors.outputFileName ? s.inputError : ''}`}
-                value={outputFileName}
-                onChange={e => { setOutputFileName(e.target.value); clearField('outputFileName'); }}
-              />
-              {fieldErrors.outputFileName && <span className={s.fieldError}>{fieldErrors.outputFileName}</span>}
-            </div>
           </div>
 
           <div className={s.actions}>

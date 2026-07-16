@@ -1,8 +1,9 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { ApiPropertyOptional } from '@nestjs/swagger';
+import { IsOptional, IsString } from 'class-validator';
 
 export class FilterMergeDto {
-  @ApiProperty({ example: 'service_invoices_merged.xlsx' })
-  @IsString() @MinLength(1)
-  outputFileName!: string;
+  @ApiPropertyOptional({ example: 'service_invoices_merged.xlsx', description: 'Mặc định "service_invoices_merged.xlsx" nếu không truyền' })
+  @IsOptional()
+  @IsString()
+  outputFileName?: string;
 }

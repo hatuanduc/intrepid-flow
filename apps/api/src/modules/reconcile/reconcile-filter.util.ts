@@ -1,5 +1,33 @@
 import type { CellValue } from 'exceljs';
 
+export type RowType = 'RETAIL' | 'SERVICE' | 'OTHER';
+
+// CellValue as it crosses a JSON-based IPC boundary (parent <-> invoice-file-worker child
+// process) — Dates lose their type over JSON, so they're wrapped and revived explicitly.
+export type SerializedCellValue = CellValue | { __type: 'date'; value: string };
+
+export function serializeCellValue(v: CellValue): SerializedCellValue {
+  if (v instanceof Date) return { __type: 'date', value: v.toISOString() };
+  return v;
+}
+
+export function deserializeCellValue(v: SerializedCellValue): CellValue {
+  if (v !== null && typeof v === 'object' && (v as { __type?: string }).__type === 'date') {
+    return new Date((v as { value: string }).value);
+  }
+  return v as CellValue;
+}
+
+export function buildHeaderIndex(headerValues: CellValue[]): Map<string, number> {
+  const map = new Map<string, number>();
+  for (let i = 1; i < headerValues.length; i++) {
+    const v = headerValues[i];
+    const text = cellToString(v).trim();
+    if (text) map.set(text.toLowerCase(), i); // keep last occurrence, like the old headerDict
+  }
+  return map;
+}
+
 export function cellToString(value: CellValue): string {
   if (value === null || value === undefined) return '';
   if (value instanceof Date) return value.toISOString();

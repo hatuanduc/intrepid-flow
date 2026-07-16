@@ -37,7 +37,7 @@ export class ReconcileController {
         files: { type: 'array', items: { type: 'string', format: 'binary' } },
         outputFileName: { type: 'string' },
       },
-      required: ['files', 'outputFileName'],
+      required: ['files'],
     },
   })
   @UseInterceptors(FileFieldsInterceptor(
@@ -64,7 +64,7 @@ export class ReconcileController {
     const tempPaths = invoiceFiles.map(f => f.path);
 
     try {
-      const { path: outPath, filename } = await this.service.runFilterMerge(invoiceFiles, body.outputFileName);
+      const { path: outPath, filename } = await this.service.runFilterMerge(invoiceFiles, body.outputFileName ?? '');
       tempPaths.push(outPath);
 
       const buffer = await fs.readFile(outPath);

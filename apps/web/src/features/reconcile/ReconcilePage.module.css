@@ -17,7 +17,6 @@
 
 .btnPrimary   { composes: btnPrimary   from '../../styles/ui.module.css'; }
 .btnSecondary { composes: btnSecondary from '../../styles/ui.module.css'; }
-.inputError   { composes: inputError   from '../../styles/ui.module.css'; }
 .fieldError   { composes: fieldError   from '../../styles/ui.module.css'; }
 
 .card {
@@ -77,30 +76,6 @@
 
 /* ── File list wrapper — shared component styles ── */
 .fileList { composes: fileList from '../../components/common/FileDropzone.module.css'; }
-
-.field { display: flex; flex-direction: column; gap: 6px; }
-.label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--color-secondary);
-}
-.input {
-  padding: 9px 12px;
-  border-radius: 6px;
-  border: 1.5px solid var(--color-border);
-  background: var(--bg-surface);
-  font-size: 14px;
-  color: var(--color-ink);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  width: 100%;
-  box-sizing: border-box;
-}
-.input:focus {
-  border-color: var(--color-accent-active);
-  box-shadow: 0 0 0 3px rgba(98,90,250,.10);
-}
-.input::placeholder { color: var(--color-subtle); }
 
 .actions {
   display: flex;

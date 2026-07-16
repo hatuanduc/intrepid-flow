@@ -11,8 +11,8 @@ export function formatFileSize(bytes: number): string {
 
 const FileIcon = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M4 1.5h5l3 3v10a.5.5 0 01-.5.5h-8a.5.5 0 01-.5-.5v-12a.5.5 0 01.5-.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
-    <path d="M9 1.5V4.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M1.5 6.5h13M5.5 2.5v11M10.5 2.5v11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
   </svg>
 );
 
