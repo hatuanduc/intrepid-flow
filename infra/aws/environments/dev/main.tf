@@ -37,7 +37,7 @@ module "app" {
   source = "../../modules/app"
 
   env           = "dev"
-  instance_type = "t4g.small"   # 2GB — đủ cho dev, tiết kiệm hơn prod
+  instance_type = "t4g.medium"  # 4GB — cần cho Playwright + 3 apps + Redis + PG
 
   vpc_id    = data.terraform_remote_state.shared.outputs.vpc_id
   subnet_id = data.terraform_remote_state.shared.outputs.public_subnet_id
