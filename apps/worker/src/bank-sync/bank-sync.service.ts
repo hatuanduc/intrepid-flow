@@ -125,7 +125,11 @@ export class BankSyncService {
       await this.log(jobId, 'Job completed successfully.', undefined, 'success');
       await this.notify(jobId, 'job_completed', 'Đồng bộ sao kê hoàn tất', `${accountRows.size} tài khoản đã đồng bộ.`);
     } catch (err) {
-      try { await this.playwright.close(); } catch { /* ignore */ }
+      // Deliberately NOT closing the browser here. HSBCnet ties session validity to
+      // the live tab/connection, not just to the cookie — closing and reopening a
+      // "saved" session reliably hits the "already logged on" interstitial and forces
+      // a full re-login + 2FA. Leaving the browser open across a failed job lets the
+      // next attempt reuse the still-authenticated tab via init()'s reuse check.
 
       const msg = (err as Error).message ?? 'Unknown error';
 
@@ -154,7 +158,7 @@ export class BankSyncService {
       }
 
       await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, msg);
-      await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', msg);
+      await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', friendlyBankSyncError(msg));
       throw err;
     }
   }
@@ -337,6 +341,11 @@ export class BankSyncService {
         }
         if (validation.missingOptional.length > 0) {
           await this.log(jobId, `  → ${account.accountNumber}: missing optional columns — ${validation.missingOptional.join(', ')}`, 'bank_sync', 'warn');
+        }
+
+        if (rows.length === 0) {
+          await this.upsertJobAccount(jobId, account.id, { status: 'completed', rowsDownloaded: 0, sheetsSyncStatus: 'no_data' });
+          continue;
         }
 
         const { inserted, duplicates } = await this.storeTransactions(jobId, account.id, account.accountNumber, rows);
@@ -659,14 +668,36 @@ export class BankSyncService {
 
     const userId = Number(job.triggeredBy);
     if (!Number.isFinite(userId)) return;
-    // Short job code appended so two jobs completing close together don't render as
-    // identical entries in the notification bell — see NotificationBell.tsx.
-    const jobCode = `#${job.publicId.slice(-6)}`;
     const notification = await this.prisma.notification.create({
-      data: { userId, type, title, body: body ? `${body} • ${jobCode}` : jobCode, jobPublicId: job.publicId },
+      data: { userId, type, title, body: body ?? null, jobPublicId: job.publicId },
     });
     await this.redis.publish('notifications', JSON.stringify({ userId, notification }));
   }
+}
+
+// Mirrors BankJobDetailPage.tsx's FRIENDLY_ERROR_KEYS/friendlyError — raw Playwright/HSBCnet
+// error text (stack-trace-like "page.goto: Target page..." or "Timeout 30000ms exceeded. Call
+// log: ...") is not something a non-technical user can act on. The raw message is still kept in
+// BankSyncJob/step errorMessage for the job detail page's "show raw" toggle — this mapping only
+// affects what gets pushed to the notification bell.
+const FRIENDLY_ERROR_PATTERNS: Array<[RegExp, string]> = [
+  [/INVALID_USERNAME/i,                 'Tên đăng nhập HSBCnet không đúng. Vui lòng kiểm tra lại trong Cài đặt → Kết nối.'],
+  [/HSBCNET_USERNAME.*not configured/i, 'Chưa cấu hình tên đăng nhập HSBCnet. Vào Cài đặt → Kết nối để cập nhật.'],
+  [/TIMEOUT_2FA/i,                      'Hết thời gian chờ xác thực — không nhận được phê duyệt từ ứng dụng di động HSBCnet.'],
+  [/Timeout.*exceeded/i,                'Hết thời gian chờ — trang web ngân hàng phản hồi quá chậm hoặc không tải được đúng hạn.'],
+  [/page\.(fill|click|goto)/i,          'Không tương tác được với trang web ngân hàng — giao diện có thể đã thay đổi.'],
+  [/locator\(/i,                        'Không tìm thấy phần tử trên trang — giao diện ngân hàng có thể đã cập nhật.'],
+  [/net::ERR_/i,                        'Lỗi kết nối mạng — không thể truy cập trang web ngân hàng.'],
+  [/2fa|mobile.*app|approval/i,         'Xác thực 2 bước thất bại hoặc hết thời gian chờ phê duyệt trên ứng dụng di động.'],
+  [/download|csv|xlsx/i,                'Lỗi tải xuống file sao kê — trang web ngân hàng không trả về đúng định dạng.'],
+  [/context or browser has been closed/i, 'Phiên làm việc với ngân hàng đã bị đóng giữa chừng. Vui lòng thử lại.'],
+];
+
+function friendlyBankSyncError(raw: string): string {
+  for (const [pattern, message] of FRIENDLY_ERROR_PATTERNS) {
+    if (pattern.test(raw)) return message;
+  }
+  return 'Đồng bộ thất bại. Vui lòng kiểm tra log chi tiết và thử lại.';
 }
 
 function formatDateLabel(d: Date): string {

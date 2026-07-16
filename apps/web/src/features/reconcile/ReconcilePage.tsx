@@ -17,6 +17,25 @@ import s from './ReconcilePage.module.css';
 const MAX_FILE_SIZE = 60 * 1024 * 1024; // 60MB — must match apps/api FileFieldsInterceptor limit
 const MAX_INVOICE_FILES = 5;
 
+type LastRunResult =
+  | { success: true; at: Date; fileCount: number; filename: string; blob: Blob }
+  | { success: false; at: Date; message: string };
+
+const CheckIcon = (
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+    <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M6 10.5l2.5 2.5L14 7.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ErrorIcon = (
+  <svg width="18" height="18" viewBox="0 0 20 20" fill="none">
+    <circle cx="10" cy="10" r="9" stroke="currentColor" strokeWidth="1.5"/>
+    <path d="M10 6v5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    <circle cx="10" cy="14" r="1" fill="currentColor"/>
+  </svg>
+);
+
 export default function ReconcilePage() {
   const canView = useHasPermission('reconcile:view');
   const canRun = useHasPermission('reconcile:run');
@@ -32,6 +51,7 @@ export default function ReconcilePage() {
 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [processing, setProcessing] = useState(false);
+  const [lastRun, setLastRun] = useState<LastRunResult | null>(null);
 
   async function loadSummary() {
     setSummaryLoading(true);
@@ -81,6 +101,17 @@ export default function ReconcilePage() {
     return errs;
   }
 
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs = validate();
@@ -93,18 +124,13 @@ export default function ReconcilePage() {
     setProcessing(true);
     try {
       const { blob, filename } = await runReconcileFilterMerge(formData);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      triggerDownload(blob, filename);
       toast.success(t('reconcile.successToast'));
+      setLastRun({ success: true, at: new Date(), fileCount: invoiceFiles.length, filename, blob });
     } catch (err) {
       const message = err instanceof Error ? err.message : '';
       toast.error(message || t('reconcile.genericError'));
+      setLastRun({ success: false, at: new Date(), message: message || t('reconcile.genericError') });
     } finally {
       setProcessing(false);
     }
@@ -116,6 +142,36 @@ export default function ReconcilePage() {
         <h1 className={s.pageTitle}>{t('reconcile.pageTitle')}</h1>
       </div>
       <p className={s.pageDesc}>{t('reconcile.pageDesc')}</p>
+
+      {lastRun && (
+        <div className={`${s.resultCard} ${lastRun.success ? s.resultCardSuccess : s.resultCardError}`}>
+          <span className={s.resultIcon}>{lastRun.success ? CheckIcon : ErrorIcon}</span>
+          <span className={s.resultBody}>
+            <span className={s.resultTitle}>
+              {t(lastRun.success ? 'reconcile.lastRunSuccessTitle' : 'reconcile.lastRunErrorTitle')}
+              {' · '}
+              {t('reconcile.lastRunAt', { time: lastRun.at.toLocaleTimeString(lang === 'vi' ? 'vi-VN' : 'en-US') })}
+            </span>
+            <span className={s.resultDesc}>
+              {lastRun.success
+                ? t('reconcile.lastRunFileCount', { count: lastRun.fileCount, filename: lastRun.filename })
+                : lastRun.message}
+            </span>
+          </span>
+          <span className={s.resultActions}>
+            {lastRun.success && (
+              <button
+                type="button"
+                className={s.btnSecondary}
+                onClick={() => triggerDownload(lastRun.blob, lastRun.filename)}
+              >
+                {t('reconcile.lastRunDownloadAgain')}
+              </button>
+            )}
+            <button type="button" className={s.resultDismiss} onClick={() => setLastRun(null)}>✕</button>
+          </span>
+        </div>
+      )}
 
       <div className={s.layout}>
         <form id="reconcile-form" onSubmit={handleSubmit} className={s.main}>

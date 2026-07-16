@@ -53,8 +53,6 @@ export class PlaywrightService {
   private browser: import('playwright').Browser | null = null;
   private context: import('playwright').BrowserContext | null = null;
   private page: import('playwright').Page | null = null;
-  // URL of account-detail page — saved after discovery, used as re-entry point in downloadStatement
-  private accountDetailUrl: string | null = null;
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -78,17 +76,11 @@ export class PlaywrightService {
     this.browser = await chromium.launch({ headless, slowMo });
     this.logger.log(`Browser launched (headless=${headless}, slowMo=${slowMo}ms)`);
 
-    let storageState: import('playwright').BrowserContextOptions['storageState'];
-    if (fs.existsSync(this.sessionPath)) {
-      try {
-        const raw = fs.readFileSync(this.sessionPath, 'utf-8');
-        const parsed = JSON.parse(raw) as { cookies: import('playwright').Cookie[] };
-        storageState = { cookies: parsed.cookies, origins: [] };
-        this.logger.log(`Loaded saved session from ${this.sessionPath}`);
-      } catch {
-        this.logger.warn('Could not load session file — starting fresh');
-      }
-    }
+    // Passing the file path directly lets Playwright restore both cookies AND
+    // localStorage/sessionStorage per origin — a hand-rolled cookies-only version
+    // previously discarded origins, which HSBCnet's SPA relies on for session state.
+    const storageState = fs.existsSync(this.sessionPath) ? this.sessionPath : undefined;
+    if (storageState) this.logger.log(`Loaded saved session from ${this.sessionPath}`);
 
     this.context = await this.browser.newContext(storageState ? { storageState } : {});
     this.page = await this.context.newPage();
@@ -105,8 +97,11 @@ export class PlaywrightService {
   }
 
   async clearSession(): Promise<void> {
-    // Clear cookies in the context
+    // Clear cookies AND localStorage in the live context — now that saveSession()
+    // persists both, a stale login attempt could otherwise reuse leftover localStorage
+    // state (e.g. a device/session marker) even after cookies are wiped.
     await this.context?.clearCookies().catch(() => {});
+    await this.page?.evaluate(() => localStorage.clear()).catch(() => {});
     // Delete the session file
     if (fs.existsSync(this.sessionPath)) {
       fs.unlinkSync(this.sessionPath);
@@ -221,10 +216,10 @@ export class PlaywrightService {
 
   async saveSession(): Promise<void> {
     const ctx = this.requireContext();
-    const cookies = await ctx.cookies();
     const dir = path.dirname(this.sessionPath);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(this.sessionPath, JSON.stringify({ cookies }, null, 2), 'utf-8');
+    // Full storage state — cookies + localStorage/sessionStorage per origin.
+    await ctx.storageState({ path: this.sessionPath });
     this.logger.log(`Session saved → ${this.sessionPath}`);
   }
 
@@ -237,18 +232,15 @@ export class PlaywrightService {
   async discoverAccounts(): Promise<DiscoveredAccount[]> {
     const page = this.requirePage();
 
-    // Step 1: Navigate to Account Information page via top nav link
+    // Step 1: Navigate to Account Information page via the SPA's hash route.
+    // The nav link text ("Account information") matches two DOM elements — a hidden
+    // copy inside the collapsed hamburger menu and the visible "pinned" top-bar one —
+    // and Playwright's locator can resolve/click the hidden copy, hanging forever on
+    // the visibility check. The app routes purely off location.hash, so setting it
+    // directly sidesteps the DOM entirely.
     this.logger.log(`[discover] Current URL before nav: ${page.url()}`);
-    const accountInfoLink = page.locator('a, button').filter({ hasText: /account information/i }).first();
-    if (await accountInfoLink.count() > 0) {
-      this.logger.log('[discover] Clicking "Account information" nav link');
-      await Promise.all([
-        page.waitForNavigation({ waitUntil: 'load', timeout: 15_000 }).catch(() => {}),
-        accountInfoLink.click(),
-      ]);
-    } else {
-      this.logger.warn('[discover] "Account information" nav link not found on current page');
-    }
+    await page.evaluate(() => { window.location.hash = '/accounts'; });
+    await page.waitForURL(/#\/accounts/, { timeout: 15_000 }).catch(() => {});
     this.logger.log(`[discover] After nav — URL: ${page.url()}, title: "${await page.title()}"`);
 
     // Step 2: Click first clickable account row (`:first-child` was wrong — title row is first)
@@ -276,10 +268,6 @@ export class PlaywrightService {
         return null;
       });
     if (!searchInput) throw new Error('Change account input not found');
-
-    // Save account-detail URL for use as re-entry point in downloadStatement()
-    this.accountDetailUrl = page.url();
-    this.logger.log(`[discover] Stored account-detail URL: ${this.accountDetailUrl}`);
 
     // Step 4: Click to open the switcher dropdown — retry a few times in case the click
     // lands before the page has finished hydrating (input is in the DOM but its onClick
@@ -338,16 +326,21 @@ export class PlaywrightService {
     const page = this.requirePage();
     const ctx = this.requireContext();
 
-    // ── Step 1: Ensure we're on account-detail, then navigate via switcher ────
-    const inputVisible = await page.$(SELECTORS.changeAccountInput)
-      .then(el => el?.isVisible()).catch(() => false);
+    // ── Step 1: Confirm we're on account-detail ───────────────────────────────
+    // Switching accounts never leaves this page — it's all done via the "Change
+    // account" search below. Give the search input a real grace window to (re)appear
+    // in case it's mid re-render right after the previous account's export. If it's
+    // still missing after that, something upstream is genuinely broken (wrong page,
+    // session dropped, HSBC layout changed) — fail loudly instead of papering over
+    // it with a speculative page.goto() reload, which was liable to land somewhere
+    // unexpected and retrigger HSBC's post-navigation "LastLogin" popup tab.
+    const inputVisible = await page.waitForSelector(SELECTORS.changeAccountInput, { state: 'visible', timeout: 8_000 })
+      .then(() => true).catch(() => false);
     if (!inputVisible) {
-      const url = page.url();
-      const title = await page.title().catch(() => '');
-      this.logger.warn(`[${accountNumber}] changeAccountInput not visible — URL: ${url}, title: "${title}"`);
-      const detailUrl = this.accountDetailUrl ?? `${HSBCNET_URL}/account-detail`;
-      this.logger.log(`[${accountNumber}] Navigating back to account-detail: ${detailUrl}`);
-      await page.goto(detailUrl, { waitUntil: 'load', timeout: 30_000 });
+      // Full technical detail → app log (console/CloudWatch). The thrown message is
+      // what ends up in the user-facing job log, so keep it short and non-technical.
+      this.logger.error(`[${accountNumber}] changeAccountInput not visible — URL: ${page.url()}, title: "${await page.title().catch(() => '')}"`);
+      throw new Error('Could not find the account search box on the HSBC page.');
     }
 
     const searchInput = await page.waitForSelector(SELECTORS.changeAccountInput, { timeout: 15_000 });
@@ -356,35 +349,41 @@ export class PlaywrightService {
 
     // Use a Locator (not ElementHandle) so Playwright re-queries the DOM at click
     // time — HSBC re-renders the switcher list while filtering, causing stale handles.
+    // accountNumber came from this same switcher during discovery, so searching for
+    // it again should always resolve — if it doesn't, that's a real bug (bad format,
+    // stale search, layout change), not a benign "account closed" case. Fail loudly
+    // instead of silently returning null, which the caller would otherwise log as
+    // indistinguishable from a genuine "no transactions in range".
     const firstResult = page.locator(SELECTORS.switcherItem).first();
     try {
       await firstResult.waitFor({ state: 'visible', timeout: 8_000 });
     } catch {
-      this.logger.warn(`Account ${accountNumber} not found in switcher — skipping`);
-      return null;
+      this.logger.error(`Account ${accountNumber} not found in switcher after searching — URL: ${page.url()}`);
+      throw new Error(`Account ${accountNumber} not found in HSBC's account list.`);
     }
     await firstResult.click();
     this.logger.log(`${accountNumber}: switcher item clicked — waiting for page to update`);
 
     // ── Step 2: Open date filter ──────────────────────────────────────────────
+    // Both elements are required — without them fillDateRange() has nothing real to
+    // type into and falls back to blind keyboard input, which HSBC rejects (Export
+    // stays disabled without a valid date range). Fail loudly instead of continuing.
     const specifyLink = await page.waitForSelector(SELECTORS.specifyDateRange, { timeout: 10_000 }).catch(() => null);
-    if (specifyLink) {
-      await specifyLink.click();
-      await page.waitForTimeout(400);
-    } else {
-      const url = page.url();
-      this.logger.warn(`${accountNumber}: "Specify date range" link không tìm thấy — selector: "${SELECTORS.specifyDateRange}", URL: ${url}`);
+    if (!specifyLink) {
+      this.logger.error(`"Specify date range" link not found — selector: "${SELECTORS.specifyDateRange}", URL: ${page.url()}`);
+      throw new Error('Could not find the date range option on the HSBC page.');
     }
+    await specifyLink.click();
+    await page.waitForTimeout(400);
 
     // Click the date range combobox to open the picker
     const rangeWidget = await page.waitForSelector(SELECTORS.dateRangeWidget, { timeout: 6_000 }).catch(() => null);
-    if (rangeWidget) {
-      await rangeWidget.click();
-      await page.waitForTimeout(400);
-    } else {
-      const url = page.url();
-      this.logger.warn(`${accountNumber}: Date range widget không tìm thấy — selector: "${SELECTORS.dateRangeWidget}", URL: ${url}`);
+    if (!rangeWidget) {
+      this.logger.error(`Date range widget not found — selector: "${SELECTORS.dateRangeWidget}", URL: ${page.url()}`);
+      throw new Error('Could not find the date range picker on the HSBC page.');
     }
+    await rangeWidget.click();
+    await page.waitForTimeout(400);
 
     // ── Step 3: Fill in dates ─────────────────────────────────────────────────
     await this.fillDateRange(page, dateFrom, dateTo);
@@ -403,7 +402,16 @@ export class PlaywrightService {
     }
 
     // ── Step 6: Export → Excel ────────────────────────────────────────────────
-    await page.click(SELECTORS.exportTrigger);
+    try {
+      await page.click(SELECTORS.exportTrigger);
+    } catch (err) {
+      // Playwright's own error includes its full actionability call log (dozens of
+      // lines) — useful for us, meaningless and alarming to an end user reading the
+      // job log. Full detail → app log only; the thrown message is what surfaces in
+      // the UI, so keep it short and in plain business terms.
+      this.logger.error(`[${accountNumber}] Export button click failed — ${(err as Error).message}`);
+      throw new Error(`Could not find or click the Export button for ${accountNumber} on the HSBC page.`);
+    }
     await page.waitForTimeout(300);
 
     const excelBtn = page.locator(SELECTORS.excelOption).filter({ hasText: 'Excel' }).first();

@@ -90,3 +90,67 @@
   align-items: center;
   gap: 8px;
 }
+
+/* ── Persistent last-run result card — stays on screen until dismissed, unlike the toast ── */
+.resultCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+.resultCardSuccess {
+  background: #d1fae5;
+  border-color: #a7f3d0;
+  color: #0e6245;
+}
+.resultCardError {
+  background: #fff0f3;
+  border-color: #fecaca;
+  color: #df1b41;
+}
+.resultIcon { flex-shrink: 0; margin-top: 1px; }
+.resultBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.resultTitle {
+  font-size: 13px;
+  font-weight: 600;
+}
+.resultDesc {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-secondary);
+  word-break: break-word;
+}
+.resultActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.resultDismiss {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.6;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.resultDismiss:hover { opacity: 1; background: rgba(0,0,0,0.06); }
+@media (max-width: 768px) {
+  .resultCard { flex-wrap: wrap; }
+  .resultActions { width: 100%; justify-content: flex-end; }
+}

@@ -559,6 +559,12 @@ export const vi: Translations = {
     settingsSummaryLabel: 'Cấu hình hiện tại',
     settingsLink: 'Cài đặt →',
     settingsSummaryText: 'Dòng tiêu đề: {headerRow} · Doanh số: "{salesColumn}" · Thuế: "{taxColumn}" · Ghi chú: "{noteColumn}" · Khách hàng: "{customerColumn}"',
+    lastRunSuccessTitle: 'Đã merge xong',
+    lastRunErrorTitle: 'Merge thất bại',
+    lastRunFileCount: 'Đã merge {count} file vào "{filename}"',
+    lastRunAt: 'lúc {time}',
+    lastRunDownloadAgain: 'Tải lại file',
+    lastRunDismiss: 'Đóng',
   },
 
   reconcileSettings: {

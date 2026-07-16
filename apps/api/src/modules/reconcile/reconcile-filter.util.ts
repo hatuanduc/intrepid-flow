@@ -18,12 +18,21 @@ export function deserializeCellValue(v: SerializedCellValue): CellValue {
   return v as CellValue;
 }
 
+// Vietnamese diacritics can be stored as either one precomposed Unicode codepoint or as a base
+// letter + separate combining accent marks (NFC vs NFD) — they render identically in Excel but
+// compare as different strings in JS. Files from different exporters (or column names typed vs
+// pasted into Settings) can end up on different sides of that split, so every header/column-name
+// comparison in this module must go through this same normalization on both sides.
+export function normalizeHeaderKey(text: string): string {
+  return text.trim().normalize('NFC').toLowerCase();
+}
+
 export function buildHeaderIndex(headerValues: CellValue[]): Map<string, number> {
   const map = new Map<string, number>();
   for (let i = 1; i < headerValues.length; i++) {
     const v = headerValues[i];
     const text = cellToString(v).trim();
-    if (text) map.set(text.toLowerCase(), i); // keep last occurrence, like the old headerDict
+    if (text) map.set(normalizeHeaderKey(text), i); // keep last occurrence, like the old headerDict
   }
   return map;
 }

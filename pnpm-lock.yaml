@@ -86,6 +86,12 @@ importers:
       rxjs:
         specifier: ^7.8.0
         version: 7.8.2
+      saxes:
+        specifier: ^5.0.1
+        version: 5.0.1
+      unzipper:
+        specifier: ^0.10.14
+        version: 0.10.14
     devDependencies:
       '@types/bcryptjs':
         specifier: ^2.4.2
@@ -105,6 +111,9 @@ importers:
       '@types/nodemailer':
         specifier: ^6.4.17
         version: 6.4.24
+      '@types/unzipper':
+        specifier: ^0.10.11
+        version: 0.10.11
       prisma:
         specifier: ^5.22.0
         version: 5.22.0
@@ -1079,6 +1088,9 @@ packages:
 
   '@types/strip-json-comments@0.0.30':
     resolution: {integrity: sha512-7NQmHra/JILCd1QqpSzl8+mJRc8ZHz3uDm8YV1Ks9IhK0epEiTw8aIErbvH9PI+6XbqhyIQy3462nEsn7UVzjQ==}
+
+  '@types/unzipper@0.10.11':
+    resolution: {integrity: sha512-D25im2zjyMCcgL9ag6N46+wbtJBnXIr7SI4zHf9eJD2Dw2tEB5e+p5MYkrxKIVRscs5QV0EhtU9rgXSPx90oJg==}
 
   '@types/use-sync-external-store@0.0.6':
     resolution: {integrity: sha512-zFDAD+tlpf2r4asuHEj0XH6pY6i0g5NeAHPn+15wk3BV6JA69eERFXC1gyGThDkVa1zCyKr5jox1+2LbV/AMLg==}
@@ -4215,6 +4227,10 @@ snapshots:
   '@types/strip-bom@3.0.0': {}
 
   '@types/strip-json-comments@0.0.30': {}
+
+  '@types/unzipper@0.10.11':
+    dependencies:
+      '@types/node': 20.19.42
 
   '@types/use-sync-external-store@0.0.6': {}
 

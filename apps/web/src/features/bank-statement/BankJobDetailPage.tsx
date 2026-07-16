@@ -685,6 +685,9 @@ function JobTimeline({
   const { t } = useT();
   const isDone = ['completed', 'failed'].includes(job.status);
   const hasSteps = (job.steps?.length ?? 0) > 0;
+  // Raw error codes (e.g. "TIMEOUT_2FA") are internal debugging detail, not something an
+  // end user can act on — only expose the toggle outside of local/dev.
+  const isDev = process.env.NODE_ENV !== 'production';
 
   // Group logs by step
   const logsByStep: Record<string, LogItem[]> = { bank_sync: [], sheets_sync: [], _general: [] };
@@ -753,7 +756,7 @@ function JobTimeline({
                     {renderLogNodes(stepLogs, step.key)}
                   </div>
                 )}
-                {isOpen && step.status === 'failed' && step.errorMessage && (
+                {isDev && isOpen && step.status === 'failed' && step.errorMessage && (
                   <div className={s.stepErrorToggle}>
                     <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
                       {showRaw ? t('bankJob.hideRaw') : t('bankJob.showRaw')}
@@ -789,7 +792,7 @@ function JobTimeline({
                 }] : []),
               ], '_general')}
             </div>
-            {job.errorMessage && (
+            {isDev && job.errorMessage && (
               <div className={s.stepErrorToggle}>
                 <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
                   {showRaw ? t('bankJob.hideRaw') : t('bankJob.showRaw')}

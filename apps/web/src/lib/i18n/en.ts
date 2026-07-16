@@ -562,6 +562,12 @@ export const en = {
     settingsSummaryLabel: 'Current settings',
     settingsLink: 'Settings →',
     settingsSummaryText: 'Header row: {headerRow} · Sales: "{salesColumn}" · Tax: "{taxColumn}" · Note: "{noteColumn}" · Customer: "{customerColumn}"',
+    lastRunSuccessTitle: 'Merge completed',
+    lastRunErrorTitle: 'Merge failed',
+    lastRunFileCount: '{count} file(s) merged into "{filename}"',
+    lastRunAt: 'at {time}',
+    lastRunDownloadAgain: 'Download again',
+    lastRunDismiss: 'Dismiss',
   },
 
   reconcileSettings: {

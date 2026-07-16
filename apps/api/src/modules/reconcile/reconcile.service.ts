@@ -7,7 +7,7 @@ import * as path from 'path';
 import { randomUUID } from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import {
-  buildHeaderIndex, cellToString, deserializeCellValue, sanitizeOutputFileName,
+  buildHeaderIndex, cellToString, deserializeCellValue, normalizeHeaderKey, sanitizeOutputFileName,
   type RowType, type SerializedCellValue,
 } from './reconcile-filter.util';
 
@@ -205,8 +205,8 @@ export class ReconcileService {
 
       if (rowNum === 1) {
         headerIdx = buildHeaderIndex(values);
-        brandIdx = headerIdx.get(brandCol.trim().toLowerCase());
-        custIdx = headerIdx.get(customerCol.trim().toLowerCase());
+        brandIdx = headerIdx.get(normalizeHeaderKey(brandCol));
+        custIdx = headerIdx.get(normalizeHeaderKey(customerCol));
         if (brandIdx === undefined) {
           throw new UnprocessableEntityException(
             `Không tìm thấy cột "${brandCol}" trong file Master Customer "${file.originalName}" (dòng tiêu đề: 1).`,
@@ -230,11 +230,11 @@ export class ReconcileService {
     return map;
   }
 
-  // Runs one invoice file's parsing in a dedicated child process (workers/invoice-file-worker.ts).
-  // Two reasons this isn't done in-process: (1) ExcelJS's streaming reader is memory-efficient but
-  // was found to break on the 2nd+ sequential read within a single process — a fresh process per
-  // file sidesteps that entirely; (2) the OS reclaims 100% of that file's memory the instant the
-  // child exits, instead of depending on this long-lived server process's GC timing.
+  // Runs one invoice file's parsing in a dedicated child process (workers/invoice-file-worker.ts,
+  // which uses ExcelJS's plain loader — see that file for why the streaming reader was rejected).
+  // Isolating per file still matters even with the plain loader: the OS reclaims 100% of that
+  // file's memory the instant the child exits, instead of depending on this long-lived server
+  // process's GC timing, and a runaway file only kills its own capped child, not the whole server.
   private async runInvoiceFileWorker(
     file: UploadedInvoiceFile,
     opts: FilterMergeOptions,
@@ -242,12 +242,33 @@ export class ReconcileService {
   ): Promise<InvoiceWorkerData> {
     const isTs = __filename.endsWith('.ts');
     const workerPath = path.join(__dirname, 'workers', isTs ? 'invoice-file-worker.ts' : 'invoice-file-worker.js');
-    const execArgv = isTs ? ['--require', 'tsx/cjs'] : ['--max-old-space-size=1024'];
+    // Cap sized from measurement, not guesswork: a 28.6MB/500k-row file with a realistic
+    // Service/Other-heavy mix peaked at ~1.4GB RSS in the child (most of it the filtered *output*
+    // rows accumulating before being sent back, not the read itself) — 1024MB would have killed
+    // that exact file, so this leaves real headroom instead of a guessed number.
+    const execArgv = isTs ? ['--require', 'tsx/cjs'] : ['--max-old-space-size=2048'];
+
+    // Exit codes a crashed child commonly reports, so the user sees "likely ran out of memory"
+    // instead of a bare number. 134 = SIGABRT (V8's own "JS heap out of memory" fatal abort,
+    // which is what a child hitting --max-old-space-size raises); 137 = SIGKILL (OS OOM killer).
+    const OOM_EXIT_CODES = new Set([134, 137]);
 
     let child: ChildProcess | undefined;
+    let stderrTail = '';
     try {
       return await new Promise<InvoiceWorkerData>((resolve, reject) => {
         child = fork(workerPath, [], { execArgv, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
+
+        // Forward the child's stdout/stderr into this process's own console — otherwise a crash
+        // inside the child (e.g. V8's "FATAL ERROR: JavaScript heap out of memory" dump) is
+        // completely invisible in the dev/server logs.
+        const logPrefix = `[reconcile-worker:${file.originalName}]`;
+        child.stdout?.on('data', (buf: Buffer) => process.stdout.write(`${logPrefix} ${buf}`));
+        child.stderr?.on('data', (buf: Buffer) => {
+          const text = buf.toString();
+          stderrTail = (stderrTail + text).slice(-2000);
+          process.stderr.write(`${logPrefix} ${text}`);
+        });
 
         const timeout = setTimeout(() => {
           child?.kill();
@@ -272,8 +293,13 @@ export class ReconcileService {
         child.on('exit', code => {
           clearTimeout(timeout);
           if (code !== 0 && code !== null) {
+            const reason = OOM_EXIT_CODES.has(code)
+              ? ' — có thể do file quá lớn/nhiều dòng, tiến trình xử lý bị hết bộ nhớ.'
+              : stderrTail
+                ? ` — chi tiết: ${stderrTail.slice(-300)}`
+                : '';
             reject(new UnprocessableEntityException(
-              `Xử lý file "${file.originalName}" thất bại (tiến trình con thoát với mã lỗi ${code}).`,
+              `Xử lý file "${file.originalName}" thất bại (tiến trình con thoát với mã lỗi ${code})${reason}`,
             ));
           }
         });

@@ -37,7 +37,9 @@
     "multer": "^1.4.5-lts.1",
     "reflect-metadata": "^0.1.13",
     "nodemailer": "^6.9.14",
-    "rxjs": "^7.8.0"
+    "rxjs": "^7.8.0",
+    "saxes": "^5.0.1",
+    "unzipper": "^0.10.14"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",
@@ -46,6 +48,7 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^20",
     "@types/nodemailer": "^6.4.17",
+    "@types/unzipper": "^0.10.11",
     "prisma": "^5.22.0",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.0.0",
