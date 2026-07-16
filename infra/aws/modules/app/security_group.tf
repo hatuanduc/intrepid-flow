@@ -1,6 +1,6 @@
 resource "aws_security_group" "app" {
   name        = "${local.name_prefix}-sg"
-  description = "Intrepid Flow ${var.env} — HTTP/HTTPS only (SSH removed, use SSM Session Manager)"
+  description = "Intrepid Flow ${var.env} - HTTP/HTTPS only (SSH removed, use SSM Session Manager)"
   vpc_id      = var.vpc_id
 
   ingress {
