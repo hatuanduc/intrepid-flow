@@ -4,8 +4,9 @@ WORKDIR /app
 # Prisma's engine needs the real openssl binary to detect libssl/version at
 # runtime — Alpine's base image doesn't ship one, and without it Prisma
 # silently guesses wrong (defaults to openssl-1.1.x) and the engine fails to
-# start ("Could not parse schema engine response").
-RUN apk add --no-cache openssl
+# start ("Could not parse schema engine response"). curl is needed by the
+# container's own HEALTHCHECK (docker-compose.prod.yml) — also absent on Alpine.
+RUN apk add --no-cache openssl curl
 
 RUN npm install -g pnpm@9
 

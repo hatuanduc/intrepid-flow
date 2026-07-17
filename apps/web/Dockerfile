@@ -1,6 +1,10 @@
 FROM node:22-alpine
 WORKDIR /app
 
+# curl is needed by the container's own HEALTHCHECK (docker-compose.prod.yml) —
+# absent on Alpine by default.
+RUN apk add --no-cache curl
+
 RUN npm install -g pnpm@9
 
 # NEXT_PUBLIC_* vars are baked into the bundle at build time — must be build args
