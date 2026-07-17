@@ -323,6 +323,15 @@ export class BankSyncService {
           throw new Error('JOB_CANCELLED');
         }
 
+        // HSBC data for this range is already settled and previously confirmed —
+        // computeDateRange() never lets dateTo reach today, so a stored lastSyncedTo
+        // covering it means nothing has or will change. Skip re-driving the whole
+        // Playwright flow (account switch, date filter, export) for nothing.
+        if (account.lastSyncedTo && account.lastSyncedTo.getTime() >= dateTo.getTime()) {
+          await this.log(jobId, `  → ${account.accountNumber}: already synced through ${formatDateLabel(account.lastSyncedTo)}, skipping.`, 'bank_sync');
+          continue;
+        }
+
         await this.log(jobId, `  → Fetching ${account.accountNumber}...`, 'bank_sync');
 
         let excelBuffer: Buffer | null;
@@ -349,6 +358,7 @@ export class BankSyncService {
         if (excelBuffer === null) {
           await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
+          await this.markSyncedThrough(account.id, dateTo);
           continue;
         }
 
@@ -370,6 +380,7 @@ export class BankSyncService {
 
         if (rows.length === 0) {
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', rowsDownloaded: 0, sheetsSyncStatus: 'no_data' });
+          await this.markSyncedThrough(account.id, dateTo);
           continue;
         }
 
@@ -381,6 +392,7 @@ export class BankSyncService {
           rowsInserted: inserted,
           rowsDuplicate: duplicates,
         });
+        await this.markSyncedThrough(account.id, dateTo);
 
         // Include the account even with 0 new rows if it has never been synced to
         // GSheets successfully — otherwise a fixed config/retry would never get a
@@ -672,6 +684,13 @@ export class BankSyncService {
   private async isJobCancelled(jobId: number): Promise<boolean> {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true } });
     return job?.status === JOB_STATUS.CANCELLED;
+  }
+
+  // Only called after a confirmed-complete fetch (data stored, or genuinely no
+  // transactions in range) — never on a download/validation failure, since we don't
+  // want a future run to skip a range we never actually got a confirmed result for.
+  private async markSyncedThrough(accountId: number, to: Date): Promise<void> {
+    await this.prisma.bankAccount.update({ where: { id: accountId }, data: { lastSyncedTo: to } });
   }
 
   private async log(

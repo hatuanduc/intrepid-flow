@@ -81,13 +81,16 @@ export class ReconcileService {
 
     const totals: Totals = { retailSales: 0, retailTax: 0, serviceSales: 0, serviceTax: 0 };
     const aggregates = new Map<string, AggregateEntry>();
-    const detailRows: CellValue[][] = [];
     let detailHeader: CellValue[] | null = null;
     let salesColOut = 0;
     let taxColOut = 0;
 
-    // Each file is processed in its own short-lived child process (see runInvoiceFileWorker) —
-    // sequentially, not in parallel, to keep peak memory bounded to ~one file at a time.
+    // Pass 1: totals + aggregates only (bounded by unique customer×type combos, not row count).
+    // Each file's detailRows are read here but discarded immediately — they're re-read in pass 2
+    // below, once totals are final. This trades re-reading each file twice for never holding more
+    // than one file's detail rows in memory at a time: the Detail sheet's "TOTAL" rows are written
+    // before its data rows (see beginOutputWorkbook), so those totals must be final before any
+    // detail row is streamed out, which rules out writing detail rows incrementally in this loop.
     for (const file of invoiceFiles) {
       const result = await this.runInvoiceFileWorker(file, opts, masterMap);
 
@@ -109,22 +112,40 @@ export class ReconcileService {
         existing.tax += entry.tax;
         aggregates.set(key, existing);
       }
-
-      for (const row of result.detailRows) {
-        detailRows.push(row.map(deserializeCellValue));
-      }
     }
 
     const outPath = path.join(os.tmpdir(), `reconcile-out-${randomUUID()}.xlsx`);
-    await this.buildOutputWorkbook(outPath, {
+    const { workbook, detail } = await this.beginOutputWorkbook(outPath, {
       detailHeader: detailHeader ?? [],
-      detailRows,
       salesColOut,
       taxColOut,
       totals,
       aggregates: [...aggregates.values()],
       opts,
     });
+
+    // Pass 2: re-read each file and stream its detail rows straight into the Detail sheet, one
+    // file at a time — each file's rows are written and discarded before the next file is read,
+    // so peak memory here is bounded by a single file's rows, not the whole batch.
+    let outRowNum = 5;
+    for (const file of invoiceFiles) {
+      const result = await this.runInvoiceFileWorker(file, opts, masterMap);
+
+      for (const serializedRow of result.detailRows) {
+        const values = serializedRow.map(deserializeCellValue);
+        const row = detail.getRow(outRowNum);
+        values.forEach((v, idx) => {
+          if (idx > 0) row.getCell(idx).value = v;
+        });
+        if (salesColOut > 0) row.getCell(salesColOut).numFmt = MONEY_FORMAT;
+        if (taxColOut > 0) row.getCell(taxColOut).numFmt = MONEY_FORMAT;
+        row.commit();
+        outRowNum++;
+      }
+    }
+
+    detail.commit();
+    await workbook.commit();
 
     return { path: outPath, filename: sanitizeOutputFileName(opts.outputFileName) };
   }
@@ -320,18 +341,22 @@ export class ReconcileService {
     }
   }
 
-  private async buildOutputWorkbook(
+  // Creates the output workbook and writes the Summary sheet + the Detail sheet's fixed header
+  // rows (TOTAL Retail/Service + column header) — everything that needs final totals/aggregates
+  // but comes *before* the Detail sheet's data rows in the file. Returns the still-open workbook
+  // and Detail worksheet so the caller can stream data rows into it (see runFilterMerge's pass 2)
+  // without ever holding the full batch's detail rows in memory at once.
+  private async beginOutputWorkbook(
     outPath: string,
     data: {
       detailHeader: CellValue[];
-      detailRows: CellValue[][];
       salesColOut: number;
       taxColOut: number;
       totals: Totals;
       aggregates: AggregateEntry[];
       opts: FilterMergeOptions;
     },
-  ): Promise<void> {
+  ): Promise<{ workbook: ExcelJS.stream.xlsx.WorkbookWriter; detail: ExcelJS.Worksheet }> {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
       filename: outPath,
       useStyles: true,
@@ -421,19 +446,6 @@ export class ReconcileService {
     detailHeaderRow.font = { bold: true };
     detailHeaderRow.commit();
 
-    let outRowNum = 5;
-    for (const values of data.detailRows) {
-      const row = detail.getRow(outRowNum);
-      values.forEach((v, idx) => {
-        if (idx > 0) row.getCell(idx).value = v;
-      });
-      if (data.salesColOut > 0) row.getCell(data.salesColOut).numFmt = MONEY_FORMAT;
-      if (data.taxColOut > 0) row.getCell(data.taxColOut).numFmt = MONEY_FORMAT;
-      row.commit();
-      outRowNum++;
-    }
-
-    detail.commit();
-    await workbook.commit();
+    return { workbook, detail };
   }
 }

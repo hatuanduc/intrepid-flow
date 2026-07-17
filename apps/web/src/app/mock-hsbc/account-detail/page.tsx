@@ -6,7 +6,12 @@ export default function MockAccountDetailPage() {
   const [selectedId, setSelectedId] = useState(MOCK_ACCOUNTS[0].id);
   const [switcherOpen, setSwitcherOpen] = useState(false);
   const [switcherSearch, setSwitcherSearch] = useState('');
-  const [dateFilterOpen, setDateFilterOpen] = useState(false);
+  // "Filter / search" top-level toggle, and "Date range" nested inside it — mirrors
+  // the real HSBCnet page's #transactions-filters-panel-trigger / chevron structure
+  // (verified against the live site; the worker's Playwright automation drives this
+  // exact two-level flow, not a single combined widget).
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [dateRangeOpen, setDateRangeOpen] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [appliedFrom, setAppliedFrom] = useState('');
@@ -52,14 +57,20 @@ export default function MockAccountDetailPage() {
     setToDate('');
     setAppliedFrom('');
     setAppliedTo('');
-    setDateFilterOpen(false);
+    setFiltersOpen(false);
+    setDateRangeOpen(false);
     setExportOpen(false);
   }
 
-  function applyFilter() {
-    setAppliedFrom(fromDate);
-    setAppliedTo(toDate);
-    setDateFilterOpen(false);
+  // Real HSBCnet applies the date filter automatically once both fields hold a value
+  // (confirmed live — typing "to" fires the search, no separate Apply click) — no
+  // Apply button exists in the actual Date range widget, so the mock doesn't render one.
+  function handleToDateChange(value: string) {
+    setToDate(value);
+    if (fromDate && value) {
+      setAppliedFrom(fromDate);
+      setAppliedTo(value);
+    }
   }
 
   const showingLabel = appliedFrom && appliedTo
@@ -158,46 +169,66 @@ export default function MockAccountDetailPage() {
       <main style={{ padding: 24 }}>
         <div style={{ background: '#fff', border: '1px solid #ddd', borderRadius: 4, padding: 20 }}>
 
-          {/* Date range filter trigger — always visible */}
-          <div style={{ marginBottom: 16, fontSize: 13, color: '#555' }}>
-            Showing:{' '}
-            <span
-              id="showing_actual_range_quick_link"
-              onClick={() => setDateFilterOpen(true)}
-              style={{ color: '#0066cc', cursor: 'pointer', textDecoration: 'underline' }}
-            >
-              {showingLabel}
-            </span>
+          {/* Showing summary — informational only, no longer a functional trigger
+              (real HSBCnet uses "Filter / search" below, not this line, to open the panel) */}
+          <div style={{ marginBottom: 12, fontSize: 13, color: '#555' }}>
+            Showing: <strong>{showingLabel}</strong>
           </div>
 
-          {/* Date filter widget */}
-          {dateFilterOpen && (
-            <div id="rangeDate" style={{ background: '#f9f9f9', border: '1px solid #ddd', borderRadius: 4, padding: 16, marginBottom: 16 }}>
-              <div style={{ marginBottom: 10, fontSize: 13, fontWeight: 600, color: '#333' }}>Date range</div>
-              <div className="date-picker" style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 12 }}>
-                <input
-                  type="text"
-                  placeholder="dd/mm/yyyy"
-                  value={fromDate}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }}
-                />
-                <span style={{ color: '#888' }}>to</span>
-                <input
-                  type="text"
-                  placeholder="dd/mm/yyyy"
-                  value={toDate}
-                  onChange={(e) => setToDate(e.target.value)}
-                  style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }}
-                />
+          {/* "Filter / search" toggle — id + aria-expanded verified against the real page */}
+          <button
+            id="transactions-filters-panel-trigger"
+            aria-expanded={filtersOpen}
+            onClick={() => setFiltersOpen((v) => !v)}
+            style={{ padding: '6px 12px', background: '#fff', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, cursor: 'pointer', marginBottom: 16 }}
+          >
+            Filter / search {filtersOpen ? '▲' : '▼'}
+          </button>
+
+          {filtersOpen && (
+            <div id="transactions-filters-panel" style={{ background: '#f9f9f9', border: '1px solid #ddd', borderRadius: 4, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Date range</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 13 }}>
+                  {appliedFrom && appliedTo ? `${appliedFrom} - ${appliedTo}` : 'dd/mm/yyyy - dd/mm/yyyy'}
+                </span>
+                {/* Chevron scoped inside #transactions-filters-panel — real automation
+                    picks the first one, since "Date range" is the first field in the row. */}
+                <span
+                  data-testid="ChevronDownIcon"
+                  onClick={() => setDateRangeOpen((v) => !v)}
+                  style={{ cursor: 'pointer', color: '#555' }}
+                >
+                  {dateRangeOpen ? '▲' : '▼'}
+                </span>
               </div>
-              <input
-                className="form__control-button"
-                type="submit"
-                value="Apply"
-                onClick={applyFilter}
-                style={{ padding: '7px 20px', background: '#cc0000', color: '#fff', border: 'none', borderRadius: 3, fontSize: 13, cursor: 'pointer' }}
-              />
+
+              {dateRangeOpen && (
+                <div style={{ display: 'flex', gap: 12, marginTop: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Date from</div>
+                    <input
+                      id="dateFieldFrom-field"
+                      type="text"
+                      placeholder="dd/mm/yyyy"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }}
+                    />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 11, color: '#888', marginBottom: 4 }}>Date to</div>
+                    <input
+                      id="dateFieldTo-field"
+                      type="text"
+                      placeholder="dd/mm/yyyy"
+                      value={toDate}
+                      onChange={(e) => handleToDateChange(e.target.value)}
+                      style={{ padding: '6px 10px', border: '1px solid #ccc', borderRadius: 3, fontSize: 13, width: 120 }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

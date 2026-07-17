@@ -676,28 +676,34 @@ export function formatDate(d: Date): string {
 export function computeDateRange(mode: string, customDays: number): { from: Date; to: Date } {
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const yesterday = new Date(today);
+  yesterday.setUTCDate(today.getUTCDate() - 1);
 
   switch (mode) {
     case 'today':
       return { from: today, to: today };
 
+    // HSBC data for yesterday and earlier is final; today's can still change through
+    // the day. "last_7_days" and "custom" are both meant to backfill settled history,
+    // so their range always ends at yesterday, never today — otherwise every run would
+    // re-fetch today's still-shifting data for nothing, and each account's
+    // lastSyncedTo (which future runs use to skip re-downloading) would never
+    // stabilize past "today" from one run to the next.
     case 'last_7_days': {
-      const from = new Date(today);
-      from.setUTCDate(today.getUTCDate() - 6);
-      return { from, to: today };
+      const from = new Date(yesterday);
+      from.setUTCDate(yesterday.getUTCDate() - 6);
+      return { from, to: yesterday };
     }
 
     case 'custom': {
-      const from = new Date(today);
-      from.setUTCDate(today.getUTCDate() - (customDays > 0 ? customDays : 1));
-      return { from, to: today };
+      const days = customDays > 0 ? customDays : 1;
+      const from = new Date(yesterday);
+      from.setUTCDate(yesterday.getUTCDate() - (days - 1));
+      return { from, to: yesterday };
     }
 
     case 'yesterday':
-    default: {
-      const yesterday = new Date(today);
-      yesterday.setUTCDate(today.getUTCDate() - 1);
+    default:
       return { from: yesterday, to: yesterday };
-    }
   }
 }

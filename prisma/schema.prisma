@@ -122,8 +122,12 @@ model BankAccount {
   bankName       String   @map("bank_name")
   currency       String
   accountCode    String   @map("account_code")
-  isActive       Boolean  @default(true) @map("is_active")
-  createdAt      DateTime @default(now()) @map("created_at")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  // Latest "to" date this account has been successfully synced through — HSBC data
+  // for that date and earlier is final and won't change, so a future run whose
+  // range doesn't extend past this date can skip re-downloading it entirely.
+  lastSyncedTo   DateTime? @map("last_synced_to")
 
   accountNameRef  BankAccountName      @relation(fields: [accountNameId], references: [id])
   syncJobAccounts BankSyncJobAccount[]
