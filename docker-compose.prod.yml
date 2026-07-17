@@ -45,7 +45,10 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    command: ["pnpm", "db:migrate:deploy"]
+    # No migration history exists yet in this project (local dev has always used
+    # `db push`) — mirror that here instead of `migrate deploy`, which is a no-op
+    # without migration files and left prod/dev with an empty schema.
+    command: ["pnpm", "db:push"]
     environment:
       DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
       # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)
