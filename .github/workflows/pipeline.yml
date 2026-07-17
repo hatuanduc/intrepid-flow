@@ -15,6 +15,7 @@ on:
       - 'infra/aws/environments/**'
       - 'infra/aws/modules/**'
       - 'infra/aws/scripts/**'
+      - '.github/workflows/pipeline.yml'
 
 concurrency:
   group: pipeline-${{ github.ref_name }}
