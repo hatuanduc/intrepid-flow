@@ -27,13 +27,17 @@ const SELECTORS = {
   switcherCompany:    'p.switcher-option--number',
   switcherAccount:    'p.switcher-option--account',
 
-  // Transaction list / filter
-  specifyDateRange: 'span#showing_actual_range_quick_link',
-  dateRangeWidget:  '[id*="rangeDate"]',
-  dateFromInput:    '#dateFieldFrom-field',
-  dateToInput:      '#dateFieldTo-field',
-  applyBtn:         'input.form__control-button[type="submit"]',
-  noTransactions:   'p.table__error-message',
+  // Transaction list / filter — verified end-to-end against the real page (console
+  // script, run repeatedly): open "Filter / search" (only if not already expanded,
+  // since it's a toggle), then open "Date range" via the first chevron inside that
+  // panel (Date range is the first field in the row, before Transaction type), then
+  // fill Date from/to. No other intermediate click is needed or used.
+  filtersPanelTrigger: '#transactions-filters-panel-trigger',
+  filtersPanel:        '#transactions-filters-panel',
+  dateFromInput:       '#dateFieldFrom-field',
+  dateToInput:         '#dateFieldTo-field',
+  dateRangeChevron:    '[data-testid="ChevronDownIcon"]',
+  noTransactions:      'p.table__error-message',
 
   // Export dropdown
   exportTrigger: 'button#export-dropdown-trigger',
@@ -336,9 +340,25 @@ export class PlaywrightService {
    * Switch to the given account via "Change account", apply date range filter,
    * and download the Excel export. Returns null if no transactions found.
    */
-  async downloadStatement(accountNumber: string, dateFrom: Date, dateTo: Date): Promise<Buffer | null> {
+  async downloadStatement(
+    accountNumber: string,
+    dateFrom: Date,
+    dateTo: Date,
+    shouldCancel?: () => Promise<boolean>,
+  ): Promise<Buffer | null> {
     const page = this.requirePage();
     const ctx = this.requireContext();
+
+    // downloadStatement() itself can take 30-60+ seconds across its several steps —
+    // the caller's own cancellation check only runs BETWEEN accounts, so without this,
+    // a user cancelling mid-account has to wait for the whole thing to finish (and the
+    // job then moves on to the NEXT account before it ever notices). Checking at each
+    // step boundary here lets a cancellation take effect within seconds instead.
+    async function checkCancelled() {
+      if (shouldCancel && await shouldCancel()) throw new Error('JOB_CANCELLED');
+    }
+
+    await checkCancelled();
 
     // ── Step 1: Confirm we're on account-detail ───────────────────────────────
     // Switching accounts never leaves this page — it's all done via the "Change
@@ -377,50 +397,59 @@ export class PlaywrightService {
     }
     await firstResult.click();
     this.logger.log(`${accountNumber}: switcher item clicked — waiting for page to update`);
+    await checkCancelled();
 
-    // ── Step 2: Open date filter ──────────────────────────────────────────────
-    // "Specify date range" is required — without it fillDateRange() has nothing real
-    // to type into and falls back to blind keyboard input, which HSBC rejects (Export
-    // stays disabled without a valid date range). Fail loudly instead of continuing.
-    const specifyLink = page.locator(SELECTORS.specifyDateRange);
-    const specifyLinkVisible = await specifyLink.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
-    if (!specifyLinkVisible) {
-      this.logger.error(`"Specify date range" link not found — selector: "${SELECTORS.specifyDateRange}", URL: ${page.url()}`);
+    // ── Step 2: Open "Filter / search" panel (only if not already open) ──────
+    // Verified end-to-end against the real page via a console script run repeatedly:
+    // "Filter / search" is a toggle (aria-expanded) — only click it if it isn't
+    // already expanded, since a redundant click would close it.
+    const filterTrigger = page.locator(SELECTORS.filtersPanelTrigger);
+    const filterTriggerVisible = await filterTrigger.waitFor({ state: 'visible', timeout: 10_000 }).then(() => true).catch(() => false);
+    if (!filterTriggerVisible) {
+      this.logger.error(`"Filter / search" trigger not found — selector: "${SELECTORS.filtersPanelTrigger}", URL: ${page.url()}`);
+      throw new Error('Could not find the filter panel on the HSBC page.');
+    }
+    const filterAlreadyOpen = await filterTrigger.getAttribute('aria-expanded').catch(() => null);
+    if (filterAlreadyOpen !== 'true') {
+      await filterTrigger.click({ force: true }).catch(() => {});
+    }
+    const filtersPanel = page.locator(SELECTORS.filtersPanel);
+    const filtersPanelVisible = await filtersPanel.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+    if (!filtersPanelVisible) {
+      this.logger.error(`[${accountNumber}] "Filter / search" panel did not open — URL: ${page.url()}`);
+      throw new Error('Could not find the filter panel on the HSBC page.');
+    }
+
+    // ── Step 3: Open "Date range" (chevron scoped inside the filters panel) ───
+    // "Date range" is the first field in the filter row (before Transaction type),
+    // so the first chevron inside the panel belongs to it. Retries verify the real
+    // outcome (the From field becoming visible) rather than trusting the click alone.
+    const dateRangeChevron = filtersPanel.locator(SELECTORS.dateRangeChevron).first();
+    const fromFieldLoc = page.locator(SELECTORS.dateFromInput);
+    let panelOpen = await fromFieldLoc.waitFor({ state: 'visible', timeout: 500 }).then(() => true).catch(() => false);
+    for (let attempt = 1; attempt <= 3 && !panelOpen; attempt++) {
+      await checkCancelled();
+      try {
+        await dateRangeChevron.click({ timeout: 5_000, force: true });
+      } catch (err) {
+        this.logger.warn(`"Date range" chevron click failed (attempt ${attempt}/3) — ${(err as Error).message.split('\n')[0]}`);
+      }
+      panelOpen = await fromFieldLoc.waitFor({ state: 'visible', timeout: 2_500 }).then(() => true).catch(() => false);
+    }
+    if (!panelOpen) {
+      this.logger.error(`[${accountNumber}] "Date range" did not open after 3 attempts — URL: ${page.url()}`);
       throw new Error('Could not find the date range option on the HSBC page.');
     }
-    try {
-      await this.clickWithRetry(specifyLink, 'Specify date range link', 3);
-    } catch (err) {
-      this.logger.error(`[${accountNumber}] "Specify date range" click failed — ${(err as Error).message}`);
-      throw new Error('Could not find the date range option on the HSBC page.');
-    }
-    await page.waitForTimeout(400);
 
-    // Some HSBC layouts show an extra combobox that must be clicked to reveal the
-    // From/To inputs — but the current layout reveals them directly after clicking
-    // "Specify date range" above, so this is best-effort, not required.
-    const rangeWidget = await page.waitForSelector(SELECTORS.dateRangeWidget, { timeout: 3_000 }).catch(() => null);
-    if (rangeWidget) {
-      await rangeWidget.click();
-      await page.waitForTimeout(400);
-    }
+    // ── Step 4: Fill in dates ─────────────────────────────────────────────────
+    await this.fillDateRange(page, dateFrom, dateTo, shouldCancel);
 
-    // ── Step 3: Fill in dates ─────────────────────────────────────────────────
-    await this.fillDateRange(page, dateFrom, dateTo);
-
-    // ── Step 4: Wait for the auto-triggered search ────────────────────────────
-    // Typing the "to" date fires HSBC's own search — no separate Apply click needed.
-    // The generic "Apply" button (applyBtn) belongs to the Amount range filter, not
-    // the date range, so it's only clicked here as a best-effort fallback in case a
-    // future layout variant still requires it.
+    // ── Step 5: Wait for the auto-triggered search ────────────────────────────
+    // Typing the "to" date fires HSBC's own search — no separate Apply click needed
+    // (verified: the console script never clicks anything else and the table updates).
     await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
-    const applyBtn = await page.waitForSelector(SELECTORS.applyBtn, { timeout: 2_000 }).catch(() => null);
-    if (applyBtn) {
-      await applyBtn.click();
-      await page.waitForLoadState('load', { timeout: 20_000 }).catch(() => {});
-    }
 
-    // ── Step 5: Check for empty results ──────────────────────────────────────
+    // ── Step 6: Check for empty results ──────────────────────────────────────
     const noTxnEl = await page.$(SELECTORS.noTransactions);
     if (noTxnEl) {
       const msg = (await noTxnEl.textContent())?.trim() ?? 'No transactions';
@@ -428,20 +457,34 @@ export class PlaywrightService {
       return null;
     }
 
-    // ── Step 6: Export → Excel ────────────────────────────────────────────────
-    try {
-      await this.clickWithRetry(page.locator(SELECTORS.exportTrigger), 'Export button', 3);
-    } catch (err) {
-      // Playwright's own error includes its full actionability call log (dozens of
-      // lines) — useful for us, meaningless and alarming to an end user reading the
-      // job log. Full detail → app log only; the thrown message is what surfaces in
-      // the UI, so keep it short and in plain business terms.
-      this.logger.error(`[${accountNumber}] Export button click failed — ${(err as Error).message}`);
+    await checkCancelled();
+
+    // ── Step 7: Export → Excel ────────────────────────────────────────────────
+    // The Export button also toggles a dropdown open/closed (aria-haspopup="listbox",
+    // aria-expanded) — same failure mode as "Specify date range": clickWithRetry()
+    // blindly retrying on any Playwright-level click timeout can close a dropdown
+    // that already opened, if the click itself succeeded but Playwright's own
+    // post-click stability wait timed out for an unrelated reason. Verify the actual
+    // outcome (the Excel option becoming visible) between attempts instead.
+    const exportTriggerLoc = page.locator(SELECTORS.exportTrigger);
+    const excelBtn = page.locator(SELECTORS.excelOption).filter({ hasText: 'Excel' }).first();
+    let exportOpen = false;
+    for (let attempt = 1; attempt <= 3 && !exportOpen; attempt++) {
+      await checkCancelled();
+      try {
+        await exportTriggerLoc.click({ timeout: 5_000, force: true });
+      } catch (err) {
+        // Playwright's own error includes its full actionability call log (dozens of
+        // lines) — useful for us, meaningless and alarming to an end user reading the
+        // job log. Full detail → app log only.
+        this.logger.warn(`Export button click failed (attempt ${attempt}/3) — ${(err as Error).message.split('\n')[0]}`);
+      }
+      exportOpen = await excelBtn.waitFor({ state: 'visible', timeout: 2_500 }).then(() => true).catch(() => false);
+    }
+    if (!exportOpen) {
+      this.logger.error(`[${accountNumber}] Export dropdown did not open after 3 attempts — URL: ${page.url()}`);
       throw new Error(`Could not find or click the Export button for ${accountNumber} on the HSBC page.`);
     }
-    await page.waitForTimeout(300);
-
-    const excelBtn = page.locator(SELECTORS.excelOption).filter({ hasText: 'Excel' }).first();
 
     // Set up the download listener BEFORE clicking to avoid a race condition (localhost returns the file very fast).
     // Handles both cases: download on the current tab (same-tab) or in a new tab (target="_blank").
@@ -454,7 +497,7 @@ export class PlaywrightService {
     });
 
     try {
-      await this.clickWithRetry(excelBtn, 'Excel export option', 3);
+      await this.clickWithRetry(excelBtn, 'Excel export option', 3, 5_000, shouldCancel);
     } catch (err) {
       this.logger.error(`[${accountNumber}] Excel option click failed — ${(err as Error).message}`);
       throw new Error(`Could not find or click the Excel export option for ${accountNumber} on the HSBC page.`);
@@ -481,6 +524,7 @@ export class PlaywrightService {
     page: import('playwright').Page,
     dateFrom: Date,
     dateTo: Date,
+    shouldCancel?: () => Promise<boolean>,
   ): Promise<void> {
     const fromStr = formatDate(dateFrom);
     const toStr = formatDate(dateTo);
@@ -490,11 +534,22 @@ export class PlaywrightService {
     // sometimes swallow its first click while the widget is mid-re-render, silently
     // leaving the field empty with no error; verifying + retrying catches that
     // instead of continuing on to a confusing failure several steps later.
+    //
+    // The existence check below WAITS for each field (up to 8s) rather than using
+    // Locator.count(), which resolves instantly against whatever's in the DOM at
+    // that exact moment. In headless mode (slowMo: 0 — see init()), the panel can
+    // still be mid-render right when this runs; a plain .count() check would read
+    // 0 in that split second and silently fall through every strategy below,
+    // landing on Strategy 4's blind keyboard input — which throws nothing and
+    // "succeeds" instantly without typing into anything real. Waiting here closes
+    // that race instead of masking it.
     const fromInput = page.locator(SELECTORS.dateFromInput);
     const toInput = page.locator(SELECTORS.dateToInput);
-    if (await fromInput.count() > 0 && await toInput.count() > 0) {
-      await this.fillAndVerify(fromInput, fromStr, 'Date from');
-      await this.fillAndVerify(toInput, toStr, 'Date to');
+    const fromVisible = await fromInput.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false);
+    const toVisible = fromVisible && await toInput.waitFor({ state: 'visible', timeout: 8_000 }).then(() => true).catch(() => false);
+    if (fromVisible && toVisible) {
+      await this.fillAndVerify(fromInput, fromStr, 'Date from', 3, shouldCancel);
+      await this.fillAndVerify(toInput, toStr, 'Date to', 3, shouldCancel);
       return;
     }
 
@@ -520,31 +575,42 @@ export class PlaywrightService {
       return;
     }
 
-    // Strategy 4: keyboard type into focused widget after click
-    await page.keyboard.type(fromStr);
-    await page.keyboard.press('Tab');
-    await page.keyboard.type(toStr);
-    await page.keyboard.press('Tab');
+    // Strategies 1-3 all use verified/known selectors — if none of them matched,
+    // blindly typing into "whatever currently has focus" has no chance of landing
+    // on the right field and would silently look like success (no error, no wait).
+    // That's exactly what masked the real bug once already (see fillDateRange()'s
+    // comment above) — fail loudly instead of guessing.
+    throw new Error('Could not find the date range input fields on the HSBC page (tried all known selectors).');
   }
 
   /**
-   * Click, then fill, then read the value back — HSBC's widgets have occasionally
-   * swallowed a click while mid-re-render, leaving a field silently empty with no
-   * thrown error. Retries with fresh clicks if the value didn't stick, and fails
-   * loudly with the actual-vs-expected value if it still doesn't after all attempts.
+   * Set the value via the native input-value setter + input/change events, read it
+   * back, and retry if it didn't stick. This bypasses Playwright's own .fill(), which
+   * refuses to act until the element passes its actionability checks (visible,
+   * enabled, stable) — checks this specific widget intermittently fails even though
+   * the field is genuinely there and editable (confirmed: the exact same native-
+   * setter approach, run directly in the browser console against this same page,
+   * worked reliably every time). Mirrors the pattern already proven manually instead
+   * of continuing to fight Playwright's stricter actionability model.
    */
   private async fillAndVerify(
     locator: import('playwright').Locator,
     value: string,
     label: string,
     attempts = 3,
+    shouldCancel?: () => Promise<boolean>,
   ): Promise<void> {
     let lastActual = '';
     for (let attempt = 1; attempt <= attempts; attempt++) {
-      await locator.click();
-      await locator.click({ clickCount: 3 });
-      await locator.fill(value);
-      lastActual = await locator.inputValue().catch(() => '');
+      if (shouldCancel && await shouldCancel()) throw new Error('JOB_CANCELLED');
+      lastActual = await locator.evaluate((el: HTMLInputElement, val: string) => {
+        const proto = Object.getPrototypeOf(el);
+        const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+        desc?.set?.call(el, val);
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        return el.value;
+      }, value).catch(() => '');
       if (lastActual === value) return;
       this.logger.warn(`${label}: fill did not stick (attempt ${attempt}/${attempts}) — expected "${value}", got "${lastActual}"`);
       await new Promise(r => setTimeout(r, 400));
@@ -557,17 +623,26 @@ export class PlaywrightService {
    * slower than the script runs (element exists but isn't yet interactive/stable).
    * Fails loudly with a clear label after exhausting all attempts, instead of
    * surfacing Playwright's raw actionability-check error to the caller.
+   *
+   * force: true skips Playwright's own actionability checks (visible/stable/not
+   * obscured) — real production logs showed this widget's Export toggle timing out
+   * on those checks (plain "Timeout 5000ms exceeded", no further detail) even though
+   * a raw DOM .click() on the same element, run directly in the browser console
+   * against this same page, worked immediately every time. force skips straight to
+   * the actual click instead of waiting out a check that keeps failing regardless.
    */
   private async clickWithRetry(
     locator: import('playwright').Locator,
     label: string,
     attempts = 3,
     timeoutMs = 5_000,
+    shouldCancel?: () => Promise<boolean>,
   ): Promise<void> {
     let lastErr: unknown;
     for (let attempt = 1; attempt <= attempts; attempt++) {
+      if (shouldCancel && await shouldCancel()) throw new Error('JOB_CANCELLED');
       try {
-        await locator.click({ timeout: timeoutMs });
+        await locator.click({ timeout: timeoutMs, force: true });
         return;
       } catch (err) {
         lastErr = err;

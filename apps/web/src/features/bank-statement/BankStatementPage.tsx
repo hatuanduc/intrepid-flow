@@ -212,10 +212,10 @@ export default function BankStatementPage() {
             <div>
               <h1 className={s.pageTitle}>{t('bankStatement.title')}</h1>
               {jobs[0] && (
-                <p className={s.pageSubtitle}>
+                <div className={s.pageSubtitle}>
                   {t('bankStatement.lastRun')}: {formatDateTime(jobs[0].createdAt)} · <StatusBadge status={jobs[0].status} />
                   <SyncMeter stats={jobs[0].stats} />
-                </p>
+                </div>
               )}
             </div>
             {canRun && (

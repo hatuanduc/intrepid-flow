@@ -32,11 +32,27 @@ usermod -aG docker ubuntu
 systemctl enable docker
 systemctl start docker
 
-# ── 3. App directory ──────────────────────────────────────────────────────
+# ── 3. Swap (safety net for occasional memory-heavy jobs, e.g. reconcile) ──
+# t4g.medium only has 4GB RAM; reconcile's per-file child process can peak
+# at 2-3GB for large invoice files. Swap absorbs that rare spike instead of
+# the OOM killer taking down other containers (web/api/worker/db).
+if [ ! -f /swapfile ]; then
+  fallocate -l 4G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo "/swapfile none swap sw 0 0" >> /etc/fstab
+  # Prefer RAM over swap — only fall back to swap under real memory pressure,
+  # not proactively, since swap on EBS is far slower than RAM.
+  sysctl -w vm.swappiness=10
+  echo "vm.swappiness=10" >> /etc/sysctl.conf
+fi
+
+# ── 4. App directory ───────────────────────────────────────────────────────
 mkdir -p /app
 chown ubuntu:ubuntu /app
 
-# ── 4. Nginx ──────────────────────────────────────────────────────────────
+# ── 5. Nginx ──────────────────────────────────────────────────────────────
 rm -f /etc/nginx/sites-enabled/default
 systemctl enable nginx
 systemctl start nginx

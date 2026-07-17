@@ -318,8 +318,7 @@ export class BankSyncService {
       await this.log(jobId, `${groupName} (${pl(groupAccounts.length, 'account number')}):`, 'bank_sync');
 
       for (const account of groupAccounts) {
-        const cancelCheck = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true } });
-        if (cancelCheck?.status === JOB_STATUS.CANCELLED) {
+        if (await this.isJobCancelled(jobId)) {
           await this.log(jobId, 'Job cancelled by user.', 'bank_sync', 'warn');
           throw new Error('JOB_CANCELLED');
         }
@@ -328,9 +327,20 @@ export class BankSyncService {
 
         let excelBuffer: Buffer | null;
         try {
-          excelBuffer = await this.playwright.downloadStatement(account.accountNumber, dateFrom, dateTo);
+          // Passing isJobCancelled lets downloadStatement() notice a cancellation
+          // *during* its own multi-step flow (30-60+s across account switch, date
+          // filter, export) instead of only ever being checked between accounts —
+          // previously a cancel mid-account meant waiting for that whole account to
+          // finish (and often several more after it) before it took effect.
+          excelBuffer = await this.playwright.downloadStatement(
+            account.accountNumber, dateFrom, dateTo, () => this.isJobCancelled(jobId),
+          );
         } catch (err) {
           const msg = (err as Error).message ?? 'Download error';
+          if (msg === 'JOB_CANCELLED') {
+            await this.log(jobId, 'Job cancelled by user.', 'bank_sync', 'warn');
+            throw err; // propagate — this must stop the whole job, not just this account
+          }
           await this.log(jobId, `  → ${account.accountNumber}: fetch failed — ${msg} [${FAIL_REASON.DOWNLOAD_ERROR}]`, 'bank_sync', 'error');
           await this.upsertJobAccount(jobId, account.id, { status: 'failed', errorMessage: msg });
           continue;
@@ -657,6 +667,11 @@ export class BankSyncService {
     });
     if (message) await this.log(jobId, message);
     this.logger.log(`[${jobId}] → ${status}`);
+  }
+
+  private async isJobCancelled(jobId: number): Promise<boolean> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true } });
+    return job?.status === JOB_STATUS.CANCELLED;
   }
 
   private async log(
