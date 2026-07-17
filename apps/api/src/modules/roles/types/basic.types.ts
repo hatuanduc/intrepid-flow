@@ -1,5 +1,5 @@
 export type RoleSummary = {
-  id: string;
+  id: number;
   key: string;
   name: string;
 };

@@ -1,0 +1,158 @@
+x-log-opts: &log-opts
+  awslogs-region: ap-southeast-1
+  awslogs-group: /intrepid-flow/${APP_ENV}
+  awslogs-create-group: "true"
+
+services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: intrepid
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: intrepid_db
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intrepid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: db
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: redis
+    restart: unless-stopped
+
+  migrate:
+    image: intrepid-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    command: ["pnpm", "db:migrate:deploy"]
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: migrate
+    restart: "no"
+
+  api:
+    image: intrepid-api
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 4000
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+      APP_URL: ${APP_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      AWS_REGION: ${AWS_REGION}
+      RECONCILE_BUCKET: ${RECONCILE_BUCKET}
+      RECONCILE_LAMBDA_NAME: ${RECONCILE_LAMBDA_NAME}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: api
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: web
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_URL: ${APP_URL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    logging:
+      driver: awslogs
+      options:
+        <<: *log-opts
+        awslogs-stream: worker
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

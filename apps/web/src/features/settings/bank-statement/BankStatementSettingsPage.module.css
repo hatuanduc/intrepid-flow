@@ -74,6 +74,23 @@
 }
 .customDaysInput:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 
+/* Per-run date override — not persisted, only used to trigger a one-off run */
+.dateOverrideRow { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.dateOverrideToggle {
+  padding: 0; border: none; background: none; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: var(--color-accent); text-decoration: underline;
+}
+.dateOverrideToggle:hover { color: var(--color-accent-hover); }
+.dateOverrideLabel {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; font-weight: 500; color: var(--color-secondary);
+}
+.dateOverrideInput {
+  padding: 6px 10px; border-radius: 6px; border: 1.5px solid var(--color-border);
+  background: var(--bg-surface); font-size: 13px; color: var(--color-ink); outline: none;
+}
+.dateOverrideInput:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
+
 /* Upcoming runs */
 .nextRuns { margin-top: 16px; }
 .nextRunsLabel {
@@ -122,13 +139,40 @@
   border: none; background: var(--color-accent); color: #fff; cursor: pointer;
   white-space: nowrap;
 }
-.btnSave:hover { background: var(--color-accent-hover); }
+.btnSave:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btnSave:disabled { opacity: 0.5; cursor: not-allowed; }
 .btnCancel {
   padding: 4px 8px; font-size: 12px; font-weight: 500; border-radius: 5px;
   border: 1.5px solid var(--color-border); background: var(--bg-surface);
   color: var(--color-secondary); cursor: pointer; white-space: nowrap;
 }
-.btnCancel:hover { background: var(--bg-page); }
+.btnCancel:hover:not(:disabled) { background: var(--bg-page); }
+.btnCancel:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* View-first / edit-on-demand card (HSBCnet Username, etc.) */
+.cardHead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 20px; border-bottom: 1px solid var(--color-border);
+  background: var(--bg-table-head); min-height: 44px;
+}
+.cardTitle { font-size: 13px; font-weight: 600; color: var(--color-secondary); }
+.btnEdit {
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 12px; font-size: 12px; font-weight: 500;
+  border: 1px solid var(--color-border); border-radius: 6px;
+  background: var(--bg-surface); color: var(--color-secondary);
+  cursor: pointer; transition: background 0.15s;
+}
+.btnEdit:hover { background: var(--bg-page); color: var(--color-ink); }
+.infoRow {
+  display: flex; align-items: center; padding: 13px 20px;
+  border-bottom: 1px solid var(--color-border-light); min-height: 48px;
+}
+.infoRowLast { border-bottom: none; }
+.infoLabel { width: 160px; flex-shrink: 0; font-size: 13px; color: var(--color-muted); }
+.infoValue { flex: 1; font-size: 13px; font-weight: 500; color: var(--color-ink); }
+.infoEmpty { color: var(--color-subtle); font-weight: 400; font-style: italic; }
+.infoInput { flex: 1; display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
 
 /* Table */
 .tableWrap { background: var(--bg-surface); overflow: visible; }
@@ -223,7 +267,7 @@
 /* GSheets — per-country cards */
 .countryCardList { display: flex; flex-direction: column; gap: 10px; }
 .countryCard {
-  border: 1px solid var(--color-border); border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--color-border); border-radius: 8px;
   transition: border-color 0.15s;
 }
 .countryCardActive { border-color: #c7d2fe; }
@@ -231,8 +275,9 @@
   display: flex; align-items: center; justify-content: space-between;
   padding: 10px 16px; background: var(--bg-table-head);
   border-bottom: 1px solid transparent;
+  border-radius: 8px;
 }
-.countryCard:has(.countryCardBody) .countryCardHeader { border-bottom-color: var(--color-border); }
+.countryCard:has(.countryCardBody) .countryCardHeader { border-radius: 8px 8px 0 0; border-bottom-color: var(--color-border); }
 .countryCardActive .countryCardHeader { background: #f5f3ff; border-bottom-color: #c7d2fe; }
 .countryCardExpand {
   display: flex; align-items: center; gap: 8px; flex: 1;
@@ -282,31 +327,40 @@
 
 .fieldHint { font-size: 12px; color: var(--color-muted); margin-top: 2px; }
 
-/* Tooltip */
-.tooltipWrap { position: relative; display: inline-flex; align-items: center; margin-left: 5px; vertical-align: middle; }
-.tooltipTrigger {
-  display: inline-flex; align-items: center; justify-content: center;
-  border: none; background: none; padding: 0; cursor: pointer;
-  color: var(--color-subtle); line-height: 1;
-}
-.tooltipTrigger:hover { color: var(--color-muted); }
-.tooltipBox {
-  position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
-  background: #1a1f36; color: #e2e8f0; font-size: 12px; font-weight: 400;
-  line-height: 1.55; padding: 10px 13px; border-radius: 8px;
-  white-space: pre-wrap; width: 220px;
-  box-shadow: 0 4px 16px rgba(0,0,0,.22);
-  pointer-events: none; z-index: 100;
-}
-.tooltipBoxWide { width: 320px; }
-.tooltipBox strong { color: #fff; font-weight: 600; }
-.tooltipBox code {
-  font-family: monospace; font-size: 11px;
-  background: rgba(255,255,255,.12); padding: 1px 4px; border-radius: 3px;
-}
 .error { font-size: 13px; color: #df1b41; background: #fff0f3; border: 1px solid #fecaca; border-radius: 6px; padding: 10px 12px; }
+.inputError { border-color: #df1b41 !important; }
+.inputError:focus { border-color: #df1b41 !important; box-shadow: 0 0 0 3px rgba(223,27,65,0.10) !important; }
+.fieldError { display: block; font-size: 12px; color: #df1b41; margin-top: 4px; }
 .empty { font-size: 13px; color: var(--color-subtle); padding: 40px 0; text-align: center; }
 .successMsg { font-size: 12px; color: #0e6245; font-weight: 500; }
+
+/* Account count badge in table row */
+.accountCountBadge {
+  display: inline-flex; align-items: center;
+  font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+  background: var(--bg-subtle); color: var(--color-muted);
+}
+
+/* RightPanel — entity detail */
+.panelEntityMeta {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 16px; padding-bottom: 14px;
+  border-bottom: 1px solid var(--color-border-light);
+}
+.panelEntityCode { font-size: 12px; color: var(--color-muted); }
+.panelAccountCount {
+  margin-left: auto; font-size: 12px; font-weight: 600; color: var(--color-secondary);
+}
+
+/* Account list in panel */
+.accountNumber { font-family: monospace; font-size: 12px; color: var(--color-ink); letter-spacing: 0.02em; }
+.currencyBadge {
+  display: inline-flex; font-size: 11px; font-weight: 600;
+  padding: 2px 7px; border-radius: 4px;
+  background: #ede9fe; color: #5b21b6; font-family: monospace;
+}
+.syncDate { font-size: 12px; color: var(--color-secondary); }
+.syncNever { font-size: 12px; color: var(--color-subtle); font-style: italic; }
 
 @media (max-width: 768px) {
   .page { padding: 16px; }

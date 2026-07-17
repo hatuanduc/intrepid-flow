@@ -3,6 +3,10 @@
   max-width: 900px;
 }
 
+@media (max-width: 768px) {
+  .page { padding: 16px; }
+}
+
 .header {
   margin-bottom: 32px;
 }
@@ -54,6 +58,10 @@
   justify-content: center;
   margin-bottom: 4px;
 }
+.quickIcon svg {
+  width: 18px;
+  height: 18px;
+}
 
 .quickTitle {
   font-size: 14px;
@@ -65,4 +73,161 @@
   font-size: 13px;
   color: var(--color-muted);
   line-height: 1.5;
+}
+
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-ink);
+}
+
+.statLabel {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.section {
+  margin-bottom: 28px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-secondary);
+}
+
+.sectionLink {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-accent-active);
+  text-decoration: none;
+}
+.sectionLink:hover {
+  text-decoration: underline;
+}
+
+.activityList {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.activityRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--color-border-light);
+  text-decoration: none;
+  color: inherit;
+}
+.activityRow:last-child {
+  border-bottom: none;
+}
+.activityRow:hover {
+  background: var(--bg-hover);
+}
+
+.activityTime {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-secondary);
+}
+
+.empty {
+  font-size: 13px;
+  color: var(--color-subtle);
+  padding: 20px 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  white-space: nowrap;
+}
+.badgeSuccess { background: #d1fae5; color: #0e6245; }
+.badgeSuccess::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #059669; flex-shrink: 0; }
+.badgeError   { background: #fff0f3; color: #df1b41; }
+.badgeWarn    { background: #fef3c7; color: #92400e; }
+.badgeRunning { background: #dbeafe; color: #1e40af; }
+.badgeDefault { background: var(--bg-subtle); color: var(--color-muted); }
+
+.chartCard {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 16px 16px 4px;
+}
+
+.chartLegendLabel {
+  font-size: 12px;
+  color: var(--color-secondary);
+}
+
+.chartTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.10);
+  font-size: 12px;
+}
+
+.chartTooltipLabel {
+  font-weight: 600;
+  color: var(--color-ink);
+  margin-bottom: 2px;
+}
+
+.chartTooltipRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--color-secondary);
+}
+.chartTooltipRow strong {
+  margin-left: auto;
+  color: var(--color-ink);
+}
+
+.chartTooltipKey {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex-shrink: 0;
 }

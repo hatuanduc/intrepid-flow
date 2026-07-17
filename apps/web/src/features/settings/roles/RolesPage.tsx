@@ -6,53 +6,55 @@ import RolePanel from './RolePanel';
 import { Spinner } from '../../../components/common/PageLoader';
 import s from './RolesPage.module.css';
 
+const GROUP_LABELS: Record<string, string> = {
+  admin:      'Admin roles',
+  operations: 'Operations roles',
+  view_only:  'View Only',
+};
+
+const GROUP_ORDER = ['admin', 'operations', 'view_only'];
+
 export default function RolesPage() {
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [panelRole, setPanelRole] = useState<RoleItem | null | 'new'>(null);
+  const [selectedRole, setSelectedRole] = useState<RoleItem | null>(null);
 
-  async function load() {
-    setLoading(true);
-    try {
-      const r = await listRoles();
-      setRoles(r.items ?? []);
-    } finally {
-      setLoading(false);
-    }
-  }
+  useEffect(() => {
+    listRoles()
+      .then(r => setRoles(r.items ?? []))
+      .finally(() => setLoading(false));
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  // Group by role.group, preserve GROUP_ORDER
+  const byGroup = roles.reduce<Record<string, RoleItem[]>>((acc, r) => {
+    const g = r.group ?? 'other';
+    (acc[g] ??= []).push(r);
+    return acc;
+  }, {});
 
-  const systemRoles = roles.filter(r => r.isSystem);
-  const customRoles = roles.filter(r => !r.isSystem);
+  const groupKeys = [
+    ...GROUP_ORDER.filter(g => byGroup[g]),
+    ...Object.keys(byGroup).filter(g => !GROUP_ORDER.includes(g)),
+  ];
 
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
         <h1 className={s.pageTitle}>Vai trò & Quyền hạn</h1>
-        <button className={s.btnPrimary} onClick={() => setPanelRole('new')}>
-          + Tạo vai trò
-        </button>
       </div>
 
       {loading ? (
         <div className={s.empty}><Spinner size={20} /></div>
       ) : (
         <div className={s.groups}>
-          {systemRoles.length > 0 && (
+          {groupKeys.map(groupKey => (
             <RoleGroup
-              label="Vai trò hệ thống"
-              roles={systemRoles}
-              onSelect={setPanelRole}
+              key={groupKey}
+              label={GROUP_LABELS[groupKey] ?? groupKey}
+              roles={byGroup[groupKey]}
+              onSelect={setSelectedRole}
             />
-          )}
-          {customRoles.length > 0 && (
-            <RoleGroup
-              label="Vai trò tùy chỉnh"
-              roles={customRoles}
-              onSelect={setPanelRole}
-            />
-          )}
+          ))}
           {roles.length === 0 && (
             <div className={s.empty}>Chưa có vai trò nào.</div>
           )}
@@ -60,10 +62,9 @@ export default function RolesPage() {
       )}
 
       <RolePanel
-        role={panelRole === 'new' ? null : panelRole}
-        open={panelRole !== null}
-        onClose={() => setPanelRole(null)}
-        onSaved={() => { setPanelRole(null); load(); }}
+        role={selectedRole}
+        open={selectedRole !== null}
+        onClose={() => setSelectedRole(null)}
       />
     </div>
   );
@@ -77,9 +78,6 @@ function RoleGroup({ label, roles, onSelect }: {
   return (
     <div className={s.group}>
       <div className={s.groupHeader}>
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={s.groupIcon}>
-          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-        </svg>
         <span className={s.groupLabel}>{label}</span>
         <span className={s.groupCount}>{roles.length}</span>
       </div>

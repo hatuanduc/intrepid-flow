@@ -8,6 +8,7 @@
     "dev:worker": "pnpm --filter @intrepid/worker dev",
     "build": "pnpm --filter @intrepid/api build && pnpm --filter @intrepid/web build",
     "start": "pnpm --filter @intrepid/api start",
+    "lint": "pnpm --filter @intrepid/web lint",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
     "db:migrate:dev": "prisma migrate dev",

@@ -11,9 +11,9 @@ import { HasPermission } from '../../common/decorators/has-permission.decorator'
 import { BankStatementService, BankSyncJobDto } from './bank-statement.service';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
-import { CreateCountryMappingDto, UpdateCountryMappingDto } from './dto/country-mapping.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 import { RetryJobDto } from './dto/retry-job.dto';
+import { TriggerJobDto } from './dto/trigger-job.dto';
 
 @ApiTags('Bank Statement')
 @ApiBearerAuth()
@@ -38,6 +38,15 @@ export class BankStatementController {
     return this.service.updateSettings(body);
   }
 
+  // ─── Currency Rates (read-only, for metrics page) ───────────────────────────
+
+  @Get('currency-rates')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Lấy tỉ giá hối đoái hiện tại' })
+  getCurrencyRates() {
+    return this.service.getCurrencyRates();
+  }
+
   // ─── Download Template ───────────────────────────────────────────────────────
 
   @Get('settings/template')
@@ -54,36 +63,6 @@ export class BankStatementController {
     return this.service.updateTemplate(body);
   }
 
-  // ─── Country Mappings ────────────────────────────────────────────────────────
-
-  @Get('settings/countries')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Danh sách mapping công ty → quốc gia' })
-  listCountries() {
-    return this.service.listCountryMappings();
-  }
-
-  @Post('settings/countries')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Thêm mapping công ty → quốc gia' })
-  createCountry(@Body() body: CreateCountryMappingDto) {
-    return this.service.createCountryMapping(body);
-  }
-
-  @Put('settings/countries/:id')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Cập nhật mapping' })
-  updateCountry(@Param('id') id: string, @Body() body: UpdateCountryMappingDto) {
-    return this.service.updateCountryMapping(id, body);
-  }
-
-  @Delete('settings/countries/:id')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Xóa mapping' })
-  deleteCountry(@Param('id') id: string) {
-    return this.service.deleteCountryMapping(id);
-  }
-
   // ─── GSheet Configs ──────────────────────────────────────────────────────────
 
   @Get('settings/gsheets')
@@ -93,14 +72,21 @@ export class BankStatementController {
     return this.service.listGsheetConfigs();
   }
 
-  @Put('settings/gsheets/:countryCode')
+  @Put('settings/gsheets/:accountCode')
   @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Tạo / cập nhật cấu hình Google Sheets theo quốc gia' })
-  upsertGsheet(@Param('countryCode') countryCode: string, @Body() body: UpsertGsheetConfigDto) {
-    return this.service.upsertGsheetConfig(countryCode, body);
+  @ApiOperation({ summary: 'Tạo / cập nhật cấu hình Google Sheets theo account code' })
+  upsertGsheet(@Param('accountCode') accountCode: string, @Body() body: UpsertGsheetConfigDto) {
+    return this.service.upsertGsheetConfig(accountCode, body);
   }
 
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
+
+  @Get('account-names')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách account name (master data) declared cho sync' })
+  listAccountNames() {
+    return this.service.listAccountNames();
+  }
 
   @Get('accounts')
   @HasPermission('bank_statement:view')
@@ -115,19 +101,19 @@ export class BankStatementController {
   getMetrics(
     @Query('from') from: string,
     @Query('to') to: string,
-    @Query('countryCode') countryCode?: string,
+    @Query('accountCode') accountCode?: string,
     @Query('accountId') accountId?: string,
   ) {
-    return this.service.getMetrics(new Date(from), new Date(to), countryCode, accountId);
+    return this.service.getMetrics(new Date(from), new Date(to), accountCode, accountId ? Number(accountId) : undefined);
   }
 
   // ─── Job Management ──────────────────────────────────────────────────────────
 
   @Post('jobs')
   @HasPermission('bank_statement:run')
-  @ApiOperation({ summary: 'Kích hoạt job đồng bộ bank statement' })
-  trigger(@Req() req: any): Promise<BankSyncJobDto> {
-    return this.service.triggerJob(req.authUser.id as string);
+  @ApiOperation({ summary: 'Kích hoạt job đồng bộ bank statement — có thể ghi đè khoảng ngày cho riêng lần chạy này' })
+  trigger(@Req() req: any, @Body() body: TriggerJobDto): Promise<BankSyncJobDto> {
+    return this.service.triggerJob(String(req.authUser.id), body.dateFrom, body.dateTo);
   }
 
   @Get('jobs')
@@ -144,6 +130,13 @@ export class BankStatementController {
     return this.service.getJobDetail(id);
   }
 
+  @Get('jobs/:id/stats')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Thống kê tiến độ đồng bộ theo account của một job' })
+  getJobStats(@Param('id') id: string) {
+    return this.service.getJobStats(id);
+  }
+
   @Get('jobs/:id/summary')
   @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Tóm tắt giao dịch theo tài khoản của một job' })
@@ -151,16 +144,41 @@ export class BankStatementController {
     return this.service.getJobSummary(id);
   }
 
+  @Get('account-transactions')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách giao dịch theo tài khoản + khoảng ngày' })
+  getAccountTransactions(
+    @Query('accountId') accountId: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.service.getAccountTransactions(Number(accountId), new Date(from), new Date(to));
+  }
+
+  @Get('jobs/:id/account-transactions')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách giao dịch của một tài khoản trong job' })
+  getJobAccountTransactions(@Param('id') id: string, @Query('accountId') accountId: string) {
+    return this.service.getJobAccountTransactions(id, Number(accountId));
+  }
+
   @Post('jobs/:id/retry')
   @HasPermission('bank_statement:run')
   @ApiOperation({ summary: 'Retry một job — reset từ stepKey (hoặc step đầu tiên chưa done) rồi re-queue' })
   retryJob(@Param('id') id: string, @Body() body: RetryJobDto, @Req() req: any): Promise<BankSyncJobDto> {
-    return this.service.retryJob(id, req.authUser.id as string, body.stepKey);
+    return this.service.retryJob(id, String(req.authUser.id), body.stepKey);
+  }
+
+  @Post('jobs/:id/cancel')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Cancel một job đang chạy hoặc đang chờ' })
+  cancelJob(@Param('id') id: string) {
+    return this.service.cancelJob(id);
   }
 
   @Delete('jobs/:id')
   @HasPermission('bank_statement:run')
-  @ApiOperation({ summary: 'Soft-delete một job (chỉ completed/failed)' })
+  @ApiOperation({ summary: 'Soft-delete một job (chỉ completed/failed/cancelled)' })
   deleteJob(@Param('id') id: string) {
     return this.service.softDeleteJob(id);
   }
@@ -172,7 +190,7 @@ export class BankStatementController {
   streamJob(@Param('id') id: string): Observable<MessageEvent> {
     return interval(2000).pipe(
       switchMap(() => from(this.service.getJobDetail(id))),
-      takeWhile(job => !['completed', 'failed'].includes(job.status), true),
+      takeWhile(job => !['completed', 'failed', 'cancelled'].includes(job.status), true),
       map(job => ({ data: job }) as MessageEvent),
     );
   }

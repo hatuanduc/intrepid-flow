@@ -5,7 +5,7 @@ import jwt from 'jsonwebtoken';
 import { userWithAuthArgs } from './types';
 
 type SafeUser = {
-  id: string;
+  id: number;
   email: string;
   name?: string | null;
   roles: string[];
@@ -36,7 +36,7 @@ export class AuthService {
     };
   }
 
-  async updateMyProfile(userId: string, name: string) {
+  async updateMyProfile(userId: number, name: string) {
     return this.prisma.user.update({
       where: { id: userId },
       data: { name },
@@ -44,7 +44,7 @@ export class AuthService {
     });
   }
 
-  async changeMyPassword(userId: string, currentPassword: string, newPassword: string) {
+  async changeMyPassword(userId: number, currentPassword: string, newPassword: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { password: true },
@@ -88,7 +88,7 @@ export class AuthService {
     return { ok: true };
   }
 
-  async me(userId: string) {
+  async me(userId: number) {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, ...userWithAuthArgs });
     if (!user) return null;
     const roleRows = user.roles ?? [];

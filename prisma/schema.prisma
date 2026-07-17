@@ -1,32 +1,32 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id          String      @id @default(uuid())
-  email       String      @unique
-  name        String?
-  password    String
-  isActive    Boolean     @default(true) @map("is_active")
-  hasPassword Boolean     @default(true) @map("has_password")
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
-  roles       UserRole[]
-  invite      UserInvite?
+  id            Int              @id @default(autoincrement())
+  email         String           @unique
+  name          String?
+  password      String
+  isActive      Boolean          @default(true) @map("is_active")
+  hasPassword   Boolean          @default(true) @map("has_password")
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  roles         UserRole[]
+  permissions   UserPermission[]
+  invite        UserInvite?
+  notifications Notification[]
 
   @@map("users")
 }
 
 model UserInvite {
-  id        String   @id @default(uuid())
-  userId    String   @unique @map("user_id")
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique @map("user_id")
   token     String   @unique
   expiredAt DateTime @map("expired_at")
   createdAt DateTime @default(now()) @map("created_at")
@@ -36,9 +36,10 @@ model UserInvite {
 }
 
 model Role {
-  id          String           @id @default(uuid())
+  id          Int              @id @default(autoincrement())
   key         String           @unique
   name        String
+  group       String?
   description String?
   isSystem    Boolean          @default(false) @map("is_system")
   createdAt   DateTime         @default(now()) @map("created_at")
@@ -50,7 +51,7 @@ model Role {
 }
 
 model Permission {
-  id          String           @id @default(uuid())
+  id          Int              @id @default(autoincrement())
   key         String           @unique
   module      String
   action      String
@@ -59,13 +60,14 @@ model Permission {
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
   roles       RolePermission[]
+  users       UserPermission[]
 
   @@map("permissions")
 }
 
 model UserRole {
-  userId     String   @map("user_id")
-  roleId     String   @map("role_id")
+  userId     Int      @map("user_id")
+  roleId     Int      @map("role_id")
   assignedAt DateTime @default(now()) @map("assigned_at")
   role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -75,8 +77,8 @@ model UserRole {
 }
 
 model RolePermission {
-  roleId       String     @map("role_id")
-  permissionId String     @map("permission_id")
+  roleId       Int        @map("role_id")
+  permissionId Int        @map("permission_id")
   role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
   permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
@@ -84,39 +86,60 @@ model RolePermission {
   @@map("role_permissions")
 }
 
-model WorkflowModule {
-  id          String   @id @default(uuid())
-  key         String   @unique
-  name        String
-  description String?
-  isEnabled   Boolean  @default(false) @map("is_enabled")
-  sortOrder   Int      @default(0) @map("sort_order")
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+// Permissions assigned directly to a user, additive with role-derived permissions — used for per-module overrides
+model UserPermission {
+  userId       Int        @map("user_id")
+  permissionId Int        @map("permission_id")
+  user         User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
-  @@map("workflow_modules")
+  @@id([userId, permissionId])
+  @@map("user_permissions")
 }
 
 // ─── Bank Statement Module ────────────────────────────────────────────────────
 
-model BankAccount {
-  id            String   @id @default(uuid())
-  accountNumber String   @unique @map("account_number")
-  accountName   String   @map("account_name")
-  bankName      String   @map("bank_name")
-  currency      String
-  countryCode   String   @map("country_code")
-  isActive      Boolean  @default(true) @map("is_active")
-  createdAt     DateTime @default(now()) @map("created_at")
+// Master data — declared account names (as they appear in HSBCnet). Added manually
+// (seed / future admin UI), never auto-created by the sync job. Discovery only
+// creates BankAccount rows for account names that already exist here.
+model BankAccountName {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  accountCode String   @map("account_code")
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
 
+  accounts BankAccount[]
+
+  @@map("bank_account_names")
+}
+
+model BankAccount {
+  id             Int      @id @default(autoincrement())
+  accountNumber  String   @unique @map("account_number")
+  accountNameId  Int      @map("account_name_id")
+  accountName    String   @map("account_name")
+  bankName       String   @map("bank_name")
+  currency       String
+  accountCode    String   @map("account_code")
+  isActive       Boolean   @default(true) @map("is_active")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  // Latest "to" date this account has been successfully synced through — HSBC data
+  // for that date and earlier is final and won't change, so a future run whose
+  // range doesn't extend past this date can skip re-downloading it entirely.
+  lastSyncedTo   DateTime? @map("last_synced_to")
+
+  accountNameRef  BankAccountName      @relation(fields: [accountNameId], references: [id])
   syncJobAccounts BankSyncJobAccount[]
   transactions    BankTransaction[]
 
   @@map("bank_accounts")
 }
 
+
 model BankSyncJob {
-  id           String    @id @default(uuid())
+  id           Int       @id @default(autoincrement())
+  publicId     String    @unique @map("public_id")
   status       String    @default("pending")
   triggeredBy  String?   @map("triggered_by")
   startedAt    DateTime? @map("started_at")
@@ -124,8 +147,19 @@ model BankSyncJob {
   errorMessage String?   @map("error_message")
   logs         Json      @default("[]")
   steps        Json      @default("[]")
+  durationMsTotal Int    @default(0) @map("duration_ms_total")
   isDeleted    Boolean   @default(false) @map("is_deleted")
   createdAt    DateTime  @default(now()) @map("created_at")
+  // Optional per-run override — set only when a user picks an explicit date range on
+  // manual "Run now" (not persisted to BankJobSettings). Null means "use the default
+  // syncDateMode/syncCustomDays settings", same as before this existed.
+  dateFromOverride DateTime? @map("date_from_override")
+  dateToOverride   DateTime? @map("date_to_override")
+  // The ACTUAL date range HSBC was queried with for this run — set by the worker
+  // once computed (whether from the override above or from syncDateMode/syncCustomDays),
+  // so the UI can show it directly instead of parsing it out of the log text.
+  dateRangeFrom    DateTime? @map("date_range_from")
+  dateRangeTo      DateTime? @map("date_range_to")
 
   accountJobs  BankSyncJobAccount[]
   transactions BankTransaction[]
@@ -134,27 +168,30 @@ model BankSyncJob {
 }
 
 model BankSyncJobAccount {
-  id             String   @id @default(uuid())
-  jobId          String   @map("job_id")
-  bankAccountId  String   @map("bank_account_id")
-  status         String   @default("pending")
-  rowsDownloaded Int      @default(0) @map("rows_downloaded")
-  rowsInserted   Int      @default(0) @map("rows_inserted")
-  rowsDuplicate  Int      @default(0) @map("rows_duplicate")
-  rowsSynced     Int      @default(0) @map("rows_synced")
-  errorMessage   String?  @map("error_message")
-  createdAt      DateTime @default(now()) @map("created_at")
+  id               Int      @id @default(autoincrement())
+  jobId            Int      @map("job_id")
+  bankAccountId    Int      @map("bank_account_id")
+  status           String   @default("pending") // download status: pending | completed | failed
+  rowsDownloaded   Int      @default(0) @map("rows_downloaded")
+  rowsInserted     Int      @default(0) @map("rows_inserted")
+  rowsDuplicate    Int      @default(0) @map("rows_duplicate")
+  rowsSynced       Int      @default(0) @map("rows_synced")
+  errorMessage     String?  @map("error_message")
+  sheetsSyncStatus String   @default("pending") @map("sheets_sync_status") // pending | completed | failed | skipped
+  sheetsSyncError  String?  @map("sheets_sync_error")
+  createdAt        DateTime @default(now()) @map("created_at")
 
   job         BankSyncJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
 
+  @@unique([jobId, bankAccountId])
   @@map("bank_sync_job_accounts")
 }
 
 model BankTransaction {
-  id                String   @id @default(uuid())
-  bankAccountId     String   @map("bank_account_id")
-  jobId             String   @map("job_id")
+  id                Int      @id @default(autoincrement())
+  bankAccountId     Int      @map("bank_account_id")
+  jobId             Int      @map("job_id")
   postDate          DateTime @map("post_date")
   narrative         String?
   bankReference     String?  @map("bank_reference")
@@ -175,7 +212,7 @@ model BankTransaction {
 }
 
 model BankDownloadTemplate {
-  id         String   @id @default(uuid())
+  id         Int      @id @default(autoincrement())
   name       String   @unique
   headers    Json
   headerHash String   @map("header_hash")
@@ -186,23 +223,12 @@ model BankDownloadTemplate {
   @@map("bank_download_templates")
 }
 
-model BankCountryMapping {
-  id          String   @id @default(uuid())
-  companyName String   @unique @map("company_name")
-  countryCode String   @map("country_code")
-  isActive    Boolean  @default(true) @map("is_active")
-  createdAt   DateTime @default(now()) @map("created_at")
-
-  @@map("bank_country_mappings")
-}
-
 model BankGsheetConfig {
-  id                String   @id @default(uuid())
-  countryCode       String   @unique @map("country_code")
+  id                Int      @id @default(autoincrement())
+  accountCode       String   @unique @map("account_code")
   spreadsheetId     String   @map("spreadsheet_id")
   spreadsheetUrl    String?  @map("spreadsheet_url")
   templateSheetName String?  @map("template_sheet_name")
-  serviceKeyJson    String?  @map("service_key_json")
   isActive          Boolean  @default(true) @map("is_active")
   createdAt         DateTime @default(now()) @map("created_at")
   updatedAt         DateTime @updatedAt @map("updated_at")
@@ -211,11 +237,10 @@ model BankGsheetConfig {
 }
 
 model BankJobSettings {
-  id                          String   @id @default(uuid())
+  id                          String   @id
   scheduleCron                String   @default("30 9 * * *") @map("schedule_cron")
   isScheduled                 Boolean  @default(true) @map("is_scheduled")
   hsbcnetUsername             String?  @map("hsbcnet_username")
-  googleServiceKeyJson        String?  @map("google_service_key_json")
   googleTemplateSpreadsheetId String?  @map("google_template_spreadsheet_id")
   googleTemplateSheet         String?  @map("google_template_sheet")
   syncDateMode                String   @default("yesterday") @map("sync_date_mode")
@@ -227,7 +252,7 @@ model BankJobSettings {
 }
 
 model ArGsheetConfig {
-  id             String   @id @default(uuid())
+  id             Int      @id @default(autoincrement())
   countryCode    String   @unique @map("country_code")
   spreadsheetId  String   @map("spreadsheet_id")
   sheetName      String   @default("TH") @map("sheet_name")
@@ -240,12 +265,30 @@ model ArGsheetConfig {
 }
 
 model ArReportSettings {
-  id                   String   @id @default(uuid())
+  id                   String   @id
   googleServiceKeyJson String?  @map("google_service_key_json")
   updatedAt            DateTime @updatedAt @map("updated_at")
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("ar_report_settings")
+}
+
+model CurrencyRate {
+  currency  String   @id
+  rateToUsd Decimal  @map("rate_to_usd")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("currency_rates")
+}
+
+model CurrencySettings {
+  id            String    @id @default("default")
+  autoUpdateDay Int       @default(1) @map("auto_update_day")
+  lastUpdatedAt DateTime? @map("last_updated_at")
+  nextUpdateAt  DateTime? @map("next_update_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("currency_settings")
 }
 
 model SystemSettings {
@@ -255,4 +298,49 @@ model SystemSettings {
   createdAt            DateTime @default(now()) @map("created_at")
 
   @@map("system_settings")
+}
+
+// ─── Notifications (bell) ─────────────────────────────────────────────────────
+
+model Notification {
+  id          Int      @id @default(autoincrement())
+  userId      Int      @map("user_id")
+  type        String   // job_completed | job_failed | job_waiting_2fa
+  title       String
+  body        String?
+  jobPublicId String?  @map("job_public_id") // BankSyncJob.publicId — matches the /bank-statement/jobs/:id route
+  isRead      Boolean  @default(false) @map("is_read")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
+
+// ─── Reconcile Module ──────────────────────────────────────────────────────────
+
+// Master Customer brand -> customer-name lookup, replaced wholesale via the
+// Reconcile page's "Cập nhật lại" upload (rarely changes).
+model MasterCustomerMapping {
+  id           Int      @id @default(autoincrement())
+  brandName    String   @unique @map("brand_name")
+  customerName String   @map("customer_name")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("master_customer_mappings")
+}
+
+// Column-mapping "setup" for the Filter & Merge tool — rarely changes, edited from
+// Settings > Reconcile rather than on the tool's run page.
+model ReconcileSettings {
+  id             String   @id @default("default")
+  headerRow      Int      @default(1) @map("header_row")
+  salesColumn    String   @default("Doanh số bán chưa thuế VNĐ") @map("sales_column")
+  taxColumn      String   @default("Thuế GTGT đầu ra VNĐ") @map("tax_column")
+  noteColumn     String   @default("Ghi chú") @map("note_column")
+  customerColumn String   @default("Tên khách hàng") @map("customer_column")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  @@map("reconcile_settings")
 }

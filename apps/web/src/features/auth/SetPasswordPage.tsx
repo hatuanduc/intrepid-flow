@@ -11,7 +11,7 @@ export default function SetPasswordPage() {
   const params = useSearchParams();
   const token = params.get('token') ?? '';
 
-  const [state, setState] = useState<State>('loading');
+  const [state, setState] = useState<State>(() => token ? 'loading' : 'invalid');
   const [userEmail, setUserEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
@@ -21,7 +21,7 @@ export default function SetPasswordPage() {
   const [apiError, setApiError] = useState('');
 
   useEffect(() => {
-    if (!token) { setState('invalid'); return; }
+    if (!token) return;
     verifyInviteToken(token)
       .then(res => { setUserEmail(res.email); setState('valid'); })
       .catch(err => {

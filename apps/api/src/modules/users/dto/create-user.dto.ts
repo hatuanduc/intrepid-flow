@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, IsArray, IsUUID } from 'class-validator';
+import { IsEmail, IsOptional, IsString, IsArray, IsInt } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateUserDto {
@@ -11,8 +11,14 @@ export class CreateUserDto {
   @IsString()
   name?: string;
 
-  @ApiProperty({ type: [String], description: 'UUID của các role' })
+  @ApiProperty({ type: [Number], description: 'ID của các role' })
   @IsArray()
-  @IsUUID('4', { each: true })
-  roleIds!: string[];
+  @IsInt({ each: true })
+  roleIds!: number[];
+
+  @ApiProperty({ type: [Number], description: 'ID của các quyền tùy chỉnh gán riêng cho user', required: false })
+  @IsOptional()
+  @IsArray()
+  @IsInt({ each: true })
+  permissionIds?: number[];
 }

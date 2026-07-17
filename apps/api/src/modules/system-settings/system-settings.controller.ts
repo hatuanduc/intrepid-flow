@@ -1,16 +1,23 @@
-import { Controller, Get, Put, Body, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional } from 'class-validator';
+import { IsString, IsOptional, MinLength, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { HasPermission } from '../../common/decorators/has-permission.decorator';
 import { SystemSettingsService } from './system-settings.service';
+import { UpdateCurrencySettingsDto } from './dto/currency.dto';
 
 class UpdateServiceAccountDto {
-  @ApiProperty({ nullable: true, description: 'Google service account JSON string' })
+  @ApiProperty({ nullable: true })
   @IsOptional()
   @IsString()
   serviceKeyJson!: string | null;
+}
+
+class AddCurrencyRateDto {
+  @ApiProperty({ example: 'PHP' })
+  @IsString() @MinLength(3) @MaxLength(3)
+  currency!: string;
 }
 
 @ApiTags('System Settings')
@@ -20,17 +27,55 @@ class UpdateServiceAccountDto {
 export class SystemSettingsController {
   constructor(private readonly service: SystemSettingsService) {}
 
+  // ─── Google Service Account ─────────────────────────────────────────────────
+
   @Get()
   @HasPermission('system:config')
-  @ApiOperation({ summary: 'Get system settings (service account status)' })
-  async getSettings() {
-    return this.service.getSettings();
-  }
+  @ApiOperation({ summary: 'Get system settings status' })
+  async getSettings() { return this.service.getSettings(); }
+
+  @Get('service-account-status')
+  @HasPermission(['system:config', 'report_ar:config', 'bank_statement:config'])
+  @ApiOperation({ summary: 'Get the shared Google service account email + configured status (no secret)' })
+  async getServiceAccountStatus() { return this.service.getServiceAccountStatus(); }
 
   @Put('service-account')
   @HasPermission('system:config')
   @ApiOperation({ summary: 'Update global Google service account' })
   async updateServiceAccount(@Body() body: UpdateServiceAccountDto) {
     return this.service.updateServiceAccount(body.serviceKeyJson ?? null);
+  }
+
+  // ─── Currency Rates ─────────────────────────────────────────────────────────
+
+  @Get('currency-rates')
+  @HasPermission('system:config')
+  @ApiOperation({ summary: 'Get currency rates and settings' })
+  async getCurrencyData() { return this.service.getCurrencyData(); }
+
+  @Post('currency-rates/refresh')
+  @HasPermission('system:config')
+  @ApiOperation({ summary: 'Manually refresh all currency rates from frankfurter.app' })
+  async refreshCurrencyRates() { return this.service.refreshCurrencyRates(); }
+
+  @Post('currency-rates')
+  @HasPermission('system:config')
+  @ApiOperation({ summary: 'Add a specific currency rate' })
+  async addCurrencyRate(@Body() body: AddCurrencyRateDto) {
+    return this.service.addCurrencyRate(body.currency);
+  }
+
+  @Delete('currency-rates/:currency')
+  @HasPermission('system:config')
+  @ApiOperation({ summary: 'Remove a currency rate' })
+  async deleteCurrencyRate(@Param('currency') currency: string) {
+    return this.service.deleteCurrencyRate(currency);
+  }
+
+  @Put('currency-settings')
+  @HasPermission('system:config')
+  @ApiOperation({ summary: 'Update currency auto-update schedule' })
+  async updateCurrencySettings(@Body() body: UpdateCurrencySettingsDto) {
+    return this.service.updateCurrencySettings(body);
   }
 }

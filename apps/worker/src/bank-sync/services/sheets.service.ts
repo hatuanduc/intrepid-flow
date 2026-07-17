@@ -21,7 +21,7 @@ export class SheetsService {
    * Duplicate detection: reads existing bank references from column D rows 11+
    * before appending, so re-runs are safe.
    */
-  async sync(accountNumber: string, rows: TransactionRow[]): Promise<{ skipped: boolean; reason?: string; rowsSynced?: number }> {
+  async sync(accountNumber: string, rows: TransactionRow[]): Promise<{ skipped: boolean; reason?: string; accountName?: string; rowsSynced?: number }> {
     if (rows.length === 0) {
       this.logger.log(`No rows to sync for ${accountNumber}`);
       return { skipped: true, reason: 'no_rows' };
@@ -37,18 +37,19 @@ export class SheetsService {
     }
 
     const config = await this.prisma.bankGsheetConfig.findUnique({
-      where: { countryCode: account.countryCode },
+      where: { accountCode: account.accountCode },
     });
     if (!config || !config.isActive || !config.spreadsheetId) {
       this.logger.warn(
-        `No active GSheet config for country ${account.countryCode} — skipping`,
+        `No active GSheet config for ${account.accountName} (${account.accountCode}) — skipping`,
       );
-      return { skipped: true, reason: `no_gsheet_config_for_${account.countryCode}` };
+      return { skipped: true, reason: 'no_gsheet_config', accountName: account.accountName };
     }
 
-    // Global service key and template come from BankJobSettings
+    // Template comes from BankJobSettings; service key is the app-wide one in SystemSettings
     const globalSettings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
-    const serviceKeyJson = globalSettings?.googleServiceKeyJson ?? null;
+    const systemSettings = await this.prisma.systemSettings.findUnique({ where: { id: 'default' } });
+    const serviceKeyJson = systemSettings?.googleServiceKeyJson ?? null;
     const templateSheetName = globalSettings?.googleTemplateSheet ?? null;
     const templateSpreadsheetId = globalSettings?.googleTemplateSpreadsheetId ?? null;
 
@@ -165,8 +166,9 @@ export class SheetsService {
     );
 
     // ── Filter to new-only rows ────────────────────────────────────────────
+    // Rows without bankReference are always treated as new (can't dedup them).
     const newRows = rows.filter(
-      r => r.bankReference && !existingRefs.has(r.bankReference),
+      r => !r.bankReference || !existingRefs.has(r.bankReference),
     );
 
     if (newRows.length === 0) {

@@ -3,10 +3,16 @@ import { useState } from 'react';
 import { useUser } from '../../app/(dashboard)/user-context';
 import { useToast } from '../../components/common/Toast';
 import { updateMyProfile, changeMyPassword } from '../../lib/api';
+import { useT } from '../../lib/i18n';
 import RightPanel from '../../components/common/RightPanel';
 import s from './AccountPage.module.css';
 
 const AVATAR_COLORS = ['#635bff', '#09825d', '#1a56db', '#7c3aed', '#c44c0a', '#0e7490', '#92400e', '#be185d'];
+
+const LANGUAGES = [
+  { value: 'en', label: 'English' },
+  { value: 'vi', label: 'Tiếng Việt' },
+];
 function avatarColor(str: string) { return AVATAR_COLORS[str.charCodeAt(0) % AVATAR_COLORS.length]; }
 
 function RoleBadge({ name }: { name: string }) {
@@ -30,6 +36,7 @@ function EditIcon() {
 export default function AccountPage() {
   const user = useUser();
   const toast = useToast();
+  const { t, lang, setLang } = useT();
 
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name ?? '');
@@ -54,16 +61,16 @@ export default function AccountPage() {
 
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
-    if (!name.trim()) { setNameError('Vui lòng nhập tên.'); return; }
+    if (!name.trim()) { setNameError(t('account.nameRequired')); return; }
     setNameError('');
     setSavingProfile(true);
     try {
       await updateMyProfile(name.trim());
       setDisplayName(name.trim());
       setEditing(false);
-      toast.success('Đã cập nhật tên thành công.');
+      toast.success(t('account.profileUpdated'));
     } catch {
-      toast.error('Cập nhật thất bại. Vui lòng thử lại.');
+      toast.error(t('account.profileUpdateFailed'));
     } finally {
       setSavingProfile(false);
     }
@@ -81,21 +88,21 @@ export default function AccountPage() {
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault();
     const errs: Record<string, string> = {};
-    if (!currentPw) errs.currentPw = 'Vui lòng nhập mật khẩu hiện tại.';
-    if (!newPw) errs.newPw = 'Vui lòng nhập mật khẩu mới.';
-    else if (newPw.length < 6) errs.newPw = 'Mật khẩu tối thiểu 6 ký tự.';
-    if (!confirmPw) errs.confirmPw = 'Vui lòng xác nhận mật khẩu.';
-    else if (newPw && confirmPw !== newPw) errs.confirmPw = 'Mật khẩu xác nhận không khớp.';
+    if (!currentPw) errs.currentPw = t('account.currentPasswordRequired');
+    if (!newPw) errs.newPw = t('account.newPasswordRequired');
+    else if (newPw.length < 6) errs.newPw = t('account.newPasswordMinLength');
+    if (!confirmPw) errs.confirmPw = t('account.confirmPasswordRequired');
+    else if (newPw && confirmPw !== newPw) errs.confirmPw = t('account.passwordMismatch');
     if (Object.keys(errs).length > 0) { setPwErrors(errs); return; }
     setPwErrors({});
     setSavingPw(true);
     try {
       await changeMyPassword(currentPw, newPw);
-      toast.success('Đã đổi mật khẩu thành công.');
+      toast.success(t('account.passwordChanged'));
       setPwPanelOpen(false);
     } catch (err) {
       const code = err instanceof Error ? err.message : '';
-      setPwErrors({ currentPw: code === 'INVALID_PASSWORD' ? 'Mật khẩu hiện tại không đúng.' : 'Đổi mật khẩu thất bại.' });
+      setPwErrors({ currentPw: code === 'INVALID_PASSWORD' ? t('account.currentPasswordWrong') : t('account.passwordChangeFailed') });
     } finally {
       setSavingPw(false);
     }
@@ -104,22 +111,22 @@ export default function AccountPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <h1 className={s.pageTitle}>Tài khoản</h1>
+        <h1 className={s.pageTitle}>{t('account.title')}</h1>
       </div>
 
       <div className={s.card}>
         {/* Card header */}
         <div className={s.cardHead}>
-          <span className={s.cardTitle}>Thông tin cá nhân</span>
+          <span className={s.cardTitle}>{t('account.personalInfo')}</span>
           {!editing ? (
             <button className={s.btnEdit} onClick={startEdit}>
-              <EditIcon /> Chỉnh sửa
+              <EditIcon /> {t('account.edit')}
             </button>
           ) : (
             <div className={s.editActions}>
-              <button className={s.btnCancel} type="button" onClick={cancelEdit} disabled={savingProfile}>Hủy</button>
+              <button className={s.btnCancel} type="button" onClick={cancelEdit} disabled={savingProfile}>{t('account.cancel')}</button>
               <button className={s.btnSave} form="profile-form" type="submit" disabled={savingProfile}>
-                {savingProfile ? 'Đang lưu...' : 'Lưu thay đổi'}
+                {savingProfile ? t('account.saving') : t('account.saveChanges')}
               </button>
             </div>
           )}
@@ -139,63 +146,82 @@ export default function AccountPage() {
         {/* Info rows */}
         <form id="profile-form" onSubmit={handleSaveProfile}>
           <div className={s.infoRow}>
-            <span className={s.infoLabel}>Tên hiển thị</span>
+            <span className={s.infoLabel}>{t('account.displayName')}</span>
             {editing ? (
               <div className={s.infoInput}>
                 <input
                   className={`${s.input} ${nameError ? s.inputError : ''}`}
                   value={name}
                   onChange={e => { setName(e.target.value); setNameError(''); }}
-                  placeholder="Nhập tên của bạn"
+                  placeholder={t('account.displayNamePlaceholder')}
                   autoFocus
                 />
                 {nameError && <span className={s.fieldError}>{nameError}</span>}
               </div>
             ) : (
-              <span className={s.infoValue}>{displayName || <span className={s.infoEmpty}>Chưa đặt tên</span>}</span>
+              <span className={s.infoValue}>{displayName || <span className={s.infoEmpty}>{t('account.noName')}</span>}</span>
             )}
           </div>
 
           <div className={s.infoRow}>
-            <span className={s.infoLabel}>Email</span>
+            <span className={s.infoLabel}>{t('account.email')}</span>
             <span className={s.infoValue}>{user.email}</span>
           </div>
 
           <div className={s.infoRow}>
-            <span className={s.infoLabel}>Mật khẩu</span>
+            <span className={s.infoLabel}>{t('account.password')}</span>
             <div className={s.pwRow}>
               <span className={s.pwDots}>••••••••</span>
-              <button type="button" className={s.btnChangePw} onClick={openPwPanel}>Đổi mật khẩu</button>
+              <button type="button" className={s.btnChangePw} onClick={openPwPanel}>{t('account.changePassword')}</button>
             </div>
           </div>
 
           <div className={`${s.infoRow} ${s.infoRowLast}`}>
-            <span className={s.infoLabel}>Vai trò</span>
+            <span className={s.infoLabel}>{t('account.roles')}</span>
             <div className={s.roleList}>
               {user.roles.length > 0
                 ? user.roles.map(r => <RoleBadge key={r} name={r} />)
-                : <span className={s.infoEmpty}>Chưa có vai trò</span>}
+                : <span className={s.infoEmpty}>{t('account.noRoles')}</span>}
             </div>
           </div>
         </form>
       </div>
 
+      {/* Language card */}
+      <div className={`${s.card} ${s.cardGap}`}>
+        <div className={s.cardHead}>
+          <span className={s.cardTitle}>{t('account.language')}</span>
+        </div>
+        <div className={`${s.infoRow} ${s.infoRowLast}`}>
+          <span className={s.infoLabel}>{t('account.language')}</span>
+          <select
+            className={s.langSelect}
+            value={lang}
+            onChange={e => setLang(e.target.value as 'en' | 'vi')}
+          >
+            {LANGUAGES.map(l => (
+              <option key={l.value} value={l.value}>{l.label}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
       {/* Change password panel */}
       <RightPanel
-        title="Đổi mật khẩu"
+        title={t('account.pwPanel')}
         open={pwPanelOpen}
         onClose={() => setPwPanelOpen(false)}
         width={400}
         footer={<>
-          <button className={s.btnCancel} onClick={() => setPwPanelOpen(false)}>Hủy</button>
+          <button className={s.btnCancel} onClick={() => setPwPanelOpen(false)}>{t('account.cancel')}</button>
           <button className={s.btnSave} form="pw-form" type="submit" disabled={savingPw}>
-            {savingPw ? 'Đang lưu...' : 'Đổi mật khẩu'}
+            {savingPw ? t('account.saving') : t('account.changePassword')}
           </button>
         </>}
       >
         <form id="pw-form" onSubmit={handleChangePassword} className={s.form}>
           <div className={s.field}>
-            <label className={s.label}>Mật khẩu hiện tại</label>
+            <label className={s.label}>{t('account.currentPassword')}</label>
             <input
               type="password"
               className={`${s.input} ${pwErrors.currentPw ? s.inputError : ''}`}
@@ -207,19 +233,19 @@ export default function AccountPage() {
             {pwErrors.currentPw && <span className={s.fieldError}>{pwErrors.currentPw}</span>}
           </div>
           <div className={s.field}>
-            <label className={s.label}>Mật khẩu mới</label>
+            <label className={s.label}>{t('account.newPassword')}</label>
             <input
               type="password"
               className={`${s.input} ${pwErrors.newPw ? s.inputError : ''}`}
               value={newPw}
               onChange={e => { setNewPw(e.target.value); clearPwField('newPw'); }}
-              placeholder="Tối thiểu 6 ký tự"
+              placeholder={t('account.newPasswordPlaceholder')}
               autoComplete="new-password"
             />
             {pwErrors.newPw && <span className={s.fieldError}>{pwErrors.newPw}</span>}
           </div>
           <div className={s.field}>
-            <label className={s.label}>Xác nhận mật khẩu mới</label>
+            <label className={s.label}>{t('account.confirmPassword')}</label>
             <input
               type="password"
               className={`${s.input} ${pwErrors.confirmPw ? s.inputError : ''}`}

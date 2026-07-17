@@ -39,7 +39,7 @@ async function request<T>(
     ...init,
     headers,
     // Default to no-store unless caller provided a cache option
-    cache: init && Object.prototype.hasOwnProperty.call(init, 'cache') ? (init as any).cache : 'no-store',
+    cache: init && Object.prototype.hasOwnProperty.call(init, 'cache') ? init.cache : 'no-store',
   });
 
   let res = initialRes;
@@ -76,7 +76,7 @@ async function request<T>(
 export type LoginResponse = {
   token: string;
   user: {
-    id: string;
+    id: number;
     email: string;
     name: string | null;
     roles: string[];
@@ -95,7 +95,7 @@ export async function login(email: string, password: string) {
 export async function me() {
   return request<{
     user: {
-      id: string;
+      id: number;
       email: string;
       name: string | null;
       roles: string[];
@@ -111,7 +111,7 @@ export async function me() {
 }
 
 export type PermissionItem = {
-  id: string;
+  id: number;
   key: string;
   module: string;
   action: string;
@@ -120,9 +120,10 @@ export type PermissionItem = {
 };
 
 export type RoleItem = {
-  id: string;
+  id: number;
   key: string;
   name: string;
+  group?: string | null;
   description?: string | null;
   isSystem: boolean;
   userCount: number;
@@ -130,12 +131,13 @@ export type RoleItem = {
 };
 
 export type UserItem = {
-  id: string;
+  id: number;
   email: string;
   name: string | null;
   isActive: boolean;
   hasPassword: boolean;
-  roles: Array<{ id: string; key: string; name: string }>;
+  roles: Array<{ id: number; key: string; name: string }>;
+  permissions: PermissionItem[];
 };
 
 export async function listUsers(search = '') {
@@ -148,7 +150,8 @@ export async function listUsers(search = '') {
 
 export async function createUser(input: {
   email: string;
-  roleIds: string[];
+  roleIds: number[];
+  permissionIds?: number[];
 }) {
   return request<{ item: UserItem }>('/management/users', {
     method: 'POST',
@@ -158,12 +161,13 @@ export async function createUser(input: {
 }
 
 export async function updateUser(
-  id: string,
+  id: number,
   input: {
     name?: string;
     password?: string;
     isActive?: boolean;
-    roleIds?: string[];
+    roleIds?: number[];
+    permissionIds?: number[];
   },
 ) {
   return request<{ item: UserItem }>(`/management/users/${id}`, {
@@ -180,41 +184,22 @@ export async function listRoles() {
   });
 }
 
-export async function createRole(input: {
-  name: string;
-  description?: string;
-  permissionIds: string[];
-}) {
-  return request<{ item: RoleItem }>('/management/roles', {
-    method: 'POST',
-    auth: true,
-    body: JSON.stringify(input),
-  });
-}
 
-export async function updateRole(id: string, input: { name?: string; description?: string; permissionIds?: string[] }) {
-  return request<{ item: RoleItem }>(`/management/roles/${id}`, {
-    method: 'PUT',
-    auth: true,
-    body: JSON.stringify(input),
-  });
-}
-
-export async function deleteUser(id: string) {
+export async function deleteUser(id: number) {
   return request<{ ok: boolean }>(`/management/users/${id}`, {
     method: 'DELETE',
     auth: true,
   });
 }
 
-export async function impersonateUser(id: string) {
-  return request<{ token: string; user: { id: string; email: string; name: string | null } }>(
+export async function impersonateUser(id: number) {
+  return request<{ token: string; user: { id: number; email: string; name: string | null } }>(
     `/management/users/${id}/impersonate`,
     { method: 'POST', auth: true },
   );
 }
 
-export async function deleteRole(id: string) {
+export async function deleteRole(id: number) {
   return request<{ ok: boolean }>(`/management/roles/${id}`, {
     method: 'DELETE',
     auth: true,
@@ -228,32 +213,6 @@ export async function listPermissions() {
   });
 }
 
-// --- Workflow Modules ---
-
-export type WorkflowModuleItem = {
-  id: string;
-  key: string;
-  name: string;
-  description?: string | null;
-  isEnabled: boolean;
-  sortOrder: number;
-};
-
-export async function listWorkflowModules() {
-  return request<{ items: WorkflowModuleItem[] }>('/management/modules', {
-    method: 'GET',
-    auth: true,
-  });
-}
-
-export async function updateWorkflowModule(key: string, input: { isEnabled?: boolean }) {
-  return request<{ item: WorkflowModuleItem }>(`/management/modules/${key}`, {
-    method: 'PUT',
-    auth: true,
-    body: JSON.stringify(input),
-  });
-}
-
 // --- Bank Statement Settings ---
 
 export type SyncDateMode = 'today' | 'yesterday' | 'last_7_days' | 'custom';
@@ -263,7 +222,6 @@ export type BankJobSettings = {
   scheduleCron: string;
   isScheduled: boolean;
   hsbcnetUsername: string | null;
-  googleServiceKeyJson: string | null;
   googleTemplateSpreadsheetId: string | null;
   googleTemplateSheet: string | null;
   syncDateMode: SyncDateMode;
@@ -271,27 +229,18 @@ export type BankJobSettings = {
 };
 
 export type BankDownloadTemplate = {
-  id: string;
+  id: number;
   headers: string[];
   headerHash: string;
   updatedAt: string;
 };
 
-export type BankCountryMapping = {
-  id: string;
-  companyName: string;
-  countryCode: string;
-  isActive: boolean;
-  createdAt: string;
-};
-
 export type BankGsheetConfig = {
-  id: string;
-  countryCode: string;
+  id: number;
+  accountCode: string;
   spreadsheetId: string;
   spreadsheetUrl: string | null;
   templateSheetName: string | null;
-  hasServiceKey: boolean;
   isActive: boolean;
   updatedAt: string;
 };
@@ -304,7 +253,6 @@ export async function updateBankSettings(input: {
   scheduleCron: string;
   isScheduled: boolean;
   hsbcnetUsername?: string | null;
-  googleServiceKeyJson?: string | null;
   googleTemplateSpreadsheetId?: string | null;
   googleTemplateSheet?: string | null;
   syncDateMode: SyncDateMode;
@@ -325,37 +273,15 @@ export async function updateBankTemplate(headers: string[]) {
   });
 }
 
-export async function listBankCountries() {
-  return request<BankCountryMapping[]>('/management/bank-statement/settings/countries', { auth: true });
-}
-
-export async function createBankCountry(input: { companyName: string; countryCode: string }) {
-  return request<BankCountryMapping>('/management/bank-statement/settings/countries', {
-    method: 'POST', auth: true, body: JSON.stringify(input),
-  });
-}
-
-export async function updateBankCountry(id: string, input: { companyName?: string; countryCode?: string; isActive?: boolean }) {
-  return request<BankCountryMapping>(`/management/bank-statement/settings/countries/${id}`, {
-    method: 'PUT', auth: true, body: JSON.stringify(input),
-  });
-}
-
-export async function deleteBankCountry(id: string) {
-  return request<{ ok: boolean }>(`/management/bank-statement/settings/countries/${id}`, {
-    method: 'DELETE', auth: true,
-  });
-}
-
 export async function listBankGsheets() {
   return request<BankGsheetConfig[]>('/management/bank-statement/settings/gsheets', { auth: true });
 }
 
-export async function upsertBankGsheet(countryCode: string, input: {
+export async function upsertBankGsheet(accountCode: string, input: {
   spreadsheetId: string;
   isActive?: boolean;
 }) {
-  return request<BankGsheetConfig>(`/management/bank-statement/settings/gsheets/${countryCode}`, {
+  return request<BankGsheetConfig>(`/management/bank-statement/settings/gsheets/${accountCode}`, {
     method: 'PUT', auth: true, body: JSON.stringify(input),
   });
 }
@@ -371,10 +297,25 @@ export type JobStep = {
   errorMessage: string | null;
 };
 
+export type JobStats = {
+  totalAccounts: number;
+  downloaded: number;
+  downloadFailed: number;
+  synced: number;
+  syncFailed: number;
+  syncSkipped: number;
+  syncPending: number;
+  syncNoData: number;
+  totalRowsDownloaded: number;
+  totalRowsInserted: number;
+  totalRowsSynced: number;
+};
+
 export type BankSyncJob = {
   id: string;
   status: string;
   triggeredBy: string | null;
+  triggeredByName: string | null;
   startedAt: string | null;
   completedAt: string | null;
   errorMessage: string | null;
@@ -382,11 +323,16 @@ export type BankSyncJob = {
   steps: JobStep[];
   createdAt: string;
   durationMs: number | null;
+  stats: JobStats | null;
+  dateRangeFrom: string | null;
+  dateRangeTo: string | null;
 };
 
-export async function triggerBankSync() {
+export async function triggerBankSync(dateRange?: { dateFrom: string; dateTo: string }) {
   return request<BankSyncJob>('/management/bank-statement/jobs', {
-    method: 'POST', auth: true,
+    method: 'POST',
+    body: JSON.stringify(dateRange ?? {}),
+    auth: true,
   });
 }
 
@@ -405,6 +351,12 @@ export async function retryBankJob(id: string, stepKey?: 'bank_sync' | 'sheets_s
   });
 }
 
+export async function cancelBankJob(id: string) {
+  return request<{ ok: boolean }>(`/management/bank-statement/jobs/${id}/cancel`, {
+    method: 'POST', auth: true,
+  });
+}
+
 export async function deleteBankJob(id: string) {
   return request<{ ok: boolean }>(`/management/bank-statement/jobs/${id}`, {
     method: 'DELETE', auth: true,
@@ -412,21 +364,35 @@ export async function deleteBankJob(id: string) {
 }
 
 export type BankAccount = {
-  id: string;
+  id: number;
   accountNumber: string;
   accountName: string;
   bankName: string;
   currency: string;
-  countryCode: string;
+  accountCode: string;
+  isActive: boolean;
+  lastSyncAt: string | null;
+  lastSyncStatus: string | null;
+};
+
+export type BankAccountNameItem = {
+  id: number;
+  name: string;
+  accountCode: string;
   isActive: boolean;
 };
 
+export async function listBankAccountNames() {
+  return request<BankAccountNameItem[]>('/management/bank-statement/account-names', { auth: true });
+}
+
+
 export type DailyMetricsRow = {
   date: string;
-  accountId: string;
+  accountId: number;
   accountNumber: string;
   accountName: string;
-  countryCode: string;
+  accountCode: string;
   currency: string;
   totalCredit: number;
   totalDebit: number;
@@ -439,24 +405,26 @@ export type MetricsResponse = {
 };
 
 export type JobAccountSummary = {
-  accountId: string;
+  accountId: number;
   accountNumber: string;
   accountName: string;
-  countryCode: string;
+  accountCode: string;
   currency: string;
   txCount: number;
   totalCredit: number;
   totalDebit: number;
+  sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data';
+  sheetsSyncError: string | null;
 };
 
 export async function listBankAccounts() {
   return request<BankAccount[]>('/management/bank-statement/accounts', { auth: true });
 }
 
-export async function getBankMetrics(from: string, to: string, countryCode?: string, accountId?: string) {
+export async function getBankMetrics(from: string, to: string, accountCode?: string, accountId?: number) {
   const params = new URLSearchParams({ from, to });
-  if (countryCode) params.set('countryCode', countryCode);
-  if (accountId) params.set('accountId', accountId);
+  if (accountCode) params.set('accountCode', accountCode);
+  if (accountId != null) params.set('accountId', String(accountId));
   return request<MetricsResponse>(`/management/bank-statement/metrics?${params}`, { auth: true });
 }
 
@@ -464,16 +432,38 @@ export async function getBankJobSummary(jobId: string) {
   return request<JobAccountSummary[]>(`/management/bank-statement/jobs/${jobId}/summary`, { auth: true });
 }
 
-// --- Report AR ---
+export async function getBankJobStats(jobId: string) {
+  return request<JobStats>(`/management/bank-statement/jobs/${jobId}/stats`, { auth: true });
+}
 
-export type ArSettings = {
-  id: string;
-  hasServiceKey: boolean;
-  updatedAt: string;
+export type JobTransaction = {
+  id: number;
+  postDate: string;
+  narrative: string | null;
+  bankReference: string | null;
+  creditAmount: number | null;
+  debitAmount: number | null;
+  fetchedAt: string;
 };
 
+export async function getJobAccountTransactions(jobId: string, accountId: number) {
+  return request<JobTransaction[]>(
+    `/management/bank-statement/jobs/${jobId}/account-transactions?accountId=${accountId}`,
+    { auth: true },
+  );
+}
+
+export async function getAccountTransactions(accountId: number, from: string, to: string) {
+  return request<JobTransaction[]>(
+    `/management/bank-statement/account-transactions?accountId=${accountId}&from=${from}&to=${to}`,
+    { auth: true },
+  );
+}
+
+// --- Report AR ---
+
 export type ArGsheetConfig = {
-  id: string;
+  id: number;
   countryCode: string;
   spreadsheetId: string;
   sheetName: string;
@@ -514,27 +504,30 @@ export type ArData = {
   bizClasses: string[];
 };
 
-export async function getArSettings() {
-  return request<ArSettings>('/management/report-ar/settings', { auth: true });
-}
-
-export async function updateArSettings(input: { googleServiceKeyJson?: string | null }) {
-  return request<ArSettings>('/management/report-ar/settings', {
-    method: 'PUT', auth: true, body: JSON.stringify(input),
-  });
-}
-
 export async function listArGsheets() {
   return request<ArGsheetConfig[]>('/management/report-ar/settings/gsheets', { auth: true });
 }
 
-export async function upsertArGsheet(countryCode: string, input: {
+export async function createArGsheet(input: {
+  countryCode: string;
   spreadsheetId: string;
   sheetName: string;
   spreadsheetUrl?: string;
   isActive?: boolean;
 }) {
-  return request<ArGsheetConfig>(`/management/report-ar/settings/gsheets/${countryCode}`, {
+  return request<ArGsheetConfig>('/management/report-ar/settings/gsheets', {
+    method: 'POST', auth: true, body: JSON.stringify(input),
+  });
+}
+
+export async function updateArGsheet(id: number, input: {
+  countryCode?: string;
+  spreadsheetId: string;
+  sheetName: string;
+  spreadsheetUrl?: string;
+  isActive?: boolean;
+}) {
+  return request<ArGsheetConfig>(`/management/report-ar/settings/gsheets/${id}`, {
     method: 'PUT', auth: true, body: JSON.stringify(input),
   });
 }
@@ -550,10 +543,21 @@ export async function getArData(country: string = 'TH', bizClass?: string) {
 export type SystemSettingsStatus = {
   hasServiceKey: boolean;
   updatedAt: string | null;
+  serviceKeyJson: string | null;
+  clientEmail: string | null;
 };
 
 export async function getSystemSettings() {
   return request<SystemSettingsStatus>('/management/settings/system', { auth: true });
+}
+
+export type ServiceAccountStatus = {
+  hasServiceKey: boolean;
+  clientEmail: string | null;
+};
+
+export async function getServiceAccountStatus() {
+  return request<ServiceAccountStatus>('/management/settings/system/service-account-status', { auth: true });
 }
 
 export async function updateSystemServiceAccount(serviceKeyJson: string | null) {
@@ -564,7 +568,57 @@ export async function updateSystemServiceAccount(serviceKeyJson: string | null) 
   });
 }
 
-export async function resendInvite(userId: string) {
+export async function getBankCurrencyRates() {
+  return request<CurrencyRate[]>('/management/bank-statement/currency-rates', { auth: true });
+}
+
+// ─── Currency Rates ───────────────────────────────────────────────────────────
+
+export type CurrencyRate = { currency: string; rateToUsd: number; updatedAt: string };
+export type CurrencySettingsData = {
+  id: string;
+  autoUpdateDay: number;
+  lastUpdatedAt: string | null;
+  nextUpdateAt: string | null;
+  updatedAt: string;
+};
+export type CurrencyData = { rates: CurrencyRate[]; settings: CurrencySettingsData | null };
+
+export async function getCurrencyData() {
+  return request<CurrencyData>('/management/settings/system/currency-rates', { auth: true });
+}
+
+export async function refreshCurrencyRates() {
+  return request<CurrencyData>('/management/settings/system/currency-rates/refresh', {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function updateCurrencySettings(body: { autoUpdateDay: number }) {
+  return request<CurrencySettingsData>('/management/settings/system/currency-settings', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function addCurrencyRate(currency: string) {
+  return request<CurrencyData>('/management/settings/system/currency-rates', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify({ currency }),
+  });
+}
+
+export async function deleteCurrencyRate(currency: string) {
+  return request<CurrencyData>(`/management/settings/system/currency-rates/${currency}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
+
+export async function resendInvite(userId: number) {
   return request<{ ok: boolean }>(`/management/users/${userId}/resend-invite`, {
     method: 'POST',
     auth: true,
@@ -583,7 +637,7 @@ export async function setPasswordWithToken(token: string, password: string, name
 }
 
 export async function updateMyProfile(name: string) {
-  return request<{ id: string; email: string; name: string | null }>('/auth/me/profile', {
+  return request<{ id: number; email: string; name: string | null }>('/auth/me/profile', {
     method: 'PUT',
     auth: true,
     body: JSON.stringify({ name }),
@@ -596,4 +650,159 @@ export async function changeMyPassword(currentPassword: string, newPassword: str
     auth: true,
     body: JSON.stringify({ currentPassword, newPassword }),
   });
+}
+
+export type AppNotification = {
+  id: number;
+  type: 'job_completed' | 'job_failed' | 'job_waiting_2fa';
+  title: string;
+  body: string | null;
+  jobPublicId: string | null;
+  isRead: boolean;
+  createdAt: string;
+};
+
+export async function listNotifications(skip = 0, take = 15) {
+  return request<{ items: AppNotification[]; hasMore: boolean }>(`/notifications?skip=${skip}&take=${take}`, { auth: true });
+}
+
+export async function getUnreadNotificationCount() {
+  return request<{ count: number }>('/notifications/unread-count', { auth: true });
+}
+
+export async function markNotificationRead(id: number) {
+  return request<AppNotification>(`/notifications/${id}/read`, { method: 'PATCH', auth: true });
+}
+
+export async function markAllNotificationsRead() {
+  return request<{ ok: boolean }>('/notifications/read-all', { method: 'PATCH', auth: true });
+}
+
+// ─── Reconcile ────────────────────────────────────────────────────────────────
+// Bypasses request() on purpose: this call sends multipart/form-data (not JSON)
+// and reads a binary file back (not JSON), so it needs its own auth/error handling.
+
+function filenameFromContentDisposition(header: string | null, fallback: string): string {
+  if (!header) return fallback;
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8Match) {
+    try { return decodeURIComponent(utf8Match[1]); } catch { /* fall through */ }
+  }
+  const plainMatch = /filename="?([^";]+)"?/i.exec(header);
+  return plainMatch ? plainMatch[1] : fallback;
+}
+
+// Shared by multipartFetch (below) and downloadReconcileResult() — both bypass request() because
+// they don't exchange plain JSON (multipart body in, binary body out), but still need the same
+// auth-header + 401 + error-body handling request() gives everything else.
+async function checkRawResponse(res: Response): Promise<Response> {
+  if (res.status === 401) {
+    clearToken();
+    if (typeof window !== 'undefined') window.location.replace('/login');
+    throw new Error('UNAUTHORIZED');
+  }
+
+  if (!res.ok) {
+    let message = `Request failed: ${res.status}`;
+    try {
+      const data = await res.json() as { message?: string };
+      if (data?.message) message = data.message;
+    } catch { /* body wasn't JSON */ }
+    throw new Error(message);
+  }
+
+  return res;
+}
+
+async function multipartFetch(path: string, formData: FormData): Promise<Response> {
+  let baseUrl = getApiBaseUrl();
+  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
+
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers, // no content-type — the browser sets the multipart boundary itself
+    body: formData,
+    cache: 'no-store',
+  });
+
+  return checkRawResponse(res);
+}
+
+// Starts the filter-merge job — the actual invoice parsing now runs async in a Lambda (see
+// apps/reconcile-lambda), so this returns immediately with a jobId instead of the merged file.
+// Poll getReconcileJobStatus(jobId) until status is 'done', then call downloadReconcileResult().
+export async function startReconcileFilterMerge(formData: FormData): Promise<{ jobId: string }> {
+  const res = await multipartFetch('/management/reconcile/filter-merge', formData);
+  return res.json() as Promise<{ jobId: string }>;
+}
+
+export type ReconcileJobStatus =
+  | { status: 'processing' }
+  | { status: 'done' }
+  | { status: 'error'; message: string };
+
+export async function getReconcileJobStatus(jobId: string) {
+  return request<ReconcileJobStatus>(`/management/reconcile/filter-merge/${jobId}/status`, { auth: true });
+}
+
+export async function downloadReconcileResult(jobId: string): Promise<{ blob: Blob; filename: string }> {
+  let baseUrl = getApiBaseUrl();
+  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
+
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const res = await checkRawResponse(await fetch(`${baseUrl}/management/reconcile/filter-merge/${jobId}/download`, {
+    headers,
+    cache: 'no-store',
+  }));
+
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(res.headers.get('content-disposition'), 'service_invoices_merged.xlsx');
+  return { blob, filename };
+}
+
+export type MasterCustomerItem = { brandName: string; customerName: string };
+export type MasterCustomerInfo = { count: number; updatedAt: string | null; items: MasterCustomerItem[] };
+
+export async function getMasterCustomerInfo() {
+  return request<MasterCustomerInfo>('/management/reconcile/master-customer', { auth: true });
+}
+
+export type ReconcileSettings = {
+  id: string;
+  headerRow: number;
+  salesColumn: string;
+  taxColumn: string;
+  noteColumn: string;
+  customerColumn: string;
+  updatedAt: string;
+};
+
+export async function getReconcileSettings() {
+  return request<ReconcileSettings>('/management/reconcile/settings', { auth: true });
+}
+
+export async function updateReconcileSettings(body: {
+  headerRow: number;
+  salesColumn: string;
+  taxColumn: string;
+  noteColumn: string;
+  customerColumn: string;
+}) {
+  return request<ReconcileSettings>('/management/reconcile/settings', {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function replaceMasterCustomerFile(formData: FormData): Promise<MasterCustomerInfo> {
+  const res = await multipartFetch('/management/reconcile/master-customer', formData);
+  return res.json() as Promise<MasterCustomerInfo>;
 }

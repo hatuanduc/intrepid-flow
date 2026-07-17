@@ -1,47 +1,17 @@
-.form {
+.content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 20px;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.label {
+.desc {
   font-size: 13px;
-  font-weight: 500;
-  color: var(--color-secondary);
-}
-
-.optional {
-  font-weight: 400;
-  color: var(--color-subtle);
-}
-
-.input {
-  padding: 9px 12px;
-  border-radius: 6px;
-  border: 1.5px solid var(--color-border);
-  background: var(--bg-surface);
-  font-size: 14px;
-  color: var(--color-ink);
-  outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
-  width: 100%;
-  box-sizing: border-box;
-}
-.input:focus {
-  border-color: var(--color-accent-active);
-  box-shadow: 0 0 0 3px rgba(98,90,250,0.10);
-}
-
-.divider {
-  height: 1px;
-  background: var(--color-border);
-  margin: 4px 0;
+  color: var(--color-muted);
+  line-height: 1.6;
+  margin: 0;
+  padding: 12px 14px;
+  background: var(--bg-subtle);
+  border-radius: 8px;
 }
 
 /* ── Permissions ── */
@@ -82,13 +52,11 @@
 .moduleHeader {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
+  justify-content: space-between;
+  padding: 9px 14px;
   background: var(--bg-table-head);
-  cursor: pointer;
   border-bottom: 1px solid var(--color-border);
 }
-.moduleHeader:hover { background: var(--bg-subtle); }
 
 .moduleName {
   font-size: 12px;
@@ -96,6 +64,12 @@
   color: var(--color-secondary);
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.moduleCount {
+  font-size: 11px;
+  color: var(--color-muted);
+  font-weight: 500;
 }
 
 .permList {
@@ -108,77 +82,23 @@
   align-items: center;
   gap: 10px;
   padding: 9px 14px;
-  cursor: pointer;
   border-bottom: 1px solid var(--color-border-light);
-  transition: background 0.1s;
 }
 .permRow:last-child { border-bottom: none; }
-.permRow:hover { background: var(--bg-hover); }
+
+.permDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #059669;
+  flex-shrink: 0;
+}
 
 .permLabel {
   font-size: 13px;
   color: var(--color-secondary);
 }
 
-.checkbox {
-  width: 15px;
-  height: 15px;
-  accent-color: var(--color-accent-active);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-/* System role notice */
-.systemNotice {
-  font-size: 12px;
-  color: var(--color-muted);
-  background: var(--bg-subtle);
-  border-radius: 6px;
-  padding: 8px 12px;
-}
-
-/* Readonly module header (system role) */
-.moduleHeaderReadonly {
-  cursor: default;
-  pointer-events: none;
-}
-.moduleHeaderReadonly:hover { background: var(--bg-table-head); }
-
-.moduleCount {
-  margin-left: auto;
-  font-size: 11px;
-  color: var(--color-muted);
-  font-weight: 500;
-}
-
-/* Readonly perm row */
-.permRowReadonly {
-  cursor: default;
-  pointer-events: none;
-}
-.permRowReadonly:hover { background: transparent; }
-
-/* Dot indicators for readonly view */
-.permDotOn {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #059669;
-  flex-shrink: 0;
-}
-.permDotOff {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--color-border-strong);
-  flex-shrink: 0;
-}
-
-.permsLoading {
-  display: flex;
-  justify-content: center;
-  padding: 24px 0;
-}
 .permsEmpty {
   font-size: 13px;
   color: var(--color-subtle);
@@ -186,30 +106,7 @@
   padding: 20px 0;
 }
 
-.error {
-  font-size: 13px;
-  color: #df1b41;
-  background: #fff0f3;
-  border: 1px solid #fecaca;
-  border-radius: 6px;
-  padding: 10px 12px;
-}
-
-/* Footer buttons */
-.btnPrimary {
-  padding: 8px 18px;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 6px;
-  border: none;
-  background: var(--color-accent);
-  color: #fff;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
-.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
-
+/* Footer */
 .btnSecondary {
   padding: 8px 18px;
   font-size: 13px;
@@ -219,6 +116,5 @@
   background: var(--bg-surface);
   color: var(--color-secondary);
   cursor: pointer;
-  transition: background 0.12s;
 }
 .btnSecondary:hover { background: var(--bg-page); }

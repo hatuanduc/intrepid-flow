@@ -1,11 +1,11 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { JobSchedulerService } from '../../common/job-scheduler.service';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
-import { CreateCountryMappingDto, UpdateCountryMappingDto } from './dto/country-mapping.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 
 const SETTINGS_ID = 'default';
@@ -32,10 +32,29 @@ function parseSteps(raw: unknown): JobStep[] {
   return raw as JobStep[];
 }
 
+function generateJobPublicId(): string {
+  return `job_${crypto.randomBytes(9).toString('base64url')}`;
+}
+
+export type JobStatsDto = {
+  totalAccounts: number;
+  downloaded: number;
+  downloadFailed: number;
+  synced: number;
+  syncFailed: number;
+  syncSkipped: number;
+  syncPending: number;
+  syncNoData: number;
+  totalRowsDownloaded: number;
+  totalRowsInserted: number;
+  totalRowsSynced: number;
+};
+
 export type BankSyncJobDto = {
   id: string;
   status: string;
   triggeredBy: string | null;
+  triggeredByName: string | null;
   startedAt: Date | null;
   completedAt: Date | null;
   errorMessage: string | null;
@@ -43,10 +62,44 @@ export type BankSyncJobDto = {
   steps: JobStep[];
   createdAt: Date;
   durationMs: number | null;
+  stats: JobStatsDto | null;
+  // The actual HSBC date range this run used — set by the worker once computed
+  // (from either dateFromOverride/dateToOverride or the default syncDateMode).
+  // Null until the worker reaches that point (e.g. still pending/logging in).
+  dateRangeFrom: Date | null;
+  dateRangeTo: Date | null;
 };
 
+type JobAccountRow = { status: string; sheetsSyncStatus: string; rowsDownloaded: number; rowsInserted: number; rowsSynced: number };
+
+function computeJobStats(accounts: JobAccountRow[]): JobStatsDto | null {
+  if (accounts.length === 0) return null;
+  return {
+    totalAccounts: accounts.length,
+    downloaded: accounts.filter(a => a.status === 'completed').length,
+    downloadFailed: accounts.filter(a => a.status === 'failed').length,
+    synced: accounts.filter(a => a.sheetsSyncStatus === 'completed').length,
+    syncFailed: accounts.filter(a => a.sheetsSyncStatus === 'failed').length,
+    syncSkipped: accounts.filter(a => a.status === 'completed' && a.sheetsSyncStatus === 'skipped').length,
+    syncPending: accounts.filter(a => a.status === 'completed' && a.sheetsSyncStatus === 'pending').length,
+    syncNoData: accounts.filter(a => a.sheetsSyncStatus === 'no_data').length,
+    totalRowsDownloaded: accounts.reduce((s, a) => s + a.rowsDownloaded, 0),
+    totalRowsInserted: accounts.reduce((s, a) => s + a.rowsInserted, 0),
+    totalRowsSynced: accounts.reduce((s, a) => s + a.rowsSynced, 0),
+  };
+}
+
+// triggeredBy is either the literal 'cron' (scheduled run) or a stringified user id
+// (manual trigger/retry) — never a display name itself, so the caller resolves it
+// against a batched user lookup and we just look it up here.
+function resolveTriggeredByName(triggeredBy: string | null, nameByUserId: Map<number, string>): string | null {
+  if (!triggeredBy || triggeredBy === 'cron') return null;
+  const id = Number(triggeredBy);
+  return Number.isFinite(id) ? (nameByUserId.get(id) ?? null) : null;
+}
+
 function toDto(job: {
-  id: string;
+  publicId: string;
   status: string;
   triggeredBy: string | null;
   startedAt: Date | null;
@@ -55,16 +108,24 @@ function toDto(job: {
   logs: unknown;
   steps: unknown;
   createdAt: Date;
-}): BankSyncJobDto {
-  const durationMs =
-    job.startedAt && job.completedAt
+  durationMsTotal?: number;
+  dateRangeFrom?: Date | null;
+  dateRangeTo?: Date | null;
+}, accounts: JobAccountRow[] = [], nameByUserId: Map<number, string> = new Map()): BankSyncJobDto {
+  // durationMsTotal accumulates across retries (each retry resets startedAt, so a
+  // naive completedAt - startedAt diff would only reflect the last attempt).
+  // Fall back to the raw diff for jobs created before this field existed.
+  const durationMs = job.durationMsTotal
+    ? job.durationMsTotal
+    : job.startedAt && job.completedAt
       ? job.completedAt.getTime() - job.startedAt.getTime()
       : null;
 
   return {
-    id: job.id,
+    id: job.publicId,
     status: job.status,
     triggeredBy: job.triggeredBy,
+    triggeredByName: resolveTriggeredByName(job.triggeredBy, nameByUserId),
     startedAt: job.startedAt,
     completedAt: job.completedAt,
     errorMessage: job.errorMessage,
@@ -72,15 +133,32 @@ function toDto(job: {
     steps: parseSteps(job.steps),
     createdAt: job.createdAt,
     durationMs,
+    stats: computeJobStats(accounts),
+    dateRangeFrom: job.dateRangeFrom ?? null,
+    dateRangeTo: job.dateRangeTo ?? null,
   };
 }
 
 @Injectable()
-export class BankStatementService {
+export class BankStatementService implements OnModuleInit {
   constructor(
     private prisma: PrismaService,
     @InjectQueue('bank-sync') private readonly queue: Queue,
+    private readonly jobScheduler: JobSchedulerService,
   ) {}
+
+  async onModuleInit() {
+    const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: SETTINGS_ID } });
+    if (settings) {
+      this.jobScheduler.sync('bank-sync', settings.scheduleCron, settings.isScheduled, async () => { await this.triggerJob('cron'); });
+    }
+  }
+
+  // ─── Currency Rates ───────────────────────────────────────────────────────────
+
+  async getCurrencyRates() {
+    return this.prisma.currencyRate.findMany({ orderBy: { currency: 'asc' } });
+  }
 
   // ─── Schedule Settings ───────────────────────────────────────────────────────
 
@@ -95,11 +173,13 @@ export class BankStatementService {
   }
 
   async updateSettings(dto: UpdateSettingsDto) {
-    return this.prisma.bankJobSettings.upsert({
+    const settings = await this.prisma.bankJobSettings.upsert({
       where: { id: SETTINGS_ID },
       create: { id: SETTINGS_ID, ...dto },
       update: dto,
     });
+    this.jobScheduler.sync('bank-sync', settings.scheduleCron, settings.isScheduled, async () => { await this.triggerJob('cron'); });
+    return settings;
   }
 
   // ─── Download Template ───────────────────────────────────────────────────────
@@ -117,62 +197,61 @@ export class BankStatementService {
     });
   }
 
-  // ─── Country Mappings ────────────────────────────────────────────────────────
-
-  async listCountryMappings() {
-    return this.prisma.bankCountryMapping.findMany({ orderBy: { companyName: 'asc' } });
-  }
-
-  async createCountryMapping(dto: CreateCountryMappingDto) {
-    return this.prisma.bankCountryMapping.create({ data: dto });
-  }
-
-  async updateCountryMapping(id: string, dto: UpdateCountryMappingDto) {
-    const existing = await this.prisma.bankCountryMapping.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('COUNTRY_MAPPING_NOT_FOUND');
-    return this.prisma.bankCountryMapping.update({ where: { id }, data: dto });
-  }
-
-  async deleteCountryMapping(id: string) {
-    const existing = await this.prisma.bankCountryMapping.findUnique({ where: { id } });
-    if (!existing) throw new NotFoundException('COUNTRY_MAPPING_NOT_FOUND');
-    await this.prisma.bankCountryMapping.delete({ where: { id } });
-    return { ok: true };
-  }
-
   // ─── GSheet Configs ──────────────────────────────────────────────────────────
 
   async listGsheetConfigs() {
-    const configs = await this.prisma.bankGsheetConfig.findMany({ orderBy: { countryCode: 'asc' } });
-    return configs.map(c => ({ ...c, hasServiceKey: !!c.serviceKeyJson, serviceKeyJson: undefined }));
+    return this.prisma.bankGsheetConfig.findMany({ orderBy: { accountCode: 'asc' } });
   }
 
-  async upsertGsheetConfig(countryCode: string, dto: UpsertGsheetConfigDto) {
-    const result = await this.prisma.bankGsheetConfig.upsert({
-      where: { countryCode },
-      create: { countryCode, ...dto },
+  async upsertGsheetConfig(accountCode: string, dto: UpsertGsheetConfigDto) {
+    return this.prisma.bankGsheetConfig.upsert({
+      where: { accountCode },
+      create: { accountCode, ...dto },
       update: dto,
     });
-    return { ...result, hasServiceKey: !!result.serviceKeyJson, serviceKeyJson: undefined };
   }
 
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
 
-  async listAccounts() {
-    return this.prisma.bankAccount.findMany({
-      select: { id: true, accountNumber: true, accountName: true, bankName: true, currency: true, countryCode: true, isActive: true },
-      orderBy: [{ countryCode: 'asc' }, { accountNumber: 'asc' }],
+  async listAccountNames() {
+    return this.prisma.bankAccountName.findMany({
+      where: { isActive: true },
+      orderBy: { name: 'asc' },
     });
   }
 
-  async getMetrics(from: Date, to: Date, countryCode?: string, accountId?: string) {
+  async listAccounts() {
+    const accounts = await this.prisma.bankAccount.findMany({
+      include: {
+        syncJobAccounts: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          include: { job: { select: { completedAt: true } } },
+        },
+      },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
+    });
+    return accounts.map(a => ({
+      id: a.id,
+      accountNumber: a.accountNumber,
+      accountName: a.accountName,
+      bankName: a.bankName,
+      currency: a.currency,
+      accountCode: a.accountCode,
+      isActive: a.isActive,
+      lastSyncAt: a.syncJobAccounts[0]?.job?.completedAt ?? null,
+      lastSyncStatus: a.syncJobAccounts[0]?.status ?? null,
+    }));
+  }
+
+  async getMetrics(from: Date, to: Date, accountCode?: string, accountId?: number) {
     const accountWhere: Record<string, unknown> = {};
-    if (countryCode) accountWhere.countryCode = countryCode;
+    if (accountCode) accountWhere.accountCode = accountCode;
     if (accountId) accountWhere.id = accountId;
 
     const accounts = await this.prisma.bankAccount.findMany({
       where: Object.keys(accountWhere).length > 0 ? accountWhere : undefined,
-      select: { id: true, accountNumber: true, accountName: true, countryCode: true, currency: true },
+      select: { id: true, accountNumber: true, accountName: true, accountCode: true, currency: true },
     });
 
     if (accounts.length === 0) {
@@ -197,7 +276,7 @@ export class BankStatementService {
         accountId: row.bankAccountId,
         accountNumber: acc?.accountNumber ?? '',
         accountName: acc?.accountName ?? '',
-        countryCode: acc?.countryCode ?? '',
+        accountCode: acc?.accountCode ?? '',
         currency: acc?.currency ?? '',
         totalCredit: Number(row._sum.creditAmount ?? 0),
         totalDebit: Number(row._sum.debitAmount ?? 0),
@@ -219,13 +298,82 @@ export class BankStatementService {
     };
   }
 
-  async getJobSummary(jobId: string) {
-    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId } });
+  async getAccountTransactions(accountId: number, from: Date, to: Date) {
+    const txns = await this.prisma.bankTransaction.findMany({
+      where: {
+        bankAccountId: accountId,
+        postDate: { gte: from, lte: to },
+      },
+      orderBy: { postDate: 'asc' },
+      select: {
+        id: true,
+        postDate: true,
+        narrative: true,
+        bankReference: true,
+        creditAmount: true,
+        debitAmount: true,
+        createdAt: true,
+      },
+    });
+    return txns.map(t => ({
+      id: t.id,
+      postDate: t.postDate,
+      narrative: t.narrative,
+      bankReference: t.bankReference,
+      creditAmount: t.creditAmount != null ? Number(t.creditAmount) : null,
+      debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
+      fetchedAt: t.createdAt,
+    }));
+  }
+
+  async getJobAccountTransactions(jobPublicId: string, accountId: number) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const txns = await this.prisma.bankTransaction.findMany({
+      where: { jobId: job.id, bankAccountId: accountId },
+      orderBy: { postDate: 'asc' },
+      select: {
+        id: true,
+        postDate: true,
+        narrative: true,
+        bankReference: true,
+        creditAmount: true,
+        debitAmount: true,
+        createdAt: true,
+      },
+    });
+
+    return txns.map(t => ({
+      id: t.id,
+      postDate: t.postDate,
+      narrative: t.narrative,
+      bankReference: t.bankReference,
+      creditAmount: t.creditAmount != null ? Number(t.creditAmount) : null,
+      debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
+      fetchedAt: t.createdAt,
+    }));
+  }
+
+  async getJobStats(jobPublicId: string): Promise<JobStatsDto> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({ where: { jobId: job.id } });
+    return computeJobStats(accounts) ?? {
+      totalAccounts: 0, downloaded: 0, downloadFailed: 0, synced: 0,
+      syncFailed: 0, syncSkipped: 0, syncPending: 0, syncNoData: 0,
+      totalRowsDownloaded: 0, totalRowsInserted: 0, totalRowsSynced: 0,
+    };
+  }
+
+  async getJobSummary(jobPublicId: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
 
     const grouped = await this.prisma.bankTransaction.groupBy({
       by: ['bankAccountId'],
-      where: { jobId },
+      where: { jobId: job.id },
       _sum: { creditAmount: true, debitAmount: true },
       _count: { id: true },
     });
@@ -235,34 +383,54 @@ export class BankStatementService {
     const accountMap = Object.fromEntries(
       (await this.prisma.bankAccount.findMany({
         where: { id: { in: grouped.map(g => g.bankAccountId) } },
-        select: { id: true, accountNumber: true, accountName: true, countryCode: true, currency: true },
+        select: { id: true, accountNumber: true, accountName: true, accountCode: true, currency: true },
       })).map(a => [a.id, a]),
+    );
+
+    const syncStatusMap = Object.fromEntries(
+      (await this.prisma.bankSyncJobAccount.findMany({
+        where: { jobId: job.id, bankAccountId: { in: grouped.map(g => g.bankAccountId) } },
+        select: { bankAccountId: true, sheetsSyncStatus: true, sheetsSyncError: true },
+      })).map(a => [a.bankAccountId, a]),
     );
 
     return grouped.map(row => {
       const acc = accountMap[row.bankAccountId];
+      const syncStatus = syncStatusMap[row.bankAccountId];
       return {
         accountId: row.bankAccountId,
         accountNumber: acc?.accountNumber ?? '',
         accountName: acc?.accountName ?? '',
-        countryCode: acc?.countryCode ?? '',
+        accountCode: acc?.accountCode ?? '',
         currency: acc?.currency ?? '',
         txCount: row._count.id,
         totalCredit: Number(row._sum.creditAmount ?? 0),
         totalDebit: Number(row._sum.debitAmount ?? 0),
+        sheetsSyncStatus: syncStatus?.sheetsSyncStatus ?? 'pending',
+        sheetsSyncError: syncStatus?.sheetsSyncError ?? null,
       };
     });
   }
 
   // ─── Job Management ──────────────────────────────────────────────────────────
 
-  async triggerJob(triggeredBy: string): Promise<BankSyncJobDto> {
+  async triggerJob(triggeredBy: string, dateFrom?: string, dateTo?: string): Promise<BankSyncJobDto> {
+    if ((dateFrom && !dateTo) || (!dateFrom && dateTo)) {
+      throw new BadRequestException('DATE_RANGE_INCOMPLETE');
+    }
+
     const dbRecord = await this.prisma.bankSyncJob.create({
       data: {
+        publicId: generateJobPublicId(),
         status: 'pending',
         triggeredBy,
         startedAt: new Date(),
         steps: INITIAL_STEPS,
+        // Per-run override only — never written to BankJobSettings, so scheduled
+        // cron runs (and future manual runs without an override) keep using the
+        // default syncDateMode/syncCustomDays untouched.
+        dateFromOverride: dateFrom ? new Date(dateFrom) : null,
+        dateToOverride: dateTo ? new Date(dateTo) : null,
       },
     });
 
@@ -271,25 +439,57 @@ export class BankStatementService {
     return toDto(dbRecord);
   }
 
+  private async nameByUserIdFor(triggeredByValues: (string | null)[]): Promise<Map<number, string>> {
+    const userIds = Array.from(new Set(
+      triggeredByValues
+        .filter((v): v is string => !!v && v !== 'cron')
+        .map(Number)
+        .filter(Number.isFinite),
+    ));
+    if (userIds.length === 0) return new Map();
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: userIds } },
+      select: { id: true, name: true, email: true },
+    });
+    return new Map(users.map(u => [u.id, u.name ?? u.email]));
+  }
+
   async listJobs(limit = 50): Promise<BankSyncJobDto[]> {
     const jobs = await this.prisma.bankSyncJob.findMany({
       where: { isDeleted: false },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-    return jobs.map(toDto);
+    if (jobs.length === 0) return [];
+
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId: { in: jobs.map(j => j.id) } },
+    });
+    const accountsByJob = new Map<number, JobAccountRow[]>();
+    for (const a of accounts) {
+      const list = accountsByJob.get(a.jobId) ?? [];
+      list.push(a);
+      accountsByJob.set(a.jobId, list);
+    }
+
+    const nameByUserId = await this.nameByUserIdFor(jobs.map(j => j.triggeredBy));
+
+    return jobs.map(job => toDto(job, accountsByJob.get(job.id) ?? [], nameByUserId));
   }
 
-  async getJobDetail(id: string): Promise<BankSyncJobDto> {
-    const job = await this.prisma.bankSyncJob.findUnique({ where: { id } });
+  async getJobDetail(publicId: string): Promise<BankSyncJobDto> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
-    return toDto(job);
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({ where: { jobId: job.id } });
+    const nameByUserId = await this.nameByUserIdFor([job.triggeredBy]);
+    return toDto(job, accounts, nameByUserId);
   }
 
-  async retryJob(id: string, retriedBy: string, stepKey?: StepKey): Promise<BankSyncJobDto> {
-    const job = await this.prisma.bankSyncJob.findUnique({ where: { id } });
+  async retryJob(publicId: string, retriedBy: string, stepKey?: StepKey): Promise<BankSyncJobDto> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
-    if (!['failed', 'completed'].includes(job.status)) throw new ConflictException('JOB_STILL_ACTIVE');
+    if (!['failed', 'completed', 'cancelled'].includes(job.status)) throw new ConflictException('JOB_STILL_ACTIVE');
 
     const steps = parseSteps(job.steps);
 
@@ -312,7 +512,7 @@ export class BankStatementService {
     const separator = { time: new Date().toISOString(), message: '__RETRY__' };
 
     const updated = await this.prisma.bankSyncJob.update({
-      where: { id },
+      where: { id: job.id },
       data: {
         status: 'pending',
         errorMessage: null,
@@ -324,18 +524,31 @@ export class BankStatementService {
       },
     });
 
-    await this.queue.add('run', { jobId: id, triggeredBy: retriedBy });
+    await this.queue.add('run', { jobId: job.id, triggeredBy: retriedBy });
 
     return toDto(updated);
   }
 
-  async softDeleteJob(id: string): Promise<{ ok: boolean }> {
-    const job = await this.prisma.bankSyncJob.findUnique({ where: { id } });
+  async cancelJob(publicId: string): Promise<{ ok: boolean }> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
-    if (!['completed', 'failed'].includes(job.status)) {
-      throw new NotFoundException('JOB_STILL_ACTIVE');
+    if (['completed', 'failed', 'cancelled'].includes(job.status)) {
+      throw new ConflictException('JOB_ALREADY_TERMINAL');
     }
-    await this.prisma.bankSyncJob.update({ where: { id }, data: { isDeleted: true } });
+    await this.prisma.bankSyncJob.update({
+      where: { id: job.id },
+      data: { status: 'cancelled', completedAt: new Date() },
+    });
+    return { ok: true };
+  }
+
+  async softDeleteJob(publicId: string): Promise<{ ok: boolean }> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+    if (!['completed', 'failed', 'cancelled'].includes(job.status)) {
+      throw new ConflictException('JOB_STILL_ACTIVE');
+    }
+    await this.prisma.bankSyncJob.update({ where: { id: job.id }, data: { isDeleted: true } });
     return { ok: true };
   }
 }

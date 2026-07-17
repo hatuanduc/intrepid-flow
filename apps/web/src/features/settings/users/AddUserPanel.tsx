@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { createUser, listRoles, type RoleItem } from '../../../lib/api';
+import { createUser, listRoles, listPermissions, type RoleItem, type PermissionItem } from '../../../lib/api';
 import RightPanel from '../../../components/common/RightPanel';
 import { useToast } from '../../../components/common/Toast';
+import UserPermissionPicker from './UserPermissionPicker';
 import s from './AddUserPanel.module.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -14,8 +15,10 @@ export default function AddUserPanel({ open, onClose }: Props) {
   const toast = useToast();
   const [emailInput, setEmailInput] = useState('');
   const [emailChip, setEmailChip] = useState('');
-  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
+  const [selectedPermissionIds, setSelectedPermissionIds] = useState<number[]>([]);
+  const [permissions, setPermissions] = useState<PermissionItem[]>([]);
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -23,12 +26,15 @@ export default function AddUserPanel({ open, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (open) listRoles().then(r => setRoles(r.items ?? []));
+    if (open) {
+      listRoles().then(r => setRoles(r.items ?? []));
+      listPermissions().then(r => setPermissions(r.items ?? []));
+    }
   }, [open]);
 
   function reset() {
     setEmailInput(''); setEmailChip('');
-    setSelectedRoleIds([]); setSearch(''); setError(null); setFieldErrors({});
+    setSelectedRoleIds([]); setSelectedPermissionIds([]); setSearch(''); setError(null); setFieldErrors({});
   }
 
   function confirmEmail(val: string) {
@@ -67,10 +73,23 @@ export default function AddUserPanel({ open, onClose }: Props) {
 
   function handleClose() { reset(); onClose(); }
 
-  function toggleRole(id: string) {
+  function toggleRole(id: number) {
     setSelectedRoleIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
+  }
+
+  function togglePermission(id: number) {
+    setSelectedPermissionIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  }
+
+  function toggleModulePermissions(ids: number[]) {
+    setSelectedPermissionIds(prev => {
+      const allSelected = ids.every(id => prev.includes(id));
+      return allSelected ? prev.filter(x => !ids.includes(x)) : [...new Set([...prev, ...ids])];
+    });
   }
 
   async function submit(e: React.FormEvent) {
@@ -81,7 +100,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
     setFieldErrors({});
     setSaving(true);
     try {
-      await createUser({ email: emailChip, roleIds: selectedRoleIds });
+      await createUser({ email: emailChip, roleIds: selectedRoleIds, permissionIds: selectedPermissionIds });
       toast.success('Đã gửi lời mời thành công.');
       handleClose();
     } catch (err) {
@@ -203,6 +222,24 @@ export default function AddUserPanel({ open, onClose }: Props) {
           <p className={s.noResult}>Không tìm thấy vai trò.</p>
         )}
 
+        <div className={s.divider} />
+
+        <div className={s.permSection}>
+          <div className={s.permSectionHead}>
+            <label className={s.label}>Quyền tùy chỉnh theo module</label>
+            {selectedPermissionIds.length > 0 && (
+              <span className={s.roleTotalCount}>{selectedPermissionIds.length} đã chọn</span>
+            )}
+          </div>
+          <p className={s.permSectionDesc}>Gán thêm quyền riêng cho user này, cộng dồn với quyền từ vai trò đã chọn ở trên.</p>
+          <UserPermissionPicker
+            permissions={permissions}
+            selectedIds={selectedPermissionIds}
+            onToggle={togglePermission}
+            onToggleModule={toggleModulePermissions}
+          />
+        </div>
+
         {error && <div className={s.error}>{error}</div>}
       </form>
     </RightPanel>
@@ -222,7 +259,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 
 function CollapsibleRoleGroup({
   label, roles, selectedIds, onToggle,
-}: { label: string; roles: RoleItem[]; selectedIds: string[]; onToggle: (id: string) => void }) {
+}: { label: string; roles: RoleItem[]; selectedIds: number[]; onToggle: (id: number) => void }) {
   const [open, setOpen] = useState(true);
   const selectedCount = roles.filter(r => selectedIds.includes(r.id)).length;
 
@@ -248,7 +285,7 @@ function CollapsibleRoleGroup({
   );
 }
 
-function RoleOption({ role, selected, onToggle }: { role: RoleItem; selected: boolean; onToggle: (id: string) => void }) {
+function RoleOption({ role, selected, onToggle }: { role: RoleItem; selected: boolean; onToggle: (id: number) => void }) {
   return (
     <label className={[s.roleOption, selected ? s.roleOptionSelected : ''].filter(Boolean).join(' ')}>
       <input type="checkbox" checked={selected} onChange={() => onToggle(role.id)} className={s.roleCheckbox} />

@@ -235,6 +235,91 @@
   padding: 10px 12px;
 }
 
+/* ── Custom permission picker (theo module) ── */
+.permSection { display: flex; flex-direction: column; gap: 8px; }
+.permSectionHead { display: flex; align-items: center; justify-content: space-between; }
+.permSectionDesc { font-size: 12px; color: var(--color-muted); margin: 0; }
+
+.permGroupList { display: flex; flex-direction: column; gap: 8px; }
+
+.permGroup {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.permGroupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-table-head);
+}
+
+.permGroupHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  cursor: pointer;
+}
+
+.permGroupCheckbox {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--color-accent-active);
+  cursor: pointer;
+}
+
+.permGroupLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.permGroupToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--color-muted);
+  padding: 2px;
+}
+
+.permGroupCount {
+  font-size: 11px;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.permGroupBody { display: flex; flex-direction: column; }
+
+.permRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 32px;
+  border-top: 1px solid var(--color-border-light);
+  cursor: pointer;
+}
+.permRow:first-child { border-top: none; }
+
+.permRowCheckbox {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--color-accent-active);
+  cursor: pointer;
+}
+
+.permRowLabel {
+  font-size: 13px;
+  color: var(--color-secondary);
+}
+
 /* Footer buttons */
 .btnPrimary {
   padding: 8px 18px;

@@ -5,9 +5,9 @@ export default function Mock2faPage() {
   const [showResend, setShowResend] = useState(false);
 
   useEffect(() => {
-    // "Resend" chỉ hiện sau 3s — như thật (chỉ khi đợi lâu)
+    // "Resend" only shows after 3s — mimics real behavior (only when waiting long)
     const t1 = setTimeout(() => setShowResend(true), 3000);
-    // Auto-redirect sau 6s — simulate mobile approval
+    // Auto-redirect after 6s — simulate mobile approval
     const t2 = setTimeout(() => { window.location.href = '/mock-hsbc/dashboard'; }, 6000);
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
@@ -22,7 +22,7 @@ export default function Mock2faPage() {
           Approve your log on
         </h2>
         <p style={{ fontSize: 14, color: '#555', marginBottom: 28, lineHeight: 1.5 }}>
-          We've sent a notification to your registered device.<br />
+          We&apos;ve sent a notification to your registered device.<br />
           Please open the HSBC Authenticator app to approve.
         </p>
 

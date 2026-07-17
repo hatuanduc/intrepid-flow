@@ -14,22 +14,17 @@ export class UpsertGsheetConfigDto {
   @IsOptional() @IsString()
   templateSheetName?: string;
 
-  @ApiProperty({ required: false, description: 'Service account JSON key' })
-  @IsOptional() @IsString()
-  serviceKeyJson?: string;
-
   @ApiProperty({ required: false })
   @IsOptional() @IsBoolean()
   isActive?: boolean;
 }
 
 export class GsheetConfigResponseDto {
-  @ApiProperty() id!: string;
-  @ApiProperty() countryCode!: string;
+  @ApiProperty() id!: number;
+  @ApiProperty() accountCode!: string;
   @ApiProperty() spreadsheetId!: string;
   @ApiProperty({ nullable: true }) spreadsheetUrl!: string | null;
   @ApiProperty({ nullable: true }) templateSheetName!: string | null;
-  @ApiProperty() hasServiceKey!: boolean;
   @ApiProperty() isActive!: boolean;
   @ApiProperty() updatedAt!: Date;
 }

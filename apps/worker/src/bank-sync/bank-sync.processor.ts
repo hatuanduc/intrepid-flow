@@ -5,7 +5,7 @@ import { BANK_SYNC_QUEUE } from './constants';
 import { BankSyncService } from './bank-sync.service';
 
 export type BankSyncJobData = {
-  jobId: string;       // bank_sync_jobs.id
+  jobId: number;       // bank_sync_jobs.id
   triggeredBy: string; // user_id or 'cron'
 };
 

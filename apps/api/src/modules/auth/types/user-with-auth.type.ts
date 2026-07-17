@@ -15,6 +15,11 @@ export const userWithAuthArgs = {
         },
       },
     },
+    permissions: {
+      include: {
+        permission: true,
+      },
+    },
   },
 } satisfies Prisma.UserDefaultArgs;
 

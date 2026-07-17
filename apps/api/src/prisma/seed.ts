@@ -13,8 +13,8 @@ const prisma = new PrismaClient({
 });
 
 async function main() {
-  const email = process.env.SEED_ADMIN_EMAIL ?? 'admin@intrepid.com';
-  const password = process.env.DEMO_PASSWORD ?? 'intrepid';
+  const email = process.env.SEED_ADMIN_EMAIL ?? 'adminintrepid@gmail.com';
+  const password = process.env.SEED_ADMIN_PASSWORD ?? 'intrepid';
   const hashed = bcrypt.hashSync(password, 10);
   const corePermissions = [
     { key: 'dashboard:view',  module: 'dashboard', action: 'view',   label: 'Xem tổng quan' },
@@ -24,40 +24,9 @@ async function main() {
     { key: 'roles:view',      module: 'roles',     action: 'view',   label: 'Xem vai trò' },
     { key: 'roles:create',    module: 'roles',     action: 'create', label: 'Tạo vai trò' },
     { key: 'roles:update',    module: 'roles',     action: 'update', label: 'Cập nhật vai trò' },
-    { key: 'modules:view',    module: 'modules',   action: 'view',   label: 'Xem danh sách quy trình' },
   ];
 
-  const initialWorkflowModules = [
-    {
-      key: 'bank_statement',
-      name: 'Sao kê ngân hàng',
-      description: 'Tự động lấy sao kê từ cổng ngân hàng điện tử và đồng bộ vào hệ thống.',
-      sortOrder: 1,
-    },
-    {
-      key: 'gmail_invoice',
-      name: 'Hóa đơn từ Gmail',
-      description: 'Tự động quét và trích xuất hóa đơn từ tài khoản Gmail được ủy quyền.',
-      sortOrder: 2,
-    },
-  ];
-
-  // Seed workflow modules first (permissions reference their names)
-  for (const wm of initialWorkflowModules) {
-    await prisma.workflowModule.upsert({
-      where: { key: wm.key },
-      create: { ...wm, isEnabled: false },
-      update: { name: wm.name, description: wm.description, sortOrder: wm.sortOrder },
-    });
-  }
-
-  // Core permissions + per-workflow-module permissions
-  const workflowModulePerms = initialWorkflowModules.flatMap(wm => [
-    { key: `${wm.key}:view`,   module: wm.key, action: 'view',   label: `Xem ${wm.name}` },
-    { key: `${wm.key}:manage`, module: wm.key, action: 'manage', label: `Quản lý ${wm.name}` },
-  ]);
-
-  for (const permission of [...corePermissions, ...workflowModulePerms]) {
+  for (const permission of corePermissions) {
     await prisma.permission.upsert({
       where: { key: permission.key },
       create: permission,
@@ -129,34 +98,38 @@ async function main() {
 
   console.log('Seed user ready:', user.email);
 
-  // Mock users để test pagination
-  const mockUsers = [
-    'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Văn Cường', 'Phạm Thị Dung', 'Hoàng Văn Em',
-    'Đặng Thị Phương', 'Bùi Văn Giang', 'Vũ Thị Hà', 'Đỗ Văn Inh', 'Ngô Thị Kim',
-    'Dương Văn Long', 'Lý Thị Mai', 'Trịnh Văn Nam', 'Phan Thị Oanh', 'Võ Văn Phúc',
-    'Đinh Thị Quỳnh', 'Lưu Văn Sơn', 'Tạ Thị Thủy', 'Hà Văn Ước', 'Mai Thị Vân',
-    'Cao Văn Xuân', 'Tô Thị Yến', 'Chu Văn Zung', 'Nông Thị Ánh', 'Thái Văn Bảo',
-  ];
+  // Mock users for testing pagination — only seeded when SEED_MOCK_USERS=true (local dev)
+  if (process.env.SEED_MOCK_USERS === 'true') {
+    const mockUsers = [
+      'Nguyễn Văn An', 'Trần Thị Bình', 'Lê Văn Cường', 'Phạm Thị Dung', 'Hoàng Văn Em',
+      'Đặng Thị Phương', 'Bùi Văn Giang', 'Vũ Thị Hà', 'Đỗ Văn Inh', 'Ngô Thị Kim',
+      'Dương Văn Long', 'Lý Thị Mai', 'Trịnh Văn Nam', 'Phan Thị Oanh', 'Võ Văn Phúc',
+      'Đinh Thị Quỳnh', 'Lưu Văn Sơn', 'Tạ Thị Thủy', 'Hà Văn Ước', 'Mai Thị Vân',
+      'Cao Văn Xuân', 'Tô Thị Yến', 'Chu Văn Zung', 'Nông Thị Ánh', 'Thái Văn Bảo',
+    ];
 
-  for (let i = 0; i < mockUsers.length; i++) {
-    const mockEmail = `user${i + 1}@intrepid.com`;
-    const mockUser = await prisma.user.upsert({
-      where: { email: mockEmail },
-      create: {
-        email: mockEmail,
-        name: mockUsers[i],
-        password: hashed,
-        isActive: i % 5 !== 0, // mỗi 5 user thì 1 bị khóa
-      },
-      update: { name: mockUsers[i] },
-    });
-    await prisma.userRole.upsert({
-      where: { userId_roleId: { userId: mockUser.id, roleId: adminRole.id } },
-      create: { userId: mockUser.id, roleId: adminRole.id },
-      update: {},
-    });
+    for (let i = 0; i < mockUsers.length; i++) {
+      const mockEmail = `user${i + 1}@intrepid.com`;
+      const mockUser = await prisma.user.upsert({
+        where: { email: mockEmail },
+        create: {
+          email: mockEmail,
+          name: mockUsers[i],
+          password: hashed,
+          isActive: i % 5 !== 0, // 1 out of every 5 users is locked
+        },
+        update: { name: mockUsers[i] },
+      });
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: mockUser.id, roleId: adminRole.id } },
+        create: { userId: mockUser.id, roleId: adminRole.id },
+        update: {},
+      });
+    }
+    console.log(`Seeded ${mockUsers.length} mock users`);
+  } else {
+    console.log('Skipped mock users (SEED_MOCK_USERS not enabled)');
   }
-  console.log(`Seeded ${mockUsers.length} mock users`);
 
   // ─── Bank Statement defaults ────────────────────────────────────────────────
   await prisma.bankJobSettings.upsert({
@@ -183,22 +156,44 @@ async function main() {
     update: {},
   });
 
-  const countryMappings = [
-    { companyName: 'INTREPID VIETNAM LTD',         countryCode: 'VN' },
-    { companyName: 'INTREPID MALAYSIA SDN. BHD',   countryCode: 'MY' },
-    { companyName: 'INTREPID DIGITAL I PT',        countryCode: 'ID' },
-    { companyName: 'INTREPID PHILIPPINES INC.',    countryCode: 'PH' },
-    { companyName: 'DATAMART VIET NAM CO., LTD',   countryCode: 'DM_VN' },
-    { companyName: 'INTREPID DIGITAL COMMERCE PL', countryCode: 'SG' },
+  console.log('Bank statement defaults seeded');
+
+  // ─── Bank Account Names (master data — account number is discovered by the sync job) ───
+  const BANK_ACCOUNT_NAMES = [
+    { name: 'INTREPID VIETNAM LTD',         accountCode: 'VN' },
+    { name: 'INTREPID MALAYSIA SDN. BHD',   accountCode: 'MY' },
+    { name: 'INTREPID DIGITAL I PT',        accountCode: 'ID' },
+    { name: 'INTREPID PHILIPPINES INC.',    accountCode: 'PH' },
+    { name: 'DATAMART VIET NAM CO., LTD',   accountCode: 'DMX_VN' },
+    { name: 'INTREPID DIGITAL COMMERCE PL', accountCode: 'SG' },
   ];
-  for (const cm of countryMappings) {
-    await prisma.bankCountryMapping.upsert({
-      where: { companyName: cm.companyName },
-      create: cm,
-      update: {},
+
+  for (const a of BANK_ACCOUNT_NAMES) {
+    await prisma.bankAccountName.upsert({
+      where: { name: a.name },
+      create: a,
+      update: { accountCode: a.accountCode },
     });
   }
-  console.log('Bank statement defaults seeded');
+  console.log(`Seeded ${BANK_ACCOUNT_NAMES.length} bank account names`);
+
+  // ─── Currency Rates (defaults) ──────────────────────────────────────────────
+  // VND is not published by frankfurter.app (ECB reference rates), so it can't be
+  // auto-refreshed like other currencies — seed a default rate here instead.
+  await prisma.currencyRate.upsert({
+    where: { currency: 'VND' },
+    create: { currency: 'VND', rateToUsd: '0.0000385' },
+    update: {},
+  });
+  console.log('Seeded default VND currency rate');
+
+  // ─── Reconcile Settings (defaults) ──────────────────────────────────────────
+  await prisma.reconcileSettings.upsert({
+    where: { id: 'default' },
+    create: { id: 'default' },
+    update: {},
+  });
+  console.log('Reconcile settings defaults seeded');
 }
 
 main()

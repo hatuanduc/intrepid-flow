@@ -20,10 +20,6 @@ export class UpdateSettingsDto {
 
   @ApiProperty({ required: false, nullable: true })
   @IsOptional() @IsString()
-  googleServiceKeyJson?: string | null;
-
-  @ApiProperty({ required: false, nullable: true })
-  @IsOptional() @IsString()
   googleTemplateSpreadsheetId?: string | null;
 
   @ApiProperty({ required: false, nullable: true })
@@ -44,7 +40,6 @@ export class SettingsResponseDto {
   @ApiProperty() scheduleCron!: string;
   @ApiProperty() isScheduled!: boolean;
   @ApiProperty({ nullable: true }) hsbcnetUsername!: string | null;
-  @ApiProperty({ nullable: true }) googleServiceKeyJson!: string | null;
   @ApiProperty({ nullable: true }) googleTemplateSpreadsheetId!: string | null;
   @ApiProperty({ nullable: true }) googleTemplateSheet!: string | null;
   @ApiProperty({ enum: SYNC_DATE_MODES }) syncDateMode!: SyncDateMode;

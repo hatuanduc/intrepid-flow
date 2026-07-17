@@ -1,0 +1,21 @@
+.tooltipWrap { position: relative; display: inline-flex; align-items: center; margin-left: 5px; vertical-align: middle; }
+.tooltipTrigger {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; padding: 0; cursor: pointer;
+  color: var(--color-subtle); line-height: 1;
+}
+.tooltipTrigger:hover { color: var(--color-muted); }
+.tooltipBox {
+  position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  background: #1a1f36; color: #e2e8f0; font-size: 12px; font-weight: 400;
+  line-height: 1.55; padding: 10px 13px; border-radius: 8px;
+  white-space: pre-wrap; width: 220px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.22);
+  pointer-events: none; z-index: 100;
+}
+.tooltipBoxWide { width: 320px; }
+.tooltipBox strong { color: #fff; font-weight: 600; }
+.tooltipBox code {
+  font-family: monospace; font-size: 11px;
+  background: rgba(255,255,255,.12); padding: 1px 4px; border-radius: 3px;
+}

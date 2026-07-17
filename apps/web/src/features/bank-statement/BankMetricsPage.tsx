@@ -1,17 +1,22 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
 import {
-  listBankAccounts, getBankMetrics,
-  type BankAccount, type MetricsResponse, type DailyMetricsRow,
+  listBankAccounts, listBankAccountNames, getBankMetrics, getBankCurrencyRates, refreshCurrencyRates,
+  getAccountTransactions,
+  type BankAccount, type BankAccountNameItem, type MetricsResponse, type DailyMetricsRow, type CurrencyRate, type JobTransaction,
 } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
+import { useToast } from '../../components/common/Toast';
+import { useT } from '../../lib/i18n';
 import AccessDenied from '../../components/common/AccessDenied';
-import PageLoader from '../../components/common/PageLoader';
+import PageLoader, { Spinner } from '../../components/common/PageLoader';
+import Pagination from '../../components/common/Pagination';
+import RightPanel from '../../components/common/RightPanel';
 import s from './BankMetricsPage.module.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -32,64 +37,101 @@ function fmtAmount(n: number) {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const COUNTRY_COLORS: Record<string, string> = {
+const CODE_COLORS: Record<string, string> = {
   HK: '#635bff', VN: '#0e7490', ID: '#059669', MY: '#c44c0a',
   PH: '#7c3aed', SG: '#1a56db', TH: '#be185d',
 };
-function countryColor(code: string) { return COUNTRY_COLORS[code] ?? '#697386'; }
+function codeColor(code: string) { return CODE_COLORS[code] ?? '#697386'; }
 
-// ─── Data helpers ─────────────────────────────────────────────────────────────
+// ─── Data types & builders ────────────────────────────────────────────────────
 
-type CurrencySummary = {
-  currency: string;
-  totalCredit: number; totalDebit: number; netFlow: number;
-  txCount: number; accountCount: number;
+type AccountRow = {
+  accountId: number; accountNumber: string; accountName: string;
+  accountCode: string; currency: string;
+  totalCredit: number; totalDebit: number; txCount: number;
+  creditUsd: number | null; debitUsd: number | null;
 };
 
-function buildCurrencySummaries(daily: DailyMetricsRow[]): CurrencySummary[] {
-  const map: Record<string, { totalCredit: number; totalDebit: number; txCount: number; accounts: Set<string> }> = {};
+type CountryGroup = {
+  accountCode: string; accounts: AccountRow[];
+  totalCreditUsd: number; totalDebitUsd: number; hasRates: boolean;
+};
+
+function buildCountryGroups(daily: DailyMetricsRow[], rateMap: Record<string, number>): CountryGroup[] {
+  const accountMap: Record<string, AccountRow> = {};
   for (const row of daily) {
-    if (!map[row.currency]) map[row.currency] = { totalCredit: 0, totalDebit: 0, txCount: 0, accounts: new Set() };
-    map[row.currency].totalCredit += row.totalCredit;
-    map[row.currency].totalDebit += row.totalDebit;
-    map[row.currency].txCount += row.txCount;
-    map[row.currency].accounts.add(row.accountId);
+    const key = `${row.accountId}__${row.currency}`;
+    if (!accountMap[key]) {
+      accountMap[key] = {
+        accountId: row.accountId, accountNumber: row.accountNumber,
+        accountName: row.accountName, accountCode: row.accountCode,
+        currency: row.currency, totalCredit: 0, totalDebit: 0, txCount: 0,
+        creditUsd: null, debitUsd: null,
+      };
+    }
+    accountMap[key].totalCredit += row.totalCredit;
+    accountMap[key].totalDebit  += row.totalDebit;
+    accountMap[key].txCount     += row.txCount;
   }
-  return Object.entries(map)
-    .map(([currency, v]) => ({
-      currency,
-      totalCredit: v.totalCredit, totalDebit: v.totalDebit,
-      netFlow: v.totalCredit - v.totalDebit,
-      txCount: v.txCount, accountCount: v.accounts.size,
-    }))
-    .sort((a, b) => a.currency.localeCompare(b.currency));
+
+  for (const row of Object.values(accountMap)) {
+    const rate = row.currency === 'USD' ? 1 : (rateMap[row.currency] ?? null);
+    if (rate !== null) {
+      row.creditUsd = row.totalCredit * rate;
+      row.debitUsd  = row.totalDebit  * rate;
+    }
+  }
+
+  const codeMap: Record<string, CountryGroup> = {};
+  for (const row of Object.values(accountMap)) {
+    if (!codeMap[row.accountCode]) {
+      codeMap[row.accountCode] = {
+        accountCode: row.accountCode, accounts: [],
+        totalCreditUsd: 0, totalDebitUsd: 0, hasRates: true,
+      };
+    }
+    codeMap[row.accountCode].accounts.push(row);
+    if (row.creditUsd === null) {
+      codeMap[row.accountCode].hasRates = false;
+    } else {
+      codeMap[row.accountCode].totalCreditUsd += row.creditUsd;
+      codeMap[row.accountCode].totalDebitUsd  += row.debitUsd ?? 0;
+    }
+  }
+
+  return Object.values(codeMap)
+    .map(g => ({ ...g, accounts: g.accounts.sort((a, b) => a.accountNumber.localeCompare(b.accountNumber)) }))
+    .sort((a, b) => a.accountCode.localeCompare(b.accountCode));
 }
 
-type ChartRow = { label: string; credit: number; debit: number };
-function buildChartData(daily: DailyMetricsRow[], currency: string): ChartRow[] {
-  const map: Record<string, ChartRow> = {};
-  for (const row of daily.filter(r => r.currency === currency)) {
+// ─── Chart builders ───────────────────────────────────────────────────────────
+
+type BarRow = { label: string; credit: number; debit: number };
+
+function buildCountryChart(groups: CountryGroup[]): BarRow[] {
+  return groups
+    .filter(g => g.hasRates)
+    .map(g => ({ label: g.accountCode, credit: g.totalCreditUsd, debit: g.totalDebitUsd }));
+}
+
+function buildAccountChart(groups: CountryGroup[], accountCode: string): BarRow[] {
+  const group = groups.find(g => g.accountCode === accountCode);
+  if (!group) return [];
+  return group.accounts
+    .filter(a => a.creditUsd !== null)
+    .map(a => ({ label: a.accountNumber.slice(-8), credit: a.creditUsd!, debit: a.debitUsd! }));
+}
+
+function buildDailyChart(daily: DailyMetricsRow[], rateMap: Record<string, number>): BarRow[] {
+  const map: Record<string, BarRow> = {};
+  for (const row of daily) {
+    const rate = row.currency === 'USD' ? 1 : (rateMap[row.currency] ?? null);
+    if (rate === null) continue;
     if (!map[row.date]) map[row.date] = { label: fmtDate(row.date), credit: 0, debit: 0 };
-    map[row.date].credit += row.totalCredit;
-    map[row.date].debit += row.totalDebit;
+    map[row.date].credit += row.totalCredit * rate;
+    map[row.date].debit  += row.totalDebit  * rate;
   }
   return Object.entries(map).sort(([a], [b]) => a.localeCompare(b)).map(([, v]) => v);
-}
-
-type AccountTotal = {
-  accountId: string; accountNumber: string; accountName: string;
-  countryCode: string; currency: string;
-  totalCredit: number; totalDebit: number; txCount: number;
-};
-function buildAccountTotals(daily: DailyMetricsRow[], currency: string): AccountTotal[] {
-  const map: Record<string, AccountTotal> = {};
-  for (const row of daily.filter(r => r.currency === currency)) {
-    if (!map[row.accountId]) map[row.accountId] = { ...row, totalCredit: 0, totalDebit: 0, txCount: 0 };
-    map[row.accountId].totalCredit += row.totalCredit;
-    map[row.accountId].totalDebit += row.totalDebit;
-    map[row.accountId].txCount += row.txCount;
-  }
-  return Object.values(map).sort((a, b) => a.accountNumber.localeCompare(b.accountNumber));
 }
 
 function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: { name: string; value: number; color: string }[]; label?: string }) {
@@ -100,9 +142,89 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
       {payload.map(p => (
         <div key={p.name} className={s.chartTooltipRow}>
           <span style={{ color: p.color }}>{p.name}</span>
-          <span>{fmtAmount(p.value)}</span>
+          <span>${fmtAmount(p.value)}</span>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Filter pill (account number) ──────────────────────────────────────────────
+
+type PillProps = {
+  label: string;
+  active?: boolean;
+  activeLabel?: string;
+  disabled?: boolean;
+  onClear?: () => void;
+  children: (close: () => void) => React.ReactNode;
+};
+function FilterPill({ label, active, activeLabel, disabled, onClear, children }: PillProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className={s.pillWrap} ref={ref}>
+      <button
+        type="button"
+        className={`${s.pill} ${active ? s.pillActive : ''}`}
+        onClick={() => setOpen(v => !v)}
+        disabled={disabled}
+      >
+        {active ? (
+          <>
+            <span className={s.pillCheck}>✓</span>
+            <span>{activeLabel ?? label}</span>
+            <span
+              className={s.pillClear}
+              role="button"
+              onClick={e => { e.stopPropagation(); onClear?.(); setOpen(false); }}
+            >×</span>
+          </>
+        ) : (
+          <>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" className={s.pillPlus}>
+              <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+              <path d="M6 4v4M4 6h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+            </svg>
+            {label}
+          </>
+        )}
+      </button>
+      {open && (
+        <div className={s.pillDropdown}>
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountNumberFilter({ accounts, onSelect, t }: {
+  accounts: BankAccount[];
+  onSelect: (id: string) => void;
+  t: ReturnType<typeof useT>['t'];
+}) {
+  return (
+    <div className={s.filterPopup}>
+      <p className={s.filterPopupTitle}>{t('bankMetrics.accountCode')}</p>
+      <div className={s.filterRoleList}>
+        {accounts.map(a => (
+          <div key={a.id} className={s.filterRoleRow} onClick={() => onSelect(String(a.id))}>
+            {a.accountNumber}
+          </div>
+        ))}
+        {accounts.length === 0 && <p className={s.filterEmpty}>{t('bankMetrics.noData')}</p>}
+      </div>
     </div>
   );
 }
@@ -110,185 +232,290 @@ function ChartTooltip({ active, payload, label }: { active?: boolean; payload?: 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function BankMetricsPage() {
-  const canView = useHasPermission('bank_statement:view');
+  const canView   = useHasPermission('bank_statement:view');
+  const canConfig = useHasPermission('system:config');
+  const toast = useToast();
+  const { t } = useT();
   const searchParams = useSearchParams();
 
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [accountNameItems, setAccountNameItems] = useState<BankAccountNameItem[]>([]);
   const [fromDate, setFromDate] = useState(iso30DaysAgo());
   const [toDate, setToDate] = useState(isoToday());
-  const [countryFilter, setCountryFilter] = useState('');
+  const [nameFilter, setNameFilter] = useState('');
   const [accountFilter, setAccountFilter] = useState(searchParams.get('accountId') ?? '');
-  const [selectedCurrency, setSelectedCurrency] = useState('');
+  const [currencyRates, setCurrencyRates] = useState<CurrencyRate[]>([]);
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
 
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountNamesLoading, setAccountNamesLoading] = useState(true);
+  const [ratesRefreshing, setRatesRefreshing] = useState(false);
+  const [txPanel, setTxPanel] = useState<{ row: AccountRow; txRows: JobTransaction[] } | null>(null);
+  const [txLoading, setTxLoading] = useState(false);
 
-  if (!canView) return <AccessDenied />;
+  useEffect(() => {
+    getBankCurrencyRates().then(setCurrencyRates).catch(() => {});
+  }, []);
 
   useEffect(() => {
     listBankAccounts().then(setAccounts).catch(() => {}).finally(() => setAccountsLoading(false));
+    listBankAccountNames().then(setAccountNameItems).catch(() => {}).finally(() => setAccountNamesLoading(false));
   }, []);
 
   useEffect(() => {
     if (!fromDate || !toDate) return;
-    setLoading(true); setError(null);
-    getBankMetrics(fromDate, toDate, countryFilter || undefined, accountFilter || undefined)
-      .then(data => {
-        setMetrics(data);
-        const currencies = [...new Set(data.daily.map(r => r.currency))].sort();
-        setSelectedCurrency(prev => currencies.includes(prev) ? prev : (currencies[0] ?? ''));
-      })
-      .catch(() => setError('Không tải được dữ liệu. Vui lòng thử lại.'))
+    // Deferred a tick so these resets aren't synchronous with the effect itself.
+    Promise.resolve().then(() => { setLoading(true); setError(null); setPage(1); });
+    getBankMetrics(fromDate, toDate, undefined, accountFilter ? Number(accountFilter) : undefined)
+      .then(data => setMetrics(data))
+      .catch(() => setError(t('bankMetrics.loadFailed')))
       .finally(() => setLoading(false));
-  }, [fromDate, toDate, countryFilter, accountFilter]);
+  }, [fromDate, toDate, accountFilter]);
 
-  const countries = useMemo(() => [...new Set(accounts.map(a => a.countryCode))].sort(), [accounts]);
+  async function handleRefreshRates() {
+    setRatesRefreshing(true);
+    try {
+      const data = await refreshCurrencyRates();
+      setCurrencyRates(data.rates);
+      toast.success(t('bankMetrics.rateRefreshed'));
+    } catch { toast.error(t('bankMetrics.rateRefreshFailed')); }
+    finally { setRatesRefreshing(false); }
+  }
+
+  async function openTxPanel(row: AccountRow) {
+    setTxPanel({ row, txRows: [] });
+    setTxLoading(true);
+    try {
+      const txRows = await getAccountTransactions(row.accountId, fromDate, toDate);
+      setTxPanel({ row, txRows });
+    } catch {
+      toast.error(t('bankMetrics.txLoadFailed'));
+      setTxPanel(null);
+    } finally {
+      setTxLoading(false);
+    }
+  }
+
+  const accountNames = useMemo(
+    () => [...accountNameItems].sort((a, b) => a.name.localeCompare(b.name)),
+    [accountNameItems],
+  );
   const filteredAccounts = useMemo(
-    () => countryFilter ? accounts.filter(a => a.countryCode === countryFilter) : accounts,
-    [accounts, countryFilter],
+    () => nameFilter ? accounts.filter(a => a.accountName === nameFilter) : accounts,
+    [accounts, nameFilter],
   );
 
-  const currencySummaries = useMemo(() => metrics ? buildCurrencySummaries(metrics.daily) : [], [metrics]);
-  const activeSummary     = useMemo(() => currencySummaries.find(c => c.currency === selectedCurrency) ?? null, [currencySummaries, selectedCurrency]);
-  const chartData         = useMemo(() => metrics && selectedCurrency ? buildChartData(metrics.daily, selectedCurrency) : [], [metrics, selectedCurrency]);
-  const accountTotals     = useMemo(() => metrics && selectedCurrency ? buildAccountTotals(metrics.daily, selectedCurrency) : [], [metrics, selectedCurrency]);
+  const rateMap        = useMemo(() => Object.fromEntries(currencyRates.map(r => [r.currency, Number(r.rateToUsd)])), [currencyRates]);
+  const accountGroups  = useMemo(() => metrics ? buildCountryGroups(metrics.daily, rateMap) : [], [metrics, rateMap]);
+  const ratesUpdatedAt = useMemo(() => currencyRates.length > 0 ? currencyRates.reduce((m, r) => r.updatedAt > m ? r.updatedAt : m, currencyRates[0].updatedAt) : null, [currencyRates]);
+  const hasRates = currencyRates.length > 0;
+
+  // When nameFilter is set, derive accountCode for chart from the declared account name (master data)
+  const nameFilterCode = useMemo(
+    () => nameFilter ? (accountNameItems.find(n => n.name === nameFilter)?.accountCode ?? '') : '',
+    [accountNameItems, nameFilter],
+  );
+
+  // Narrow to the selected company chip so totals/table stay in sync with the chart.
+  const filteredGroups = useMemo(
+    () => nameFilter ? accountGroups.filter(g => g.accountCode === nameFilterCode) : accountGroups,
+    [accountGroups, nameFilter, nameFilterCode],
+  );
+  const flatAccounts   = useMemo(() => filteredGroups.flatMap(g => g.accounts), [filteredGroups]);
+  const paginated      = useMemo(() => flatAccounts.slice((page - 1) * pageSize, page * pageSize), [flatAccounts, page]);
+
+  const usdTotal = useMemo(() => {
+    let credit = 0, debit = 0;
+    const missing = new Set<string>();
+    for (const g of filteredGroups) {
+      for (const a of g.accounts) {
+        if (a.creditUsd === null) { missing.add(a.currency); }
+        else { credit += a.creditUsd; debit += a.debitUsd ?? 0; }
+      }
+    }
+    return { credit, debit, net: credit - debit, missing: [...missing] };
+  }, [filteredGroups]);
+
+  const chartData = useMemo(() => {
+    if (!metrics || !hasRates) return [];
+    if (accountFilter) return buildDailyChart(metrics.daily, rateMap);
+    if (nameFilter) return buildAccountChart(accountGroups, nameFilterCode);
+    return buildCountryChart(accountGroups);
+  }, [metrics, hasRates, accountFilter, nameFilter, nameFilterCode, accountGroups, rateMap]);
+
+  const chartLabel = accountFilter
+    ? t('bankMetrics.chartByDay')
+    : nameFilter
+      ? t('bankMetrics.chartByAccount', { code: nameFilterCode })
+      : t('bankMetrics.chartByCode');
+
+  if (!canView) return <AccessDenied />;
 
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <h1 className={s.pageTitle}>Metrics — Sao kê NH</h1>
+        <h1 className={s.pageTitle}>{t('bankMetrics.title')}</h1>
       </div>
 
       {/* ── Filters ── */}
       <div className={s.filterBar}>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Từ ngày</label>
+          <label className={s.filterLabel}>{t('bankMetrics.fromDate')}</label>
           <input type="date" className={s.dateInput} value={fromDate} onChange={e => setFromDate(e.target.value)} />
         </div>
         <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Đến ngày</label>
+          <label className={s.filterLabel}>{t('bankMetrics.toDate')}</label>
           <input type="date" className={s.dateInput} value={toDate} onChange={e => setToDate(e.target.value)} />
         </div>
-        <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Quốc gia</label>
-          <select className={s.select} value={countryFilter} onChange={e => { setCountryFilter(e.target.value); setAccountFilter(''); }}>
-            <option value="">Tất cả</option>
-            {countries.map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div className={s.filterGroup}>
-          <label className={s.filterLabel}>Tài khoản</label>
-          <select className={s.select} value={accountFilter} onChange={e => setAccountFilter(e.target.value)} disabled={accountsLoading}>
-            <option value="">Tất cả</option>
-            {filteredAccounts.map(a => <option key={a.id} value={a.id}>{a.accountNumber} — {a.accountName}</option>)}
-          </select>
-        </div>
+      </div>
+
+      {/* Account name chips */}
+      <div className={s.chips}>
+        <button
+          type="button"
+          className={`${s.chip} ${!nameFilter ? s.chipSelected : ''}`}
+          onClick={() => { setNameFilter(''); setAccountFilter(''); }}
+          disabled={accountNamesLoading}
+        >
+          <span className={s.chipLabel}>{t('bankMetrics.all')}</span>
+          <span className={s.chipCount}>{accounts.length}</span>
+        </button>
+        {accountNames.map(n => (
+          <button
+            key={n.id}
+            type="button"
+            className={`${s.chip} ${nameFilter === n.name ? s.chipSelected : ''}`}
+            onClick={() => { setNameFilter(n.name); setAccountFilter(''); }}
+            disabled={accountNamesLoading}
+            title={n.name}
+          >
+            <span className={s.chipLabel}>{n.accountCode}</span>
+            <span className={s.chipCount}>{accounts.filter(a => a.accountName === n.name).length}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Account number filter pill */}
+      <div className={s.filterPills}>
+        <FilterPill
+          label={t('bankMetrics.accountCode')}
+          active={!!accountFilter}
+          activeLabel={filteredAccounts.find(a => String(a.id) === accountFilter)?.accountNumber}
+          disabled={accountsLoading}
+          onClear={() => setAccountFilter('')}
+        >
+          {close => (
+            <AccountNumberFilter
+              accounts={filteredAccounts}
+              onSelect={id => { setAccountFilter(id); close(); }}
+              t={t}
+            />
+          )}
+        </FilterPill>
       </div>
 
       {error && <div className={s.error}>{error}</div>}
 
       {loading ? (
         <div className={s.loadingWrap}><PageLoader /></div>
-      ) : !metrics || currencySummaries.length === 0 ? (
-        !loading && <div className={s.empty}>Không có dữ liệu trong khoảng thời gian này.</div>
+      ) : !metrics || flatAccounts.length === 0 ? (
+        !loading && <div className={s.empty}>{t('bankMetrics.noData')}</div>
       ) : (
         <>
-          {/* ── Currency chips + selected detail ── */}
-          <div className={s.currencyBlock}>
-            {/* Chips */}
-            <div className={s.chips}>
-              {currencySummaries.map(c => (
-                <button
-                  key={c.currency}
-                  className={`${s.chip} ${selectedCurrency === c.currency ? s.chipActive : ''}`}
-                  onClick={() => setSelectedCurrency(c.currency)}
-                >
-                  <span className={s.chipCurrency}>{c.currency}</span>
-                  <span className={s.chipCount}>{c.txCount} GD</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Stats of selected currency */}
-            {activeSummary && (
-              <div className={s.currencyDetail}>
-                <div className={s.currencyDetailStat}>
-                  <span className={s.detailLabel}>Tiền vào</span>
-                  <span className={`${s.detailValue} ${s.credit}`}>{fmtAmount(activeSummary.totalCredit)}</span>
-                </div>
-                <div className={s.currencyDetailDivider} />
-                <div className={s.currencyDetailStat}>
-                  <span className={s.detailLabel}>Tiền ra</span>
-                  <span className={`${s.detailValue} ${s.debit}`}>{fmtAmount(activeSummary.totalDebit)}</span>
-                </div>
-                <div className={s.currencyDetailDivider} />
-                <div className={s.currencyDetailStat}>
-                  <span className={s.detailLabel}>Net</span>
-                  <span className={`${s.detailValue} ${activeSummary.netFlow >= 0 ? s.credit : s.debit}`}>
-                    {activeSummary.netFlow >= 0 ? '+' : ''}{fmtAmount(activeSummary.netFlow)}
-                  </span>
-                </div>
-                <div className={s.currencyDetailDivider} />
-                <div className={s.currencyDetailStat}>
-                  <span className={s.detailLabel}>Giao dịch</span>
-                  <span className={s.detailValue}>{fmtNumber(activeSummary.txCount)}</span>
-                </div>
-                <div className={s.currencyDetailDivider} />
-                <div className={s.currencyDetailStat}>
-                  <span className={s.detailLabel}>Tài khoản</span>
-                  <span className={s.detailValue}>{activeSummary.accountCount}</span>
-                </div>
+          {/* ── USD Total ── */}
+          <div className={s.usdBlock}>
+            {!hasRates ? (
+              <div className={s.usdNoRates}>
+                <span className={s.usdNoRatesText}>{t('bankMetrics.noRatesAvailable')}</span>
+                {canConfig ? (
+                  <button className={s.usdRefreshBtn} onClick={handleRefreshRates} disabled={ratesRefreshing}>
+                    {ratesRefreshing ? t('bankMetrics.fetchingRates') : t('bankMetrics.fetchRates')}
+                  </button>
+                ) : (
+                  <span className={s.usdNoRatesMeta}>{t('bankMetrics.contactAdmin')}</span>
+                )}
               </div>
+            ) : (
+              <>
+                <div className={s.usdTitle}>
+                  {t('bankMetrics.usdTotal')}
+                  {ratesUpdatedAt && (
+                    <span className={s.usdMeta}>· {t('bankMetrics.exchangeRate')} {new Date(ratesUpdatedAt).toLocaleDateString('vi-VN')}</span>
+                  )}
+                  {usdTotal.missing.length > 0 && (
+                    <span className={s.usdWarn}>· {usdTotal.missing.join(', ')} {t('bankMetrics.noRate')}</span>
+                  )}
+                </div>
+                <div className={s.usdStats}>
+                  <div className={s.usdStat}>
+                    <span className={s.usdLabel}>{t('bankMetrics.creditIn')}</span>
+                    <span className={`${s.usdValue} ${s.credit}`}>${fmtAmount(usdTotal.credit)}</span>
+                  </div>
+                  <div className={s.usdDivider} />
+                  <div className={s.usdStat}>
+                    <span className={s.usdLabel}>{t('bankMetrics.debitOut')}</span>
+                    <span className={`${s.usdValue} ${s.debit}`}>${fmtAmount(usdTotal.debit)}</span>
+                  </div>
+                  <div className={s.usdDivider} />
+                  <div className={s.usdStat}>
+                    <span className={s.usdLabel}>{t('bankMetrics.net')}</span>
+                    <span className={`${s.usdValue} ${usdTotal.net >= 0 ? s.credit : s.debit}`}>
+                      {usdTotal.net >= 0 ? '+' : ''}${fmtAmount(usdTotal.net)}
+                    </span>
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
-          {/* ── Chart ── */}
+          {/* ── Adaptive chart ── */}
           {chartData.length > 0 && (
             <div className={s.chartWrap}>
               <div className={s.chartTitle}>
-                Tiền vào / Tiền ra theo ngày
-                <span className={s.chartCurrencyTag}>{selectedCurrency}</span>
+                {chartLabel}
               </div>
-              <ResponsiveContainer width="100%" height={260}>
+              <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={chartData} barCategoryGap="30%" barGap={3}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e3e8ee" />
                   <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#697386' }} axisLine={false} tickLine={false} />
-                  <YAxis tick={{ fontSize: 11, fill: '#697386' }} axisLine={false} tickLine={false} tickFormatter={v => fmtNumber(v as number)} width={80} />
+                  <YAxis tick={{ fontSize: 11, fill: '#697386' }} axisLine={false} tickLine={false} tickFormatter={v => '$' + fmtNumber(v as number)} width={84} />
                   <Tooltip content={<ChartTooltip />} />
                   <Legend iconType="square" iconSize={10} wrapperStyle={{ fontSize: 12 }} />
-                  <Bar dataKey="credit" name="Tiền vào" fill="#059669" radius={[3, 3, 0, 0]} />
-                  <Bar dataKey="debit"  name="Tiền ra"  fill="#f59e0b" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="credit" name={t('bankMetrics.tableCredit')} fill="#059669" radius={[3, 3, 0, 0]} />
+                  <Bar dataKey="debit"  name={t('bankMetrics.tableDebit')}  fill="#f59e0b" radius={[3, 3, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
           )}
 
-          {/* ── Accounts table ── */}
-          {accountTotals.length > 0 && (
-            <div className={s.tableWrap}>
-              <div className={s.tableTitle}>
-                Chi tiết tài khoản
-                <span className={s.chartCurrencyTag}>{selectedCurrency}</span>
-              </div>
-              <table className={s.table}>
-                <thead>
-                  <tr>
-                    <th className={s.th}>Tài khoản</th>
-                    <th className={s.th}>QG</th>
-                    <th className={`${s.th} ${s.thRight}`}>Giao dịch</th>
-                    <th className={`${s.th} ${s.thRight}`}>Tiền vào</th>
-                    <th className={`${s.th} ${s.thRight}`}>Tiền ra</th>
-                    <th className={`${s.th} ${s.thRight}`}>Net</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {accountTotals.map(row => (
-                    <tr key={row.accountId} className={s.tr}>
+          {/* ── Flat account table ── */}
+          <div className={s.tableWrap}>
+            <table className={s.table}>
+              <thead>
+                <tr>
+                  <th className={s.th}>{t('bankMetrics.tableAccount')}</th>
+                  <th className={s.th}>{t('bankMetrics.tableCode')}</th>
+                  <th className={s.th}>{t('bankMetrics.tableCurrency')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableTransactions')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableCredit')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableDebit')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableNet')}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map(row => {
+                  const net    = row.totalCredit - row.totalDebit;
+                  const netUsd = row.creditUsd !== null ? row.creditUsd - (row.debitUsd ?? 0) : null;
+                  const showUsd = row.creditUsd !== null && row.currency !== 'USD';
+                  return (
+                    <tr key={`${row.accountId}__${row.currency}`} className={s.tr} onClick={() => openTxPanel(row)} style={{ cursor: 'pointer' }}>
                       <td className={s.td}>
                         <div className={s.nameCell}>
-                          <span className={s.avatar} style={{ background: countryColor(row.countryCode) }}>
+                          <span className={s.avatar} style={{ background: codeColor(row.accountCode) }}>
                             {row.accountNumber.slice(-2)}
                           </span>
                           <div>
@@ -298,23 +525,124 @@ export default function BankMetricsPage() {
                         </div>
                       </td>
                       <td className={s.td}>
-                        <span className={s.countryBadge} style={{ background: countryColor(row.countryCode) + '20', color: countryColor(row.countryCode) }}>
-                          {row.countryCode}
+                        <span className={s.countryBadge} style={{ background: codeColor(row.accountCode) + '20', color: codeColor(row.accountCode) }}>
+                          {row.accountCode}
                         </span>
                       </td>
+                      <td className={s.td}>
+                        <span className={s.currencyTag}>{row.currency}</span>
+                      </td>
                       <td className={`${s.td} ${s.tdRight}`}>{fmtNumber(row.txCount)}</td>
-                      <td className={`${s.td} ${s.tdRight} ${s.creditCell}`}>{fmtAmount(row.totalCredit)}</td>
-                      <td className={`${s.td} ${s.tdRight}`}>{fmtAmount(row.totalDebit)}</td>
-                      <td className={`${s.td} ${s.tdRight}`} style={{ color: row.totalCredit - row.totalDebit >= 0 ? '#059669' : '#df1b41' }}>
-                        {row.totalCredit - row.totalDebit >= 0 ? '+' : ''}{fmtAmount(row.totalCredit - row.totalDebit)}
+                      <td className={`${s.td} ${s.tdRight}`}>
+                        <span className={s.credit}>{fmtAmount(row.totalCredit)}</span>
+                        {showUsd && <div className={s.usdHint}>≈ ${fmtAmount(row.creditUsd!)}</div>}
+                      </td>
+                      <td className={`${s.td} ${s.tdRight}`}>
+                        <span>{fmtAmount(row.totalDebit)}</span>
+                        {showUsd && <div className={s.usdHint}>≈ ${fmtAmount(row.debitUsd!)}</div>}
+                      </td>
+                      <td className={`${s.td} ${s.tdRight}`}>
+                        <span style={{ color: net >= 0 ? '#059669' : '#df1b41' }}>
+                          {net >= 0 ? '+' : ''}{fmtAmount(net)}
+                        </span>
+                        {showUsd && netUsd !== null && (
+                          <div className={s.usdHint} style={{ color: netUsd >= 0 ? '#059669' : '#df1b41' }}>
+                            {netUsd >= 0 ? '+' : ''}${fmtAmount(Math.abs(netUsd))}
+                          </div>
+                        )}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                  );
+                })}
+              </tbody>
+            </table>
+            <Pagination
+              page={page}
+              pageSize={pageSize}
+              total={flatAccounts.length}
+              onPageChange={setPage}
+              onPageSizeChange={() => {}}
+            />
+          </div>
         </>
+      )}
+
+      <RightPanel
+        title={txPanel?.row.accountName ?? ''}
+        open={txPanel !== null}
+        onClose={() => setTxPanel(null)}
+        width={640}
+      >
+        {txPanel && (
+          <MetricsTxPanel
+            row={txPanel.row}
+            txRows={txPanel.txRows}
+            loading={txLoading}
+            fromDate={fromDate}
+            toDate={toDate}
+          />
+        )}
+      </RightPanel>
+    </div>
+  );
+}
+
+// ─── Transaction detail panel ─────────────────────────────────────────────────
+
+function txFmtDate(iso: string) {
+  const d = new Date(iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+}
+
+function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
+  row: AccountRow;
+  txRows: JobTransaction[];
+  loading: boolean;
+  fromDate: string;
+  toDate: string;
+}) {
+  const { t } = useT();
+  return (
+    <div className={s.txPanel}>
+      <div className={s.txPanelMeta}>
+        <span className={s.txPanelAccNum}>{row.accountNumber}</span>
+        <span className={s.currencyTag}>{row.currency}</span>
+        <span className={s.txPanelRange}>{fromDate} → {toDate}</span>
+      </div>
+
+      {loading ? (
+        <div className={s.txPanelLoading}><Spinner size={20} /></div>
+      ) : txRows.length === 0 ? (
+        <div className={s.empty}>{t('bankMetrics.txNoData')}</div>
+      ) : (
+        <div className={s.txTableWrap}>
+          <table className={s.txTable}>
+            <thead>
+              <tr>
+                <th className={s.txTh}>Post date</th>
+                <th className={s.txTh}>Narrative</th>
+                <th className={s.txTh}>Bank reference</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txCredit')}</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txDebit')}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {txRows.map(tx => (
+                <tr key={tx.id} className={s.txRow}>
+                  <td className={s.txTd}>{txFmtDate(tx.postDate)}</td>
+                  <td className={s.txTdNarrative}>{tx.narrative ?? '—'}</td>
+                  <td className={s.txTdMono}>{tx.bankReference ?? '—'}</td>
+                  <td className={s.txTdCredit}>
+                    {tx.creditAmount ? fmtAmount(tx.creditAmount) : '—'}
+                  </td>
+                  <td className={s.txTdDebit}>
+                    {tx.debitAmount ? fmtAmount(tx.debitAmount) : '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

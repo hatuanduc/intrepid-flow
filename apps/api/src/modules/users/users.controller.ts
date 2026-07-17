@@ -37,7 +37,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Cập nhật người dùng' })
   @ApiResponse({ status: 200, type: UserResponseDto })
   async putUser(@Param('id') id: string, @Body() body: UpdateUserDto) {
-    return this.users.updateUser(id, body);
+    return this.users.updateUser(Number(id), body);
   }
 
   @Delete('users/:id')
@@ -45,7 +45,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Xóa người dùng' })
   @ApiResponse({ status: 200, schema: { example: { ok: true } } })
   async deleteUser(@Param('id') id: string) {
-    await this.users.deleteUser(id);
+    await this.users.deleteUser(Number(id));
     return { ok: true };
   }
 
@@ -53,13 +53,13 @@ export class UsersController {
   @HasPermission('users:create')
   @ApiOperation({ summary: 'Gửi lại email invite' })
   async resendInvite(@Param('id') id: string) {
-    return this.users.resendInvite(id);
+    return this.users.resendInvite(Number(id));
   }
 
   @Post('users/:id/impersonate')
   @HasPermission('users:impersonate')
   @ApiOperation({ summary: 'Đăng nhập với tư cách người dùng' })
   async impersonate(@Param('id') id: string, @Req() req: any) {
-    return this.users.impersonateUser(req.authUser.id, id);
+    return this.users.impersonateUser(req.authUser.id, Number(id));
   }
 }

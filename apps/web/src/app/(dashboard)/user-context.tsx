@@ -3,7 +3,7 @@
 import { createContext, useContext } from 'react';
 
 export type User = {
-  id: string;
+  id: number;
   email: string;
   name: string | null;
   roles: string[];

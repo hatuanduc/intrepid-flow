@@ -24,7 +24,7 @@ export const roleListArgs = {
 export type RoleListRow = Prisma.RoleGetPayload<typeof roleListArgs>;
 
 export type PermissionItem = {
-  id: string;
+  id: number;
   key: string;
   module: string;
   action: string;
