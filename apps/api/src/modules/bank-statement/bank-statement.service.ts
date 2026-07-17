@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException, OnModuleInit } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { JobSchedulerService } from '../../common/job-scheduler.service';
@@ -63,6 +63,11 @@ export type BankSyncJobDto = {
   createdAt: Date;
   durationMs: number | null;
   stats: JobStatsDto | null;
+  // The actual HSBC date range this run used — set by the worker once computed
+  // (from either dateFromOverride/dateToOverride or the default syncDateMode).
+  // Null until the worker reaches that point (e.g. still pending/logging in).
+  dateRangeFrom: Date | null;
+  dateRangeTo: Date | null;
 };
 
 type JobAccountRow = { status: string; sheetsSyncStatus: string; rowsDownloaded: number; rowsInserted: number; rowsSynced: number };
@@ -104,6 +109,8 @@ function toDto(job: {
   steps: unknown;
   createdAt: Date;
   durationMsTotal?: number;
+  dateRangeFrom?: Date | null;
+  dateRangeTo?: Date | null;
 }, accounts: JobAccountRow[] = [], nameByUserId: Map<number, string> = new Map()): BankSyncJobDto {
   // durationMsTotal accumulates across retries (each retry resets startedAt, so a
   // naive completedAt - startedAt diff would only reflect the last attempt).
@@ -127,6 +134,8 @@ function toDto(job: {
     createdAt: job.createdAt,
     durationMs,
     stats: computeJobStats(accounts),
+    dateRangeFrom: job.dateRangeFrom ?? null,
+    dateRangeTo: job.dateRangeTo ?? null,
   };
 }
 
@@ -405,7 +414,11 @@ export class BankStatementService implements OnModuleInit {
 
   // ─── Job Management ──────────────────────────────────────────────────────────
 
-  async triggerJob(triggeredBy: string): Promise<BankSyncJobDto> {
+  async triggerJob(triggeredBy: string, dateFrom?: string, dateTo?: string): Promise<BankSyncJobDto> {
+    if ((dateFrom && !dateTo) || (!dateFrom && dateTo)) {
+      throw new BadRequestException('DATE_RANGE_INCOMPLETE');
+    }
+
     const dbRecord = await this.prisma.bankSyncJob.create({
       data: {
         publicId: generateJobPublicId(),
@@ -413,6 +426,11 @@ export class BankStatementService implements OnModuleInit {
         triggeredBy,
         startedAt: new Date(),
         steps: INITIAL_STEPS,
+        // Per-run override only — never written to BankJobSettings, so scheduled
+        // cron runs (and future manual runs without an override) keep using the
+        // default syncDateMode/syncCustomDays untouched.
+        dateFromOverride: dateFrom ? new Date(dateFrom) : null,
+        dateToOverride: dateTo ? new Date(dateTo) : null,
       },
     });
 

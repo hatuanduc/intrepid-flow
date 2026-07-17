@@ -1,5 +1,5 @@
 resource "aws_scheduler_schedule" "start" {
-  count = var.schedule_enabled ? 1 : 0
+  count = var.start_schedule_enabled ? 1 : 0
   name  = "${local.name_prefix}-start"
 
   flexible_time_window { mode = "OFF" }
@@ -15,7 +15,7 @@ resource "aws_scheduler_schedule" "start" {
 }
 
 resource "aws_scheduler_schedule" "stop" {
-  count = var.schedule_enabled ? 1 : 0
+  count = var.stop_schedule_enabled ? 1 : 0
   name  = "${local.name_prefix}-stop"
 
   flexible_time_window { mode = "OFF" }

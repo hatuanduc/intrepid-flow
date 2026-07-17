@@ -28,8 +28,14 @@ variable "root_volume_size" {
   default     = 30
 }
 
-variable "schedule_enabled" {
-  description = "Enable auto start/stop schedule (prod only)"
+variable "start_schedule_enabled" {
+  description = "Enable auto-start schedule"
+  type        = bool
+  default     = false
+}
+
+variable "stop_schedule_enabled" {
+  description = "Enable auto-stop schedule (safety net against forgetting to stop the instance)"
   type        = bool
   default     = false
 }

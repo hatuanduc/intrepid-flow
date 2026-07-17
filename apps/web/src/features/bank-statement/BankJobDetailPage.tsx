@@ -94,6 +94,19 @@ function formatDateTime(iso: string | null): string {
   return `${dd}/${mm}/${d.getFullYear()} ${hh}:${min}`;
 }
 
+function formatSyncDateRange(from: string | null, to: string | null): string | null {
+  if (!from || !to) return null;
+  // Stored as UTC-midnight boundaries (see computeDateRange()) — use UTC getters so a
+  // local timezone offset can't shift the displayed day.
+  function d(iso: string) {
+    const date = new Date(iso);
+    const dd = String(date.getUTCDate()).padStart(2, '0');
+    const mm = String(date.getUTCMonth() + 1).padStart(2, '0');
+    return `${dd}/${mm}/${date.getUTCFullYear()}`;
+  }
+  return from === to ? d(from) : `${d(from)} → ${d(to)}`;
+}
+
 function formatLogTime(iso: string): string {
   const d = new Date(iso);
   const hh  = String(d.getHours()).padStart(2, '0');
@@ -469,6 +482,12 @@ export default function BankJobDetailPage() {
               <span className={s.detailTimeLabel}>{t('bankJob.completedAt')}</span>
               <span>{formatDateTime(job.completedAt)}</span>
             </span>
+            {formatSyncDateRange(job.dateRangeFrom, job.dateRangeTo) && (
+              <span className={s.detailTimeItem}>
+                <span className={s.detailTimeLabel}>{t('bankJob.syncDateRange')}</span>
+                <span>{formatSyncDateRange(job.dateRangeFrom, job.dateRangeTo)}</span>
+              </span>
+            )}
           </div>
 
           {/* Sync stats */}

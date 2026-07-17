@@ -13,6 +13,7 @@ import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 import { RetryJobDto } from './dto/retry-job.dto';
+import { TriggerJobDto } from './dto/trigger-job.dto';
 
 @ApiTags('Bank Statement')
 @ApiBearerAuth()
@@ -110,9 +111,9 @@ export class BankStatementController {
 
   @Post('jobs')
   @HasPermission('bank_statement:run')
-  @ApiOperation({ summary: 'Kích hoạt job đồng bộ bank statement' })
-  trigger(@Req() req: any): Promise<BankSyncJobDto> {
-    return this.service.triggerJob(String(req.authUser.id));
+  @ApiOperation({ summary: 'Kích hoạt job đồng bộ bank statement — có thể ghi đè khoảng ngày cho riêng lần chạy này' })
+  trigger(@Req() req: any, @Body() body: TriggerJobDto): Promise<BankSyncJobDto> {
+    return this.service.triggerJob(String(req.authUser.id), body.dateFrom, body.dateTo);
   }
 
   @Get('jobs')

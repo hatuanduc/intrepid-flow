@@ -2,7 +2,8 @@ terraform {
   required_version = ">= 1.7"
 
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.0" }
+    aws     = { source = "hashicorp/aws", version = "~> 5.0" }
+    archive = { source = "hashicorp/archive", version = "~> 2.4" }
   }
 
   backend "s3" {
@@ -37,19 +38,22 @@ module "app" {
   source = "../../modules/app"
 
   env           = "dev"
-  instance_type = "t4g.medium"  # 4GB — cần cho Playwright + 3 apps + Redis + PG
+  instance_type = "t4g.medium" # 4GB — cần cho Playwright + 3 apps + Redis + PG
 
   vpc_id    = data.terraform_remote_state.shared.outputs.vpc_id
   subnet_id = data.terraform_remote_state.shared.outputs.public_subnet_id
 
-  # Staging: không có schedule — start/stop thủ công khi cần
-  schedule_enabled = false
+  # Dev: không auto-start (start thủ công khi cần), nhưng luôn auto-stop 18:00 ICT
+  # để phòng quên tắt máy
+  start_schedule_enabled = false
+  stop_schedule_enabled  = true
+  stop_schedule          = "cron(0 11 * * ? *)" # 18:00 ICT (UTC+7) hàng ngày
 
   github_repo   = "hatuanduc/intrepid-flow"
   deploy_bucket = "intrepid-terraform-state"
 }
 
-output "elastic_ip"  { value = module.app.elastic_ip }
+output "elastic_ip" { value = module.app.elastic_ip }
 output "instance_id" { value = module.app.instance_id }
 output "ssm_command" { value = module.app.ssm_command }
 output "github_actions_role_arn" { value = module.app.github_actions_role_arn }

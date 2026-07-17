@@ -324,11 +324,15 @@ export type BankSyncJob = {
   createdAt: string;
   durationMs: number | null;
   stats: JobStats | null;
+  dateRangeFrom: string | null;
+  dateRangeTo: string | null;
 };
 
-export async function triggerBankSync() {
+export async function triggerBankSync(dateRange?: { dateFrom: string; dateTo: string }) {
   return request<BankSyncJob>('/management/bank-statement/jobs', {
-    method: 'POST', auth: true,
+    method: 'POST',
+    body: JSON.stringify(dateRange ?? {}),
+    auth: true,
   });
 }
 
@@ -688,21 +692,10 @@ function filenameFromContentDisposition(header: string | null, fallback: string)
   return plainMatch ? plainMatch[1] : fallback;
 }
 
-async function multipartFetch(path: string, formData: FormData): Promise<Response> {
-  let baseUrl = getApiBaseUrl();
-  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
-
-  const headers = new Headers();
-  const token = getToken();
-  if (token) headers.set('authorization', `Bearer ${token}`);
-
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: 'POST',
-    headers, // no content-type — the browser sets the multipart boundary itself
-    body: formData,
-    cache: 'no-store',
-  });
-
+// Shared by multipartFetch (below) and downloadReconcileResult() — both bypass request() because
+// they don't exchange plain JSON (multipart body in, binary body out), but still need the same
+// auth-header + 401 + error-body handling request() gives everything else.
+async function checkRawResponse(res: Response): Promise<Response> {
   if (res.status === 401) {
     clearToken();
     if (typeof window !== 'undefined') window.location.replace('/login');
@@ -721,8 +714,54 @@ async function multipartFetch(path: string, formData: FormData): Promise<Respons
   return res;
 }
 
-export async function runReconcileFilterMerge(formData: FormData): Promise<{ blob: Blob; filename: string }> {
+async function multipartFetch(path: string, formData: FormData): Promise<Response> {
+  let baseUrl = getApiBaseUrl();
+  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
+
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: 'POST',
+    headers, // no content-type — the browser sets the multipart boundary itself
+    body: formData,
+    cache: 'no-store',
+  });
+
+  return checkRawResponse(res);
+}
+
+// Starts the filter-merge job — the actual invoice parsing now runs async in a Lambda (see
+// apps/reconcile-lambda), so this returns immediately with a jobId instead of the merged file.
+// Poll getReconcileJobStatus(jobId) until status is 'done', then call downloadReconcileResult().
+export async function startReconcileFilterMerge(formData: FormData): Promise<{ jobId: string }> {
   const res = await multipartFetch('/management/reconcile/filter-merge', formData);
+  return res.json() as Promise<{ jobId: string }>;
+}
+
+export type ReconcileJobStatus =
+  | { status: 'processing' }
+  | { status: 'done' }
+  | { status: 'error'; message: string };
+
+export async function getReconcileJobStatus(jobId: string) {
+  return request<ReconcileJobStatus>(`/management/reconcile/filter-merge/${jobId}/status`, { auth: true });
+}
+
+export async function downloadReconcileResult(jobId: string): Promise<{ blob: Blob; filename: string }> {
+  let baseUrl = getApiBaseUrl();
+  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
+
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const res = await checkRawResponse(await fetch(`${baseUrl}/management/reconcile/filter-merge/${jobId}/download`, {
+    headers,
+    cache: 'no-store',
+  }));
+
   const blob = await res.blob();
   const filename = filenameFromContentDisposition(res.headers.get('content-disposition'), 'service_invoices_merged.xlsx');
   return { blob, filename };

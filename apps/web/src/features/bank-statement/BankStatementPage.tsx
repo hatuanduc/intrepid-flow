@@ -76,6 +76,18 @@ function formatDateTime(iso: string | null): string {
   return `${dd}/${mm}/${d.getFullYear()} ${hh}:${min}`;
 }
 
+function formatDateOnly(iso: string): string {
+  const d = new Date(iso);
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
+function formatDateRange(from: string | null, to: string | null): string | null {
+  if (!from || !to) return null;
+  return from === to ? formatDateOnly(from) : `${formatDateOnly(from)} → ${formatDateOnly(to)}`;
+}
+
 /* ── Confirm delete modal ── */
 function ConfirmDeleteModal({
   job, deleting, error, onConfirm, onCancel,
@@ -269,7 +281,12 @@ export default function BankStatementPage() {
                     const isDone = ['completed', 'failed'].includes(job.status);
                     return (
                     <tr key={job.id} onClick={() => router.push('/bank-statement/jobs/' + job.id)}>
-                      <td className={s.td}>{formatDateTime(job.createdAt)}</td>
+                      <td className={s.td}>
+                        <div>{formatDateTime(job.createdAt)}</div>
+                        {formatDateRange(job.dateRangeFrom, job.dateRangeTo) && (
+                          <div className={s.rangeMeta}>{formatDateRange(job.dateRangeFrom, job.dateRangeTo)}</div>
+                        )}
+                      </td>
                       <td className={s.td}>
                         <span className={s.triggerLabel}>
                           {job.triggeredBy === 'cron' ? t('bankStatement.schedule') : job.triggeredByName ?? t('bankStatement.manual')}

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import {
-  runReconcileFilterMerge, getMasterCustomerInfo, getReconcileSettings,
+  startReconcileFilterMerge, getReconcileJobStatus, downloadReconcileResult, getMasterCustomerInfo, getReconcileSettings,
   type MasterCustomerInfo, type ReconcileSettings,
 } from '../../lib/api';
 import { useHasPermission } from '../../hooks/useHasPermission';
@@ -112,6 +112,27 @@ export default function ReconcilePage() {
     URL.revokeObjectURL(url);
   }
 
+  function sleep(ms: number) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // The merge itself now runs async in a Lambda (apps/reconcile-lambda), so the API returns a
+  // jobId immediately instead of the merged file — poll until it's done or errors out. Give up
+  // slightly past the Lambda's own 10-minute timeout so this can't hang forever on a stuck job.
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_TIMEOUT_MS = 11 * 60 * 1000;
+
+  async function pollUntilDone(jobId: string): Promise<void> {
+    const deadline = Date.now() + POLL_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      const result = await getReconcileJobStatus(jobId);
+      if (result.status === 'done') return;
+      if (result.status === 'error') throw new Error(result.message);
+      await sleep(POLL_INTERVAL_MS);
+    }
+    throw new Error(t('reconcile.jobTimeout'));
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const errs = validate();
@@ -123,7 +144,9 @@ export default function ReconcilePage() {
 
     setProcessing(true);
     try {
-      const { blob, filename } = await runReconcileFilterMerge(formData);
+      const { jobId } = await startReconcileFilterMerge(formData);
+      await pollUntilDone(jobId);
+      const { blob, filename } = await downloadReconcileResult(jobId);
       triggerDownload(blob, filename);
       toast.success(t('reconcile.successToast'));
       setLastRun({ success: true, at: new Date(), fileCount: invoiceFiles.length, filename, blob });

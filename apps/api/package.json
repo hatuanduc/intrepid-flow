@@ -17,6 +17,8 @@
     "seed": "tsx src/prisma/seed.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-lambda": "^3.700.0",
+    "@aws-sdk/client-s3": "^3.700.0",
     "@nestjs/bullmq": "^10.2.3",
     "@nestjs/schedule": "^3.0.0",
     "@nestjs/common": "^10.0.0",
@@ -37,9 +39,7 @@
     "multer": "^1.4.5-lts.1",
     "reflect-metadata": "^0.1.13",
     "nodemailer": "^6.9.14",
-    "rxjs": "^7.8.0",
-    "saxes": "^5.0.1",
-    "unzipper": "^0.10.14"
+    "rxjs": "^7.8.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.2",
@@ -48,7 +48,6 @@
     "@types/multer": "^1.4.12",
     "@types/node": "^20",
     "@types/nodemailer": "^6.4.17",
-    "@types/unzipper": "^0.10.11",
     "prisma": "^5.22.0",
     "ts-node-dev": "^2.0.0",
     "tsx": "^4.0.0",

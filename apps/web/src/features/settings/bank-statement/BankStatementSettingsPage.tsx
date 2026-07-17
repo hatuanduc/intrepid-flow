@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  getBankSettings, updateBankSettings,
+  getBankSettings, updateBankSettings, triggerBankSync,
   listBankGsheets, upsertBankGsheet,
   listBankAccounts, listBankAccountNames,
   type BankJobSettings, type SyncDateMode,
@@ -140,12 +140,22 @@ function formatRunDate(d: Date, lang: string) {
 
 function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved: (s: BankJobSettings) => void }) {
   const { t, lang } = useT();
+  const router = useRouter();
+  const toast = useToast();
+  const canRun = useHasPermission('bank_statement:run');
   const [isScheduled, setIsScheduled] = useState(settings.isScheduled);
   const [hour, setHour] = useState(() => parseInt(settings.scheduleCron.split(' ')[1]));
   const [minute, setMinute] = useState(() => parseInt(settings.scheduleCron.split(' ')[0]));
   const [syncDateMode, setSyncDateMode] = useState<SyncDateMode>(settings.syncDateMode ?? 'yesterday');
   const [syncCustomDays, setSyncCustomDays] = useState(settings.syncCustomDays ?? 1);
   const [saving, setSaving] = useState(false);
+
+  // Per-run override — a one-off "Run now" with an explicit range, never persisted
+  // to these settings (save() below never sends dateFrom/dateTo).
+  const [showDateOverride, setShowDateOverride] = useState(false);
+  const [overrideFrom, setOverrideFrom] = useState('');
+  const [overrideTo, setOverrideTo] = useState('');
+  const [triggering, setTriggering] = useState(false);
 
   const cron = `${minute} ${hour} * * *`;
   const nextRuns = isScheduled ? getNextRuns(hour, minute, 5) : [];
@@ -169,6 +179,25 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
       onSaved(result);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function runNow() {
+    if (!overrideFrom || !overrideTo) {
+      toast.error(t('bankSettings.dateRangeIncomplete'));
+      return;
+    }
+    if (overrideFrom > overrideTo) {
+      toast.error(t('bankSettings.dateRangeInvalid'));
+      return;
+    }
+    setTriggering(true);
+    try {
+      const job = await triggerBankSync({ dateFrom: overrideFrom, dateTo: overrideTo });
+      router.push('/bank-statement/jobs/' + job.id);
+    } catch {
+      toast.error(t('bankSettings.triggerFailed'));
+      setTriggering(false);
     }
   }
 
@@ -266,6 +295,44 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
           )}
         </div>
       </div>
+
+      {canRun && (
+        <div className={s.card}>
+          <div className={s.scheduleRow}>
+            <button type="button" className={s.dateOverrideToggle} onClick={() => setShowDateOverride(v => !v)}>
+              {showDateOverride ? t('bankSettings.hideDateOverride') : t('bankSettings.customDateRange')}
+            </button>
+          </div>
+          {showDateOverride && (
+            <>
+              <div className={s.scheduleDivider} />
+              <div className={s.dateOverrideRow}>
+                <label className={s.dateOverrideLabel}>
+                  {t('bankSettings.dateFrom')}
+                  <input
+                    type="date"
+                    className={s.dateOverrideInput}
+                    value={overrideFrom}
+                    onChange={e => setOverrideFrom(e.target.value)}
+                  />
+                </label>
+                <label className={s.dateOverrideLabel}>
+                  {t('bankSettings.dateTo')}
+                  <input
+                    type="date"
+                    className={s.dateOverrideInput}
+                    value={overrideTo}
+                    onChange={e => setOverrideTo(e.target.value)}
+                  />
+                </label>
+                <button className={s.btnPrimary} onClick={runNow} disabled={triggering}>
+                  {triggering ? t('bankSettings.triggering') : t('bankSettings.runNowWithRange')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       <div>
         <button className={s.btnPrimary} onClick={save} disabled={saving}>

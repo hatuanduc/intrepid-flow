@@ -1,5 +1,5 @@
 import {
-  BadRequestException, Body, Controller, Get, Post, Put, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors,
+  BadRequestException, Body, Controller, Get, Param, Post, Put, Res, UploadedFile, UploadedFiles, UseGuards, UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -28,7 +28,7 @@ export class ReconcileController {
 
   @Post('filter-merge')
   @HasPermission('reconcile:run')
-  @ApiOperation({ summary: 'Lọc và gộp hóa đơn Service/Other từ nhiều file, loại trừ Retail khỏi chi tiết' })
+  @ApiOperation({ summary: 'Bắt đầu job lọc và gộp hóa đơn Service/Other từ nhiều file (chạy nền — xem tiến độ qua /status, tải kết quả qua /download)' })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
@@ -53,7 +53,6 @@ export class ReconcileController {
   async filterMerge(
     @UploadedFiles() uploaded: { files?: Express.Multer.File[] },
     @Body() body: FilterMergeDto,
-    @Res({ passthrough: false }) res: Response,
   ) {
     const invoiceFiles = (uploaded.files ?? []).map(f => ({ path: f.path, originalName: f.originalname }));
 
@@ -61,21 +60,30 @@ export class ReconcileController {
       throw new BadRequestException('Vui lòng chọn ít nhất 1 file hóa đơn.');
     }
 
-    const tempPaths = invoiceFiles.map(f => f.path);
-
     try {
-      const { path: outPath, filename } = await this.service.runFilterMerge(invoiceFiles, body.outputFileName ?? '');
-      tempPaths.push(outPath);
-
-      const buffer = await fs.readFile(outPath);
-      res.set({
-        'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
-      });
-      res.send(buffer);
+      return await this.service.startFilterMerge(invoiceFiles, body.outputFileName ?? '');
     } finally {
-      await Promise.all(tempPaths.map(p => fs.unlink(p).catch(() => {})));
+      await Promise.all(invoiceFiles.map(f => fs.unlink(f.path).catch(() => {})));
     }
+  }
+
+  @Get('filter-merge/:jobId/status')
+  @HasPermission('reconcile:run')
+  @ApiOperation({ summary: 'Kiểm tra tiến độ job lọc và gộp hóa đơn' })
+  async filterMergeStatus(@Param('jobId') jobId: string) {
+    return this.service.getFilterMergeStatus(jobId);
+  }
+
+  @Get('filter-merge/:jobId/download')
+  @HasPermission('reconcile:run')
+  @ApiOperation({ summary: 'Tải file kết quả sau khi job lọc và gộp hóa đơn hoàn tất' })
+  async filterMergeDownload(@Param('jobId') jobId: string, @Res({ passthrough: false }) res: Response) {
+    const { stream, filename, contentType } = await this.service.downloadFilterMergeResult(jobId);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+    stream.pipe(res);
   }
 
   @Get('settings')

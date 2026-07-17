@@ -74,6 +74,23 @@
 }
 .customDaysInput:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 
+/* Per-run date override — not persisted, only used to trigger a one-off run */
+.dateOverrideRow { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }
+.dateOverrideToggle {
+  padding: 0; border: none; background: none; cursor: pointer;
+  font-size: 13px; font-weight: 500; color: var(--color-accent); text-decoration: underline;
+}
+.dateOverrideToggle:hover { color: var(--color-accent-hover); }
+.dateOverrideLabel {
+  display: flex; flex-direction: column; gap: 4px;
+  font-size: 12px; font-weight: 500; color: var(--color-secondary);
+}
+.dateOverrideInput {
+  padding: 6px 10px; border-radius: 6px; border: 1.5px solid var(--color-border);
+  background: var(--bg-surface); font-size: 13px; color: var(--color-ink); outline: none;
+}
+.dateOverrideInput:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
+
 /* Upcoming runs */
 .nextRuns { margin-top: 16px; }
 .nextRunsLabel {

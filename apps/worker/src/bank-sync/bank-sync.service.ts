@@ -286,14 +286,38 @@ export class BankSyncService {
     await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
     await this.discoverAndSyncAccounts(jobId);
 
-    // ── 1c. Compute date range from settings ─────────────────────────────────
+    // ── 1c. Compute date range — per-run override takes priority over settings ──
+    // A manual "Run now" can supply an explicit dateFrom/dateTo (stored on this job
+    // row only, never written back to BankJobSettings) — scheduled cron runs never
+    // set these, so they always fall through to the default syncDateMode/syncCustomDays.
+    const job = await this.prisma.bankSyncJob.findUnique({
+      where: { id: jobId },
+      select: { dateFromOverride: true, dateToOverride: true },
+    });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const anySettings = settings as any;
     const dateMode: string = anySettings?.syncDateMode ?? 'yesterday';
     const customDays: number = anySettings?.syncCustomDays ?? 1;
-    const { from: dateFrom, to: dateTo } = computeDateRange(dateMode, customDays);
+    const hasOverride = !!(job?.dateFromOverride && job?.dateToOverride);
+    const { from: dateFrom, to: dateTo } = hasOverride
+      ? { from: job!.dateFromOverride!, to: job!.dateToOverride! }
+      : computeDateRange(dateMode, customDays);
     const rangeLabel = `${formatDateLabel(dateFrom)} → ${formatDateLabel(dateTo)}`;
-    await this.log(jobId, `Date range: ${rangeLabel} (mode: ${dateMode}).`, 'bank_sync');
+    await this.log(jobId, `Date range: ${rangeLabel} (${hasOverride ? 'ghi đè thủ công' : `mode: ${dateMode}`}).`, 'bank_sync');
+    // Persist the resolved range (not just the override, which is null on non-override
+    // runs) so the UI can show it directly instead of parsing the log line.
+    await this.prisma.bankSyncJob.update({
+      where: { id: jobId },
+      data: { dateRangeFrom: dateFrom, dateRangeTo: dateTo },
+    });
+
+    // "Already synced, skip" only makes sense for a range that's fully settled —
+    // if dateTo reaches today (mode 'today', or a manual override ending today),
+    // that day's data can still change through the day, so it must always be
+    // re-checked no matter what lastSyncedTo says.
+    const nowForSettledCheck = new Date();
+    const todayUtc = new Date(Date.UTC(nowForSettledCheck.getUTCFullYear(), nowForSettledCheck.getUTCMonth(), nowForSettledCheck.getUTCDate()));
+    const dateRangeSettled = dateTo.getTime() < todayUtc.getTime();
 
     // ── 1d. Download per active account (grouped by accountName) ─────────────
     const accounts = await this.prisma.bankAccount.findMany({
@@ -324,11 +348,20 @@ export class BankSyncService {
         }
 
         // HSBC data for this range is already settled and previously confirmed —
-        // computeDateRange() never lets dateTo reach today, so a stored lastSyncedTo
-        // covering it means nothing has or will change. Skip re-driving the whole
-        // Playwright flow (account switch, date filter, export) for nothing.
-        if (account.lastSyncedTo && account.lastSyncedTo.getTime() >= dateTo.getTime()) {
+        // dateRangeSettled rules out 'today' mode (or a manual override reaching
+        // today), where the same day's data can still change — so a stored
+        // lastSyncedTo covering it means nothing has or will change. Skip re-driving
+        // the whole Playwright flow (account switch, date filter, export) for nothing.
+        //
+        // lastSyncedTo is a per-account field, not scoped to this job — it can get
+        // set by a DIFFERENT job's success (e.g. a later scheduled run) after THIS
+        // job's own row for this account was left 'failed' from an earlier attempt.
+        // Without upserting here, this job's own stats would show that stale
+        // 'failed' status forever, even though the account is confirmed fine —
+        // explicitly mark it "completed, already up to date" for this job's record.
+        if (dateRangeSettled && account.lastSyncedTo && account.lastSyncedTo.getTime() >= dateTo.getTime()) {
           await this.log(jobId, `  → ${account.accountNumber}: already synced through ${formatDateLabel(account.lastSyncedTo)}, skipping.`, 'bank_sync');
+          await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
           continue;
         }
 

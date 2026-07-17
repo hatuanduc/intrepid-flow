@@ -1,15 +1,14 @@
 import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import type { CellValue } from 'exceljs';
-import { fork, type ChildProcess } from 'child_process';
-import * as os from 'os';
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
+import * as fs from 'fs';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
+import type { Readable } from 'stream';
 import { PrismaService } from '../../prisma/prisma.service';
-import {
-  buildHeaderIndex, cellToString, deserializeCellValue, normalizeHeaderKey, sanitizeOutputFileName,
-  type RowType, type SerializedCellValue,
-} from './reconcile-filter.util';
+import { buildHeaderIndex, cellToString, normalizeHeaderKey, sanitizeOutputFileName } from './reconcile-filter.util';
 
 export interface UploadedInvoiceFile {
   path: string;
@@ -22,35 +21,12 @@ export interface FilterMergeOptions {
   taxColumn: string;
   noteColumn: string;
   customerColumn: string;
-  outputFileName: string;
 }
 
-interface AggregateEntry {
-  customerName: string;
-  typeLabel: RowType;
-  sales: number;
-  tax: number;
-}
-
-interface Totals {
-  retailSales: number;
-  retailTax: number;
-  serviceSales: number;
-  serviceTax: number;
-}
-
-// Mirrors the shape workers/invoice-file-worker.ts sends back over IPC on success.
-interface InvoiceWorkerData {
-  detailHeader: SerializedCellValue[];
-  salesColIdx: number;
-  taxColIdx: number;
-  totals: Totals;
-  aggregates: AggregateEntry[];
-  detailRows: SerializedCellValue[][];
-}
-
-const MONEY_FORMAT = '#,##0.00';
-const HEADER_FILL = 'FFDDEBF7';
+export type FilterMergeStatus =
+  | { status: 'processing' }
+  | { status: 'done' }
+  | { status: 'error'; message: string };
 
 // The Master Customer Name file's header names are effectively fixed (see
 // macro-powertool/BusinessMaster.bas) — not exposed as a user-facing field,
@@ -60,12 +36,22 @@ const DEFAULT_MASTER_CUSTOMER_COLUMN = 'Customer name';
 
 @Injectable()
 export class ReconcileService {
+  // The actual invoice parsing/merging runs in a separate Lambda (apps/reconcile-lambda) instead
+  // of a forked child process on this host — a single 50MB invoice file could peak at multiple GB
+  // of RAM, which isn't safe to run inline on the same EC2 host as web/api/worker/db/redis. This
+  // service's job is now just: stage the uploaded files in S3, invoke the Lambda asynchronously,
+  // and let the caller poll/download via S3 — see getFilterMergeStatus()/downloadFilterMergeResult().
+  private readonly s3 = new S3Client({});
+  private readonly lambda = new LambdaClient({});
+  private readonly bucket = process.env.RECONCILE_BUCKET as string;
+  private readonly lambdaName = process.env.RECONCILE_LAMBDA_NAME as string;
+
   constructor(private readonly prisma: PrismaService) {}
 
-  async runFilterMerge(
+  async startFilterMerge(
     invoiceFiles: UploadedInvoiceFile[],
     outputFileName: string,
-  ): Promise<{ path: string; filename: string }> {
+  ): Promise<{ jobId: string }> {
     const settings = await this.getSettings();
     const opts: FilterMergeOptions = {
       headerRow: settings.headerRow,
@@ -73,81 +59,77 @@ export class ReconcileService {
       taxColumn: settings.taxColumn,
       noteColumn: settings.noteColumn,
       customerColumn: settings.customerColumn,
-      outputFileName,
     };
 
     const dictCustomer = await this.getMasterCustomerMapFromDb();
     const masterMap: [string, string][] = [...dictCustomer.entries()];
 
-    const totals: Totals = { retailSales: 0, retailTax: 0, serviceSales: 0, serviceTax: 0 };
-    const aggregates = new Map<string, AggregateEntry>();
-    let detailHeader: CellValue[] | null = null;
-    let salesColOut = 0;
-    let taxColOut = 0;
-
-    // Pass 1: totals + aggregates only (bounded by unique customer×type combos, not row count).
-    // Each file's detailRows are read here but discarded immediately — they're re-read in pass 2
-    // below, once totals are final. This trades re-reading each file twice for never holding more
-    // than one file's detail rows in memory at a time: the Detail sheet's "TOTAL" rows are written
-    // before its data rows (see beginOutputWorkbook), so those totals must be final before any
-    // detail row is streamed out, which rules out writing detail rows incrementally in this loop.
-    for (const file of invoiceFiles) {
-      const result = await this.runInvoiceFileWorker(file, opts, masterMap);
-
-      if (detailHeader === null) {
-        detailHeader = result.detailHeader.map(deserializeCellValue);
-        salesColOut = result.salesColIdx;
-        taxColOut = result.taxColIdx;
-      }
-
-      totals.retailSales += result.totals.retailSales;
-      totals.retailTax += result.totals.retailTax;
-      totals.serviceSales += result.totals.serviceSales;
-      totals.serviceTax += result.totals.serviceTax;
-
-      for (const entry of result.aggregates) {
-        const key = `${entry.customerName}|${entry.typeLabel}`;
-        const existing = aggregates.get(key) ?? { customerName: entry.customerName, typeLabel: entry.typeLabel, sales: 0, tax: 0 };
-        existing.sales += entry.sales;
-        existing.tax += entry.tax;
-        aggregates.set(key, existing);
-      }
+    const jobId = randomUUID();
+    const inputFiles: { key: string; originalName: string }[] = [];
+    for (let i = 0; i < invoiceFiles.length; i++) {
+      const file = invoiceFiles[i];
+      const key = `input/${jobId}/${i}${path.extname(file.originalName) || '.xlsx'}`;
+      const body = await fs.promises.readFile(file.path);
+      await this.s3.send(new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body }));
+      inputFiles.push({ key, originalName: file.originalName });
     }
 
-    const outPath = path.join(os.tmpdir(), `reconcile-out-${randomUUID()}.xlsx`);
-    const { workbook, detail } = await this.beginOutputWorkbook(outPath, {
-      detailHeader: detailHeader ?? [],
-      salesColOut,
-      taxColOut,
-      totals,
-      aggregates: [...aggregates.values()],
-      opts,
-    });
+    const outputKey = `output/${jobId}.xlsx`;
+    await this.lambda.send(new InvokeCommand({
+      FunctionName: this.lambdaName,
+      InvocationType: 'Event',
+      Payload: Buffer.from(JSON.stringify({
+        jobId,
+        bucket: this.bucket,
+        outputKey,
+        outputFileName: sanitizeOutputFileName(outputFileName),
+        inputFiles,
+        opts,
+        masterMap,
+      })),
+    }));
 
-    // Pass 2: re-read each file and stream its detail rows straight into the Detail sheet, one
-    // file at a time — each file's rows are written and discarded before the next file is read,
-    // so peak memory here is bounded by a single file's rows, not the whole batch.
-    let outRowNum = 5;
-    for (const file of invoiceFiles) {
-      const result = await this.runInvoiceFileWorker(file, opts, masterMap);
+    return { jobId };
+  }
 
-      for (const serializedRow of result.detailRows) {
-        const values = serializedRow.map(deserializeCellValue);
-        const row = detail.getRow(outRowNum);
-        values.forEach((v, idx) => {
-          if (idx > 0) row.getCell(idx).value = v;
-        });
-        if (salesColOut > 0) row.getCell(salesColOut).numFmt = MONEY_FORMAT;
-        if (taxColOut > 0) row.getCell(taxColOut).numFmt = MONEY_FORMAT;
-        row.commit();
-        outRowNum++;
-      }
+  async getFilterMergeStatus(jobId: string): Promise<FilterMergeStatus> {
+    const outputKey = `output/${jobId}.xlsx`;
+
+    const isDone = await this.s3
+      .send(new HeadObjectCommand({ Bucket: this.bucket, Key: outputKey }))
+      .then(() => true)
+      .catch(() => false);
+    if (isDone) return { status: 'done' };
+
+    const errorBody = await this.s3
+      .send(new GetObjectCommand({ Bucket: this.bucket, Key: `${outputKey}.error.json` }))
+      .then(res => res.Body?.transformToString())
+      .catch(() => undefined);
+    if (errorBody) {
+      const parsed = JSON.parse(errorBody) as { message?: string };
+      return { status: 'error', message: parsed.message ?? 'Xử lý thất bại.' };
     }
 
-    detail.commit();
-    await workbook.commit();
+    return { status: 'processing' };
+  }
 
-    return { path: outPath, filename: sanitizeOutputFileName(opts.outputFileName) };
+  async downloadFilterMergeResult(jobId: string): Promise<{ stream: Readable; filename: string; contentType: string }> {
+    const outputKey = `output/${jobId}.xlsx`;
+    let res;
+    try {
+      res = await this.s3.send(new GetObjectCommand({ Bucket: this.bucket, Key: outputKey }));
+    } catch {
+      throw new NotFoundException('RECONCILE_RESULT_NOT_FOUND');
+    }
+
+    const encodedName = res.Metadata?.['output-filename'];
+    const filename = encodedName ? decodeURIComponent(encodedName) : 'service_invoices_merged.xlsx';
+
+    return {
+      stream: res.Body as Readable,
+      filename,
+      contentType: res.ContentType ?? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    };
   }
 
   async getSettings() {
@@ -249,203 +231,5 @@ export class ReconcileService {
     });
 
     return map;
-  }
-
-  // Runs one invoice file's parsing in a dedicated child process (workers/invoice-file-worker.ts,
-  // which uses ExcelJS's plain loader — see that file for why the streaming reader was rejected).
-  // Isolating per file still matters even with the plain loader: the OS reclaims 100% of that
-  // file's memory the instant the child exits, instead of depending on this long-lived server
-  // process's GC timing, and a runaway file only kills its own capped child, not the whole server.
-  private async runInvoiceFileWorker(
-    file: UploadedInvoiceFile,
-    opts: FilterMergeOptions,
-    masterMap: [string, string][],
-  ): Promise<InvoiceWorkerData> {
-    const isTs = __filename.endsWith('.ts');
-    const workerPath = path.join(__dirname, 'workers', isTs ? 'invoice-file-worker.ts' : 'invoice-file-worker.js');
-    // Cap sized from measurement, not guesswork: a 28.6MB/500k-row file with a realistic
-    // Service/Other-heavy mix peaked at ~1.4GB RSS in the child (most of it the filtered *output*
-    // rows accumulating before being sent back, not the read itself) — 1024MB would have killed
-    // that exact file, so this leaves real headroom instead of a guessed number.
-    const execArgv = isTs ? ['--require', 'tsx/cjs'] : ['--max-old-space-size=2048'];
-
-    // Exit codes a crashed child commonly reports, so the user sees "likely ran out of memory"
-    // instead of a bare number. 134 = SIGABRT (V8's own "JS heap out of memory" fatal abort,
-    // which is what a child hitting --max-old-space-size raises); 137 = SIGKILL (OS OOM killer).
-    const OOM_EXIT_CODES = new Set([134, 137]);
-
-    let child: ChildProcess | undefined;
-    let stderrTail = '';
-    try {
-      return await new Promise<InvoiceWorkerData>((resolve, reject) => {
-        child = fork(workerPath, [], { execArgv, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
-
-        // Forward the child's stdout/stderr into this process's own console — otherwise a crash
-        // inside the child (e.g. V8's "FATAL ERROR: JavaScript heap out of memory" dump) is
-        // completely invisible in the dev/server logs.
-        const logPrefix = `[reconcile-worker:${file.originalName}]`;
-        child.stdout?.on('data', (buf: Buffer) => process.stdout.write(`${logPrefix} ${buf}`));
-        child.stderr?.on('data', (buf: Buffer) => {
-          const text = buf.toString();
-          stderrTail = (stderrTail + text).slice(-2000);
-          process.stderr.write(`${logPrefix} ${text}`);
-        });
-
-        const timeout = setTimeout(() => {
-          child?.kill();
-          reject(new UnprocessableEntityException(
-            `Xử lý file "${file.originalName}" quá lâu (quá 5 phút), đã hủy.`,
-          ));
-        }, 5 * 60 * 1000);
-
-        child.on('message', (msg: { ok: true; data: InvoiceWorkerData } | { ok: false; error: string }) => {
-          clearTimeout(timeout);
-          if (msg.ok) resolve(msg.data);
-          else reject(new UnprocessableEntityException(msg.error));
-        });
-
-        child.on('error', err => {
-          clearTimeout(timeout);
-          reject(new UnprocessableEntityException(
-            `Không thể xử lý file "${file.originalName}": ${err.message}`,
-          ));
-        });
-
-        child.on('exit', code => {
-          clearTimeout(timeout);
-          if (code !== 0 && code !== null) {
-            const reason = OOM_EXIT_CODES.has(code)
-              ? ' — có thể do file quá lớn/nhiều dòng, tiến trình xử lý bị hết bộ nhớ.'
-              : stderrTail
-                ? ` — chi tiết: ${stderrTail.slice(-300)}`
-                : '';
-            reject(new UnprocessableEntityException(
-              `Xử lý file "${file.originalName}" thất bại (tiến trình con thoát với mã lỗi ${code})${reason}`,
-            ));
-          }
-        });
-
-        child.send({
-          filePath: file.path,
-          originalName: file.originalName,
-          headerRow: opts.headerRow,
-          salesColumn: opts.salesColumn,
-          taxColumn: opts.taxColumn,
-          noteColumn: opts.noteColumn,
-          customerColumn: opts.customerColumn,
-          masterMap,
-        });
-      });
-    } finally {
-      child?.kill();
-    }
-  }
-
-  // Creates the output workbook and writes the Summary sheet + the Detail sheet's fixed header
-  // rows (TOTAL Retail/Service + column header) — everything that needs final totals/aggregates
-  // but comes *before* the Detail sheet's data rows in the file. Returns the still-open workbook
-  // and Detail worksheet so the caller can stream data rows into it (see runFilterMerge's pass 2)
-  // without ever holding the full batch's detail rows in memory at once.
-  private async beginOutputWorkbook(
-    outPath: string,
-    data: {
-      detailHeader: CellValue[];
-      salesColOut: number;
-      taxColOut: number;
-      totals: Totals;
-      aggregates: AggregateEntry[];
-      opts: FilterMergeOptions;
-    },
-  ): Promise<{ workbook: ExcelJS.stream.xlsx.WorkbookWriter; detail: ExcelJS.Worksheet }> {
-    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
-      filename: outPath,
-      useStyles: true,
-      useSharedStrings: true,
-    });
-
-    // ── Summary sheet ──
-    const summary = workbook.addWorksheet('Summary');
-    summary.columns = [{ width: 40 }, { width: 20 }, { width: 20 }, { width: 20 }];
-
-    const totalRetailRow = summary.addRow(['TOTAL Retail:', data.totals.retailSales, data.totals.retailTax]);
-    totalRetailRow.font = { bold: true };
-    totalRetailRow.getCell(2).numFmt = MONEY_FORMAT;
-    totalRetailRow.getCell(3).numFmt = MONEY_FORMAT;
-    totalRetailRow.commit();
-
-    const totalServiceRow = summary.addRow(['TOTAL Service:', data.totals.serviceSales, data.totals.serviceTax]);
-    totalServiceRow.font = { bold: true };
-    totalServiceRow.getCell(2).numFmt = MONEY_FORMAT;
-    totalServiceRow.getCell(3).numFmt = MONEY_FORMAT;
-    totalServiceRow.commit();
-
-    summary.addRow([]).commit(); // spacer row (row 3)
-
-    const summaryHeaderRow = summary.addRow([
-      data.opts.customerColumn,
-      data.opts.salesColumn,
-      data.opts.taxColumn,
-      data.opts.noteColumn,
-    ]);
-    summaryHeaderRow.font = { bold: true };
-    summaryHeaderRow.eachCell(cell => {
-      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: HEADER_FILL } };
-    });
-    summaryHeaderRow.commit();
-
-    for (const entry of data.aggregates) {
-      const row = summary.addRow([entry.customerName, entry.sales, entry.tax, entry.typeLabel]);
-      row.getCell(2).numFmt = MONEY_FORMAT;
-      row.getCell(3).numFmt = MONEY_FORMAT;
-      row.commit();
-    }
-
-    summary.commit();
-
-    // ── Service_Invoices_Detail sheet ──
-    const detail = workbook.addWorksheet('Service_Invoices_Detail');
-    const detailColCount = Math.max(data.detailHeader.length - 1, 1);
-    detail.columns = Array.from({ length: detailColCount }, () => ({ width: 20 }));
-
-    const labelEndCol = Math.max(data.salesColOut - 1, 1);
-    detail.mergeCells(1, 1, 1, labelEndCol);
-    detail.mergeCells(2, 1, 2, labelEndCol);
-
-    const totalRetailDetailRow = detail.getRow(1);
-    totalRetailDetailRow.getCell(1).value = 'TOTAL Retail:';
-    totalRetailDetailRow.getCell(1).font = { bold: true };
-    if (data.salesColOut > 0) {
-      totalRetailDetailRow.getCell(data.salesColOut).value = data.totals.retailSales;
-      totalRetailDetailRow.getCell(data.salesColOut).numFmt = MONEY_FORMAT;
-    }
-    if (data.taxColOut > 0) {
-      totalRetailDetailRow.getCell(data.taxColOut).value = data.totals.retailTax;
-      totalRetailDetailRow.getCell(data.taxColOut).numFmt = MONEY_FORMAT;
-    }
-    totalRetailDetailRow.commit();
-
-    const totalServiceDetailRow = detail.getRow(2);
-    totalServiceDetailRow.getCell(1).value = 'TOTAL Service:';
-    totalServiceDetailRow.getCell(1).font = { bold: true };
-    if (data.salesColOut > 0) {
-      totalServiceDetailRow.getCell(data.salesColOut).value = data.totals.serviceSales;
-      totalServiceDetailRow.getCell(data.salesColOut).numFmt = MONEY_FORMAT;
-    }
-    if (data.taxColOut > 0) {
-      totalServiceDetailRow.getCell(data.taxColOut).value = data.totals.serviceTax;
-      totalServiceDetailRow.getCell(data.taxColOut).numFmt = MONEY_FORMAT;
-    }
-    totalServiceDetailRow.commit();
-
-    detail.getRow(3).commit(); // blank spacer row
-
-    const detailHeaderRow = detail.getRow(4);
-    data.detailHeader.forEach((v, idx) => {
-      if (idx > 0) detailHeaderRow.getCell(idx).value = v;
-    });
-    detailHeaderRow.font = { bold: true };
-    detailHeaderRow.commit();
-
-    return { workbook, detail };
   }
 }

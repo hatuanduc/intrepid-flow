@@ -64,6 +64,9 @@ jobs:
       - name: Typecheck Web
         run: pnpm --filter @intrepid/web exec tsc --noEmit
 
+      - name: Typecheck Reconcile Lambda
+        run: pnpm --filter @intrepid/reconcile-lambda exec tsc -p tsconfig.json --noEmit
+
   # ── Job 2: Terraform ─────────────────────────────────────────────────────
   infra:
     name: Infra (${{ (github.ref_name == 'main' || github.base_ref == 'main') && 'prod' || 'dev' }})
@@ -80,6 +83,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      # The reconcile Lambda's terraform resource reads its code from
+      # apps/reconcile-lambda/dist/index.js (data "archive_file" in lambda-reconcile.tf) — dist/ is
+      # gitignored, so it must be built fresh here before any Terraform command runs, otherwise
+      # `terraform plan`/`apply` fails with "no such file" on a clean checkout.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        working-directory: .
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Reconcile Lambda bundle
+        working-directory: .
+        run: pnpm --filter @intrepid/reconcile-lambda build
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4

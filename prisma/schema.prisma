@@ -150,6 +150,16 @@ model BankSyncJob {
   durationMsTotal Int    @default(0) @map("duration_ms_total")
   isDeleted    Boolean   @default(false) @map("is_deleted")
   createdAt    DateTime  @default(now()) @map("created_at")
+  // Optional per-run override — set only when a user picks an explicit date range on
+  // manual "Run now" (not persisted to BankJobSettings). Null means "use the default
+  // syncDateMode/syncCustomDays settings", same as before this existed.
+  dateFromOverride DateTime? @map("date_from_override")
+  dateToOverride   DateTime? @map("date_to_override")
+  // The ACTUAL date range HSBC was queried with for this run — set by the worker
+  // once computed (whether from the override above or from syncDateMode/syncCustomDays),
+  // so the UI can show it directly instead of parsing it out of the log text.
+  dateRangeFrom    DateTime? @map("date_range_from")
+  dateRangeTo      DateTime? @map("date_range_to")
 
   accountJobs  BankSyncJobAccount[]
   transactions BankTransaction[]
