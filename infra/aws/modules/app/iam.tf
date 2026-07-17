@@ -54,7 +54,13 @@ resource "aws_iam_role_policy" "app_ssm_params" {
         "ssm:GetParameter",
         "ssm:GetParameters"
       ]
-      Resource = "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}/*"
+      # Both forms needed: GetParametersByPath checks the path itself as a resource
+      # (no trailing slash, since deploy.sh calls --path "/intrepid/${env}"), while
+      # the /* form covers the individual parameters it recurses into.
+      Resource = [
+        "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}",
+        "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}/*"
+      ]
     }]
   })
 }
