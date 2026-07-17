@@ -235,7 +235,7 @@ jobs:
             --comment "Deploy $SHA ($TF_ENV)" \
             --timeout-seconds 1200 \
             --parameters "{\"commands\":[
-              \"set -euo pipefail\",
+              \"set -eu\",
               \"echo '=== Deploy $SHA ===' \",
               \"aws s3 cp s3://$BUCKET/deploy/$TF_ENV/$SHA.tar.gz /tmp/deploy.tar.gz\",
               \"find /app -mindepth 1 -maxdepth 1 -not -name '.env' -exec rm -rf {} +\",
