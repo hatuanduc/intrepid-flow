@@ -47,7 +47,11 @@ export class ExcelService {
     this.logger.log(`Parsing Excel buffer (${buffer.length} bytes)`);
 
     const wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(buffer);
+    // Cast bypasses a structural Buffer<ArrayBufferLike> mismatch caused by a duplicate,
+    // older @types/node (14.x) pulled in transitively alongside our own (20.x) — same
+    // runtime type, just two conflicting ambient declarations in the compilation.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await wb.xlsx.load(buffer as any);
 
     const ws = wb.worksheets[0];
     if (!ws) {

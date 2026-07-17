@@ -592,13 +592,14 @@ export class BankSyncService {
       if (!result.has(acc)) result.set(acc, []);
       result.get(acc)!.push({
         postDate: txn.postDate,
-        narrative: txn.narrative ?? undefined,
-        bankReference: txn.bankReference ?? undefined,
-        customerReference: txn.customerReference ?? undefined,
-        trnType: txn.trnType ?? undefined,
-        creditAmount: txn.creditAmount != null ? Number(txn.creditAmount) : undefined,
-        debitAmount: txn.debitAmount != null ? Number(txn.debitAmount) : undefined,
-        balance: txn.balance != null ? Number(txn.balance) : undefined,
+        narrative: txn.narrative,
+        bankReference: txn.bankReference,
+        customerReference: txn.customerReference,
+        trnType: txn.trnType,
+        creditAmount: txn.creditAmount != null ? Number(txn.creditAmount) : null,
+        debitAmount: txn.debitAmount != null ? Number(txn.debitAmount) : null,
+        balance: txn.balance != null ? Number(txn.balance) : null,
+        dataHash: txn.dataHash,
         rawData: txn.rawData as Record<string, unknown>,
       });
     }
@@ -666,7 +667,7 @@ export class BankSyncService {
             debitAmount: row.debitAmount,
             balance: row.balance,
             dataHash,
-            rawData: row.rawData,
+            rawData: row.rawData as Prisma.InputJsonValue,
           },
         });
         inserted++;
