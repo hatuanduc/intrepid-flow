@@ -23,7 +23,14 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 COPY apps/web/ ./apps/web/
 RUN pnpm --filter @intrepid/web build
 
+# Standalone output nests under the monorepo root's relative path to the app
+# (apps/web/.next/standalone/apps/web/server.js, not .next/standalone/server.js)
+# because Next.js finds the pnpm-lock.yaml above apps/web and traces from there.
+# public/ and .next/static aren't included in the standalone copy by design
+# (meant to be served by a CDN) — copy them in manually so assets aren't 404s.
+RUN cp -r apps/web/public apps/web/.next/standalone/apps/web/public && \
+    cp -r apps/web/.next/static apps/web/.next/standalone/apps/web/.next/static
+
 EXPOSE 3000
 ENV PORT=3000 HOSTNAME=0.0.0.0
-# next.config.ts has output: 'standalone' — server.js is self-contained
-CMD ["node", "apps/web/.next/standalone/server.js"]
+CMD ["node", "apps/web/.next/standalone/apps/web/server.js"]
