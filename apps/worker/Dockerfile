@@ -15,8 +15,11 @@ COPY prisma/ ./prisma/
 RUN pnpm install --frozen-lockfile --ignore-scripts
 RUN pnpm db:generate
 
-# Install Chromium with all required system deps (handles apt-get internally)
-RUN pnpm exec playwright install --with-deps chromium
+# Install Chromium with all required system deps (handles apt-get internally).
+# Must be --filter'd to the worker package — bare `pnpm exec` at the workspace
+# root runs recursively across every package and fails on the first one
+# (e.g. apps/api) that doesn't have playwright as a direct dependency.
+RUN pnpm --filter @intrepid/worker exec playwright install --with-deps chromium
 
 COPY apps/worker/ ./apps/worker/
 RUN pnpm --filter @intrepid/worker build
