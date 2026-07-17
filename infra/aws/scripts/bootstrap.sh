@@ -10,9 +10,17 @@ echo "=== [bootstrap] Start: $(date) ==="
 # ── 1. System packages ────────────────────────────────────────────────────
 apt-get update -y
 apt-get install -y \
-  curl git openssl \
+  curl git openssl unzip \
   nginx certbot python3-certbot-nginx \
   ca-certificates gnupg lsb-release
+
+# ── 1b. AWS CLI v2 (ARM64) — deploy.sh needs it to pull S3 code + SSM params ──
+if ! command -v aws >/dev/null 2>&1; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp
+  /tmp/aws/install
+  rm -rf /tmp/awscliv2.zip /tmp/aws
+fi
 
 # ── 2. Docker Engine (official apt repo, ARM64-compatible) ────────────────
 install -m 0755 -d /etc/apt/keyrings
