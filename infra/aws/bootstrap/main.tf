@@ -81,6 +81,12 @@ resource "aws_iam_role_policy_attachment" "infra_manager_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchLogsFullAccess"
 }
 
+# Needed to create/update the reconcile Lambda (infra/aws/modules/app/lambda-reconcile.tf)
+resource "aws_iam_role_policy_attachment" "infra_manager_lambda" {
+  role       = aws_iam_role.infra_manager.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSLambda_FullAccess"
+}
+
 resource "aws_iam_role_policy" "infra_manager_scheduler" {
   name = "infra-manager-scheduler"
   role = aws_iam_role.infra_manager.id

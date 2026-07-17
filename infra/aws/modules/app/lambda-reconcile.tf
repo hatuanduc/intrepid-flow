@@ -84,9 +84,10 @@ resource "aws_lambda_function" "reconcile" {
   source_code_hash = data.archive_file.reconcile_lambda.output_base64sha256
 
   # Sized from the old per-file child process cap (2048MB was already tight for a ~29MB file) —
-  # 6GB gives real headroom for 50MB files while staying far inside the free tier at this
-  # frequency (a few runs/month). Lambda scales CPU with memory, so this also parses faster.
-  memory_size = 6144
+  # 3008MB is this account's current Lambda memory quota ceiling (new AWS accounts default here;
+  # request a Service Quotas increase to raise it, then bump this back toward 6144 for more
+  # headroom on ~50MB files). Lambda scales CPU with memory, so this also parses faster.
+  memory_size = 3008
   timeout     = 600                 # 10 min — each file is read twice (pass 1 aggregate, pass 2 stream to output)
   ephemeral_storage { size = 2048 } # holds downloaded input files + the output .xlsx in /tmp
 }

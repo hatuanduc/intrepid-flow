@@ -57,3 +57,5 @@ output "elastic_ip" { value = module.app.elastic_ip }
 output "instance_id" { value = module.app.instance_id }
 output "ssm_command" { value = module.app.ssm_command }
 output "github_actions_role_arn" { value = module.app.github_actions_role_arn }
+output "reconcile_bucket" { value = module.app.reconcile_bucket }
+output "reconcile_lambda_name" { value = module.app.reconcile_lambda_name }

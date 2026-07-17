@@ -79,6 +79,9 @@ services:
       APP_URL: ${APP_URL}
       REDIS_HOST: redis
       REDIS_PORT: 6379
+      AWS_REGION: ${AWS_REGION}
+      RECONCILE_BUCKET: ${RECONCILE_BUCKET}
+      RECONCILE_LAMBDA_NAME: ${RECONCILE_LAMBDA_NAME}
     depends_on:
       db:
         condition: service_healthy

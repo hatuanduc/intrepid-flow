@@ -16,6 +16,6 @@ apps/worker/sessions/
 .terraform.lock.hcl
 *.tfstate
 *.tfstate.backup
-tfplan
+tfplan*
 !infra/aws/bootstrap/terraform.tfstate
 macro-powertool/*

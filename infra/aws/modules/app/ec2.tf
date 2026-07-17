@@ -32,6 +32,15 @@ resource "aws_instance" "app" {
     delete_on_termination = true
   }
 
+  # AWS defaults IMDSv2's hop limit to 1 — enough for processes running directly on the host, but
+  # the api container's AWS SDK calls (S3 + Lambda invoke for reconcile) go through Docker's bridge
+  # network, which adds a hop. Without this, those SDK calls fail to fetch instance-role credentials
+  # entirely (IMDSv2 request from inside the container silently gets dropped, not just slow).
+  metadata_options {
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
   tags = {
     Name = local.name_prefix
     Env  = var.env
