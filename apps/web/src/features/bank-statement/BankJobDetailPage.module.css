@@ -165,10 +165,19 @@
   z-index: 1;
 }
 .stepDotPending { background: var(--bg-subtle); border-color: var(--color-border); }
-.stepDotRunning { background: #7c3aed; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
+.stepDotRunning {
+  background: transparent; border-color: rgba(124,58,237,0.22);
+  border-top-color: #7c3aed; animation: stepDotSpin 0.7s linear infinite;
+}
 .stepDotOk      { background: #059669; border-color: #059669; }
 .stepDotErr     { background: #df1b41; border-color: #df1b41; }
 .stepDotSkipped { background: var(--color-border); border-color: var(--color-border-strong); }
+
+@keyframes stepDotSpin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .stepDotRunning { animation: none; background: #7c3aed; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.12); }
+}
 
 .stepLine {
   width: 2px; flex: 1; min-height: 20px; margin-top: 4px;

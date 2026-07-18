@@ -42,6 +42,7 @@ model Role {
   group       String?
   description String?
   isSystem    Boolean          @default(false) @map("is_system")
+  sortOrder   Int              @default(0) @map("sort_order")
   createdAt   DateTime         @default(now()) @map("created_at")
   updatedAt   DateTime         @updatedAt @map("updated_at")
   users       UserRole[]
