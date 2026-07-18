@@ -35,9 +35,9 @@ async function main() {
   }
 
   const adminRole = await prisma.role.upsert({
-    where: { key: 'admin' },
+    where: { key: 'superadmin' },
     create: {
-      key: 'admin',
+      key: 'superadmin',
       name: 'Super Admin',
       description: 'Toàn quyền quản trị hệ thống',
       isSystem: true,

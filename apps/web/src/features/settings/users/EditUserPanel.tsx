@@ -239,8 +239,8 @@ function RoleOption({
   onToggle: (id: number) => void;
 }) {
   const { t } = useT();
-  // Super Admin (key: admin) is only ever assigned via the seed script — never selectable here.
-  const disabled = role.key === 'admin';
+  // Super Admin (key: superadmin) is only ever assigned via the seed script — never selectable here.
+  const disabled = role.key === 'superadmin';
   return (
     <label className={[s.roleOption, selected ? s.roleOptionSelected : '', disabled ? s.roleOptionDisabled : ''].filter(Boolean).join(' ')}>
       <input

@@ -9,7 +9,7 @@ export class RolesService {
   async listRoles() {
     return this.prisma.role.findMany({
       ...roleListArgs,
-      orderBy: [{ group: 'asc' }, { name: 'asc' }],
+      orderBy: [{ group: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
     });
   }
 

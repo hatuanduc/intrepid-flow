@@ -745,12 +745,12 @@ export const en = {
   },
 
   systemRoles: {
-    admin: {
+    superadmin: {
       name: 'Super Admin',
       description: 'Full system access — manage users, connection settings, and perform any action.',
     },
-    manager: {
-      name: 'Manager',
+    admin: {
+      name: 'Administrator',
       description: 'Manages users and operations. Cannot access connection settings or secret keys.',
     },
     operator: {

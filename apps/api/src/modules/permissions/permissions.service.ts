@@ -23,19 +23,21 @@ const CORE_PERMISSIONS = [
 // null permissionKeys = all permissions (Administrator)
 const CORE_ROLES = [
   {
-    key: 'admin',
+    key: 'superadmin',
     name: 'Super Admin',
     group: 'admin',
     description: 'Toàn quyền hệ thống — quản lý người dùng, cấu hình kết nối, thực hiện mọi thao tác.',
     isSystem: true,
+    sortOrder: 0,
     permissionKeys: null as string[] | null,
   },
   {
-    key: 'manager',
-    name: 'Manager',
+    key: 'admin',
+    name: 'Administrator',
     group: 'admin',
     description: 'Quản lý người dùng và vận hành. Không thể truy cập cấu hình kết nối và secret keys.',
     isSystem: true,
+    sortOrder: 1,
     permissionKeys: [
       'dashboard:view',
       'users:view', 'users:create', 'users:update', 'users:impersonate',
@@ -51,6 +53,7 @@ const CORE_ROLES = [
     group: 'operations',
     description: 'Chạy đồng bộ sao kê và xem báo cáo. Không thể quản lý người dùng hay cài đặt hệ thống.',
     isSystem: true,
+    sortOrder: 2,
     permissionKeys: [
       'dashboard:view',
       'bank_statement:view', 'bank_statement:run',
@@ -64,6 +67,7 @@ const CORE_ROLES = [
     group: 'view_only',
     description: 'Chỉ xem dữ liệu — tổng quan, sao kê, báo cáo. Không thể thực hiện bất kỳ thao tác nào.',
     isSystem: true,
+    sortOrder: 3,
     permissionKeys: [
       'dashboard:view',
       'bank_statement:view',
@@ -95,13 +99,33 @@ export class PermissionsService implements OnApplicationBootstrap {
     this.logger.log(`Permissions synced: ${CORE_PERMISSIONS.length} core`);
   }
 
+  // Renames role keys in place (preserving id/UserRole assignments) so the upsert loop below
+  // never mistakes an existing user-assigned role for a differently-scoped one sharing its old key.
+  // 'admin' -> 'superadmin' must run before 'manager' -> 'admin', so the 'admin' key is free
+  // by the time the second rename claims it. No-op once both keys have already migrated.
+  private async migrateRoleKeys() {
+    const oldAdmin = await this.prisma.role.findUnique({ where: { key: 'admin' } });
+    const superAdminExists = await this.prisma.role.findUnique({ where: { key: 'superadmin' } });
+    if (oldAdmin && !superAdminExists) {
+      await this.prisma.role.update({ where: { key: 'admin' }, data: { key: 'superadmin' } });
+    }
+
+    const oldManager = await this.prisma.role.findUnique({ where: { key: 'manager' } });
+    const adminExists = await this.prisma.role.findUnique({ where: { key: 'admin' } });
+    if (oldManager && !adminExists) {
+      await this.prisma.role.update({ where: { key: 'manager' }, data: { key: 'admin' } });
+    }
+  }
+
   async syncRoles() {
+    await this.migrateRoleKeys();
+
     // 1. Upsert role records
     for (const r of CORE_ROLES) {
       await this.prisma.role.upsert({
         where: { key: r.key },
-        create: { key: r.key, name: r.name, group: r.group, description: r.description, isSystem: r.isSystem },
-        update: { name: r.name, group: r.group, description: r.description, isSystem: r.isSystem },
+        create: { key: r.key, name: r.name, group: r.group, description: r.description, isSystem: r.isSystem, sortOrder: r.sortOrder },
+        update: { name: r.name, group: r.group, description: r.description, isSystem: r.isSystem, sortOrder: r.sortOrder },
       });
     }
 

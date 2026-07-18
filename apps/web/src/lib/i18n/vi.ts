@@ -742,12 +742,12 @@ export const vi: Translations = {
   },
 
   systemRoles: {
-    admin: {
+    superadmin: {
       name: 'Super Admin',
       description: 'Toàn quyền hệ thống — quản lý người dùng, cấu hình kết nối, thực hiện mọi thao tác.',
     },
-    manager: {
-      name: 'Manager',
+    admin: {
+      name: 'Administrator',
       description: 'Quản lý người dùng và vận hành. Không thể truy cập cấu hình kết nối và secret keys.',
     },
     operator: {

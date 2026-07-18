@@ -1,4 +1,4 @@
-const SYSTEM_ROLE_KEYS = ['admin', 'manager', 'operator', 'viewer'];
+const SYSTEM_ROLE_KEYS = ['superadmin', 'admin', 'operator', 'viewer'];
 
 // Core system roles are seeded once (not user-editable text), so their name/description
 // can be localized via i18n. Custom roles are free text typed by an admin — shown as-is.
