@@ -53,6 +53,8 @@ services:
       DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
       # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+      # CloudWatch doesn't render ANSI color codes — Nest/Prisma CLI colorize by default.
+      NO_COLOR: "1"
     depends_on:
       db:
         condition: service_healthy
@@ -85,6 +87,8 @@ services:
       AWS_REGION: ${AWS_REGION}
       RECONCILE_BUCKET: ${RECONCILE_BUCKET}
       RECONCILE_LAMBDA_NAME: ${RECONCILE_LAMBDA_NAME}
+      # CloudWatch doesn't render ANSI color codes — Nest's ConsoleLogger colorizes by default.
+      NO_COLOR: "1"
     depends_on:
       db:
         condition: service_healthy
@@ -143,6 +147,8 @@ services:
       # headless:false defaults slowMo to 600ms (meant for a human watching locally) —
       # nothing watches the Xvfb virtual display on EC2, so keep it off.
       PLAYWRIGHT_SLOW_MO: "0"
+      # CloudWatch doesn't render ANSI color codes — Nest's ConsoleLogger colorizes by default.
+      NO_COLOR: "1"
     depends_on:
       db:
         condition: service_healthy
