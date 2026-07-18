@@ -127,6 +127,7 @@ const FRIENDLY_ERROR_KEYS: Array<[RegExp, string]> = [
   [/net::ERR_/i,                        'bankJob.err_network'],
   [/2fa|mobile.*app|approval/i,         'bankJob.err_twoFa'],
   [/download|csv|xlsx/i,                'bankJob.err_download'],
+  [/LOGIN_FORM_NOT_FOUND|Service Unavailable/i, 'bankJob.err_loginPageUnavailable'],
 ];
 
 function friendlyError(raw: string | null, t: (key: string) => string): string {

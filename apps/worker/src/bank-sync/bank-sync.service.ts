@@ -774,6 +774,7 @@ const FRIENDLY_ERROR_PATTERNS: Array<[RegExp, string]> = [
   [/2fa|mobile.*app|approval/i,         'Xác thực 2 bước thất bại hoặc hết thời gian chờ phê duyệt trên ứng dụng di động.'],
   [/download|csv|xlsx/i,                'Lỗi tải xuống file sao kê — trang web ngân hàng không trả về đúng định dạng.'],
   [/context or browser has been closed/i, 'Phiên làm việc với ngân hàng đã bị đóng giữa chừng. Vui lòng thử lại.'],
+  [/LOGIN_FORM_NOT_FOUND|Service Unavailable/i, 'Trang đăng nhập HSBCnet báo "Service Unavailable" — có thể ngân hàng đang tạm chặn/bảo trì. Vui lòng thử lại sau vài phút.'],
 ];
 
 function friendlyBankSyncError(raw: string): string {

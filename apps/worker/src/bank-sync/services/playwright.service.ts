@@ -79,7 +79,15 @@ export class PlaywrightService {
     const { chromium } = await import('playwright');
     const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false';
     const slowMo = Number(process.env.PLAYWRIGHT_SLOW_MO ?? (headless ? 0 : 600));
-    this.browser = await chromium.launch({ headless, slowMo });
+    // --disable-blink-features=AutomationControlled + a non-headless UA/viewport below —
+    // HSBCnet's WAF (F5 BIG-IP ASM) intermittently fingerprints vanilla headless Chromium
+    // (navigator.webdriver=true, "HeadlessChrome" UA string, 800x600 default viewport) and
+    // serves a "Service Unavailable" page instead of the real login form (LOGIN_FORM_NOT_FOUND).
+    this.browser = await chromium.launch({
+      headless,
+      slowMo,
+      args: ['--disable-blink-features=AutomationControlled'],
+    });
     this.logger.log(`Browser launched (headless=${headless}, slowMo=${slowMo}ms)`);
 
     // Passing the file path directly lets Playwright restore both cookies AND
@@ -88,7 +96,11 @@ export class PlaywrightService {
     const storageState = fs.existsSync(this.sessionPath) ? this.sessionPath : undefined;
     if (storageState) this.logger.log(`Loaded saved session from ${this.sessionPath}`);
 
-    this.context = await this.browser.newContext(storageState ? { storageState } : {});
+    this.context = await this.browser.newContext({
+      ...(storageState ? { storageState } : {}),
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+    });
     this.page = await this.context.newPage();
   }
 

@@ -230,6 +230,7 @@ export const en = {
     err_network: 'Network connection error — could not access the bank website.',
     err_twoFa: '2FA authentication failed or mobile app approval timed out.',
     err_download: 'Error downloading statement file — bank website returned incorrect format.',
+    err_loginPageUnavailable: 'HSBCnet login page was unavailable ("Service Unavailable") — likely a temporary block or maintenance on the bank\'s side. Please retry in a few minutes.',
     err_default: 'Sync failed. Please check settings and try again.',
     err_defaultWithLog: 'Sync failed. Please check the technical log and try again.',
   },

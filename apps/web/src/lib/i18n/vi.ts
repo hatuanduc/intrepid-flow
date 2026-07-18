@@ -232,6 +232,7 @@ export const vi: Translations = {
     err_network: 'Lỗi kết nối mạng — không thể truy cập trang web ngân hàng.',
     err_twoFa: 'Xác thực 2 bước thất bại hoặc hết thời gian chờ phê duyệt trên ứng dụng di động.',
     err_download: 'Lỗi tải xuống file sao kê — trang web ngân hàng không trả về đúng định dạng.',
+    err_loginPageUnavailable: 'Trang đăng nhập HSBCnet báo "Service Unavailable" — có thể ngân hàng đang tạm chặn/bảo trì. Vui lòng thử lại sau vài phút.',
     err_default: 'Đồng bộ thất bại. Vui lòng kiểm tra cài đặt và thử lại.',
     err_defaultWithLog: 'Đồng bộ thất bại. Vui lòng kiểm tra log chi tiết và thử lại.',
   },
