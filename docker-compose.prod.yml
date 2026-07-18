@@ -11,7 +11,7 @@ services:
     environment:
       POSTGRES_USER: intrepid
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: intrepid_db
+      POSTGRES_DB: intrepid
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U intrepid"]
       interval: 5s
@@ -50,7 +50,7 @@ services:
     # without migration files and left prod/dev with an empty schema.
     command: ["pnpm", "db:push"]
     environment:
-      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
       # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
     depends_on:
@@ -71,7 +71,7 @@ services:
     ports:
       - "4000:4000"
     environment:
-      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
       JWT_SECRET: ${JWT_SECRET}
       PORT: 4000
       SMTP_HOST: ${SMTP_HOST}
@@ -132,7 +132,7 @@ services:
       context: .
       dockerfile: apps/worker/Dockerfile
     environment:
-      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid_db
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_URL: ${APP_URL}
