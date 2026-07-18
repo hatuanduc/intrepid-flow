@@ -136,6 +136,13 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_URL: ${APP_URL}
+      # Headed Chrome (via Xvfb, see worker Dockerfile) avoids Akamai's headless-Chromium
+      # fingerprint check on HSBCnet's login page — plain headless gets served a
+      # "Service Unavailable" WAF block page instead of the real login form.
+      PLAYWRIGHT_HEADLESS: "false"
+      # headless:false defaults slowMo to 600ms (meant for a human watching locally) —
+      # nothing watches the Xvfb virtual display on EC2, so keep it off.
+      PLAYWRIGHT_SLOW_MO: "0"
     depends_on:
       db:
         condition: service_healthy

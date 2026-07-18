@@ -21,7 +21,14 @@ RUN pnpm db:generate
 # (e.g. apps/api) that doesn't have playwright as a direct dependency.
 RUN pnpm --filter @intrepid/worker exec playwright install --with-deps chromium
 
+# Xvfb — HSBCnet's Akamai WAF fingerprints vanilla headless Chromium and blocks it
+# ("Service Unavailable"); running headed Chrome against a virtual display passes.
+RUN apt-get update && apt-get install -y --no-install-recommends xvfb && rm -rf /var/lib/apt/lists/*
+
 COPY apps/worker/ ./apps/worker/
 RUN pnpm --filter @intrepid/worker build
 
-CMD ["node", "apps/worker/dist/main.js"]
+# Not using `xvfb-run` — its SIGUSR1-based "Xvfb is ready" handshake relies on shell
+# job-control signal semantics that don't reliably work with a shell as container PID 1.
+# Starting Xvfb in the background with a fixed short sleep is more reliable here.
+CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & sleep 2 && DISPLAY=:99 exec node apps/worker/dist/main.js"]

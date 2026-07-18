@@ -35,7 +35,7 @@ function checkRedis(): Promise<boolean> {
 async function bootstrap() {
   const logger = new Logger('Worker');
   const app = await NestFactory.createApplicationContext(AppModule, {
-    logger: new ConsoleLogger({ logLevels: ['error', 'warn', 'log'], colors: false }),
+    logger: new ConsoleLogger('Worker', { logLevels: ['error', 'warn', 'log'] }),
   });
 
   const server = createServer(async (req, res) => {
