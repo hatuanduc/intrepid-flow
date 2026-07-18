@@ -38,13 +38,13 @@ async function main() {
     where: { key: 'admin' },
     create: {
       key: 'admin',
-      name: 'Quản trị hệ thống',
-      description: 'Toàn quyền quản trị cửa hàng',
+      name: 'Super Admin',
+      description: 'Toàn quyền quản trị hệ thống',
       isSystem: true,
     },
     update: {
-      name: 'Quản trị hệ thống',
-      description: 'Toàn quyền quản trị cửa hàng',
+      name: 'Super Admin',
+      description: 'Toàn quyền quản trị hệ thống',
       isSystem: true,
     },
   });

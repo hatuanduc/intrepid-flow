@@ -2,19 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import { listRoles, type RoleItem } from '../../../lib/api';
+import { useT } from '../../../lib/i18n';
 import RolePanel from './RolePanel';
 import { Spinner } from '../../../components/common/PageLoader';
 import s from './RolesPage.module.css';
 
-const GROUP_LABELS: Record<string, string> = {
-  admin:      'Admin roles',
-  operations: 'Operations roles',
-  view_only:  'View Only',
+const GROUP_ORDER = ['admin', 'operations', 'view_only'];
+const GROUP_LABEL_KEYS: Record<string, string> = {
+  admin:      'roles.groupAdmin',
+  operations: 'roles.groupOperations',
+  view_only:  'roles.groupViewOnly',
 };
 
-const GROUP_ORDER = ['admin', 'operations', 'view_only'];
-
 export default function RolesPage() {
+  const { t } = useT();
   const [roles, setRoles] = useState<RoleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRole, setSelectedRole] = useState<RoleItem | null>(null);
@@ -40,7 +41,7 @@ export default function RolesPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <h1 className={s.pageTitle}>Vai trò & Quyền hạn</h1>
+        <h1 className={s.pageTitle}>{t('roles.pageTitle')}</h1>
       </div>
 
       {loading ? (
@@ -50,13 +51,13 @@ export default function RolesPage() {
           {groupKeys.map(groupKey => (
             <RoleGroup
               key={groupKey}
-              label={GROUP_LABELS[groupKey] ?? groupKey}
+              label={GROUP_LABEL_KEYS[groupKey] ? t(GROUP_LABEL_KEYS[groupKey]) : groupKey}
               roles={byGroup[groupKey]}
               onSelect={setSelectedRole}
             />
           ))}
           {roles.length === 0 && (
-            <div className={s.empty}>Chưa có vai trò nào.</div>
+            <div className={s.empty}>{t('roles.noRolesYet')}</div>
           )}
         </div>
       )}
@@ -75,6 +76,7 @@ function RoleGroup({ label, roles, onSelect }: {
   roles: RoleItem[];
   onSelect: (role: RoleItem) => void;
 }) {
+  const { t } = useT();
   return (
     <div className={s.group}>
       <div className={s.groupHeader}>
@@ -101,7 +103,7 @@ function RoleGroup({ label, roles, onSelect }: {
                   <rect x="3" y="7" width="10" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.2"/>
                   <path d="M5.5 7V5a2.5 2.5 0 015 0v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
                 </svg>
-                {role.permissions?.length ?? 0} quyền
+                {t('roles.permCount', { n: role.permissions?.length ?? 0 })}
               </span>
             </div>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.chevron}>

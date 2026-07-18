@@ -98,6 +98,12 @@
   background: #f5f3ff;
 }
 
+.roleOptionDisabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.roleOptionDisabled:hover { border-color: var(--color-border); background: none; }
+
 .roleCheckbox {
   margin-top: 2px;
   width: 15px;
@@ -106,6 +112,7 @@
   flex-shrink: 0;
   cursor: pointer;
 }
+.roleCheckbox:disabled { cursor: not-allowed; }
 
 .roleInfo {
   display: flex;

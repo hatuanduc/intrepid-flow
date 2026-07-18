@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { type PermissionItem } from '../../../lib/api';
 import { moduleLabel } from '../../../lib/permissionModules';
+import { useT } from '../../../lib/i18n';
 import s from './AddUserPanel.module.css';
 
 type Props = {
@@ -13,6 +14,7 @@ type Props = {
 };
 
 export default function UserPermissionPicker({ permissions, selectedIds, onToggle, onToggleModule }: Props) {
+  const { t } = useT();
   const byModule = permissions.reduce<Record<string, PermissionItem[]>>((acc, p) => {
     (acc[p.module] ??= []).push(p);
     return acc;
@@ -23,7 +25,7 @@ export default function UserPermissionPicker({ permissions, selectedIds, onToggl
       {Object.entries(byModule).map(([mod, perms]) => (
         <PermissionModuleGroup
           key={mod}
-          label={moduleLabel(mod)}
+          label={moduleLabel(mod, t)}
           perms={perms}
           selectedIds={selectedIds}
           onToggle={onToggle}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { getServiceAccountStatus, type ServiceAccountStatus } from '../../lib/api';
+import { copyText } from '../../lib/clipboard';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import { useT } from '../../lib/i18n';
 import { Spinner } from './PageLoader';
@@ -42,7 +43,8 @@ export default function ServiceAccountShareInfo({ accessLevel = 'viewer' }: { ac
   }, []);
 
   function handleCopy(email: string) {
-    navigator.clipboard.writeText(email).then(() => {
+    copyText(email).then(ok => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

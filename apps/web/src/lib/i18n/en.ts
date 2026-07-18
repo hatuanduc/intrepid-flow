@@ -620,6 +620,128 @@ export const en = {
     reconcileTitle: 'Reconcile',
     reconcileDesc: 'Column mapping and Master Customer data used by the Filter & Merge Invoices tool.',
   },
+
+  users: {
+    pageTitle: 'Users & Roles',
+    addAccount: '+ Add account',
+    createRole: '+ Create role',
+    tabAccounts: 'Accounts',
+    tabRoles: 'Roles',
+
+    chipAll: 'All',
+    chipActive: 'Active',
+    chipLocked: 'Locked',
+
+    filterRoleLabel: 'Role',
+    filterRoleCount: '{n} roles',
+    filterNameLabel: 'Name',
+    filterNameActive: 'Name: {value}',
+    filterEmailLabel: 'Email',
+    filterEmailActive: 'Email: {value}',
+    clearFilters: 'Clear filters',
+
+    filterByPrefix: 'Filter by {label}',
+    filterContains: 'Contains',
+    filterEnterPlaceholder: 'Enter {label}...',
+    filterApply: 'Apply',
+    filterByRole: 'Filter by role',
+    noRolesShort: 'No roles yet.',
+
+    resendInvite: 'Resend invite',
+    impersonateAction: 'Log in as this user',
+
+    colName: 'Name',
+    colEmail: 'Email',
+    colRole: 'Role',
+    colStatus: 'Status',
+    statusPending: 'Pending',
+    statusActive: 'Active',
+    statusLocked: 'Locked',
+
+    systemRoles: 'System roles',
+    customRoles: 'Custom roles',
+    permCount: '{n} permissions',
+
+    noResultsFiltered: 'No matching results.',
+    noAccounts: 'No accounts yet.',
+
+    resendInviteSuccess: 'Invite resent to {email}.',
+    resendInviteFailed: 'Failed to send invite. Please try again.',
+
+    impersonateUserNotFound: 'Account does not exist.',
+    impersonateUserInactive: 'Account is locked.',
+    impersonateUserPending: 'Account is not activated yet.',
+    impersonateFailed: 'Could not log in as this user.',
+
+    deleteUserNotFound: 'Account does not exist.',
+    deleteRoleNotFound: 'Role does not exist.',
+    deleteSystemRoleForbidden: 'Cannot delete a system role.',
+    deleteFailed: 'Delete failed. Please try again.',
+
+    deleteAccountTitle: 'Delete account?',
+    deleteRoleTitle: 'Delete role?',
+    deleteAccountDesc: 'Are you sure you want to delete the account {name}?',
+    deleteRoleDesc: 'Are you sure you want to delete the role {name}?',
+
+    invitePanelTitle: 'Invite member',
+    inviteNote: 'The system will send an email with a link to set up a password. The invited person sets their own name and password upon activation.',
+    emailAddressLabel: 'Email address',
+    emailPlaceholder: 'enter email and press Enter',
+    emailInvalid: 'Invalid email.',
+    emailRequired: 'Please enter an email.',
+    emailPressEnter: 'Press Enter to confirm the email.',
+    sendInvite: 'Send invite',
+    sending: 'Sending...',
+    inviteSuccess: 'Invite sent successfully.',
+    inviteMailError: 'Account created but the email failed to send. Check your SMTP configuration then use "Resend invite".',
+    emailExists: 'This email is already in use.',
+    roleInvalid: 'Invalid role.',
+    createUserFailed: 'Failed to create account. Please try again.',
+
+    chooseRole: 'Select role',
+    selectedCount: '{n} selected',
+    searchRolePlaceholder: 'Search roles...',
+    noRoleFound: 'No matching role found.',
+
+    customPermissionsLabel: 'Custom permissions by module',
+    customPermissionsDesc: 'Grant additional permissions to this user, stacked on top of the roles selected above.',
+
+    editPanelTitle: 'Edit account',
+    emailLabel: 'Email',
+    displayNameLabel: 'Display name',
+    newPasswordLabel: 'New password',
+    newPasswordPlaceholder: 'Leave blank to keep unchanged',
+    newPasswordMinLength: 'Password must be at least 6 characters.',
+    statusLabel: 'Status',
+    activeCheckbox: 'Active',
+    saveChanges: 'Save changes',
+    userNotFound: 'Account does not exist.',
+    updateFailed: 'Update failed. Please try again.',
+    roleLabel: 'Role',
+    atLeastOneRole: 'Please select at least one role.',
+  },
+
+  roles: {
+    pageTitle: 'Roles & Permissions',
+    noRolesYet: 'No roles yet.',
+    permCount: '{n} permissions',
+    permissionsLabel: 'Permissions',
+    noPermissions: 'No permissions.',
+    groupAdmin: 'Admin roles',
+    groupOperations: 'Operations roles',
+    groupViewOnly: 'View Only',
+  },
+
+  permissionModules: {
+    dashboard: 'Dashboard',
+    users: 'Users',
+    roles: 'Roles',
+    permissions: 'Permissions',
+    bank_statement: 'Bank Statement',
+    report_ar: 'AR Report',
+    reconcile: 'Reconcile',
+    system: 'System',
+  },
 };
 
 export type Translations = typeof en;

@@ -24,7 +24,7 @@ const CORE_PERMISSIONS = [
 const CORE_ROLES = [
   {
     key: 'admin',
-    name: 'Administrator',
+    name: 'Super Admin',
     group: 'admin',
     description: 'Toàn quyền hệ thống — quản lý người dùng, cấu hình kết nối, thực hiện mọi thao tác.',
     isSystem: true,

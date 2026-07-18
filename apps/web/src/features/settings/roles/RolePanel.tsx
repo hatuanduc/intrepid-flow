@@ -2,6 +2,7 @@
 
 import { type RoleItem, type PermissionItem } from '../../../lib/api';
 import { moduleLabel } from '../../../lib/permissionModules';
+import { useT } from '../../../lib/i18n';
 import RightPanel from '../../../components/common/RightPanel';
 import s from './RolePanel.module.css';
 
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export default function RolePanel({ role, open, onClose }: Props) {
+  const { t } = useT();
   if (!role) return null;
 
   const permissions = role.permissions ?? [];
@@ -26,7 +28,7 @@ export default function RolePanel({ role, open, onClose }: Props) {
       open={open}
       onClose={onClose}
       footer={
-        <button className={s.btnSecondary} onClick={onClose}>Đóng</button>
+        <button className={s.btnSecondary} onClick={onClose}>{t('common.close')}</button>
       }
     >
       <div className={s.content}>
@@ -36,17 +38,17 @@ export default function RolePanel({ role, open, onClose }: Props) {
 
         <div className={s.permSection}>
           <div className={s.permHeader}>
-            <span className={s.permTitle}>Quyền hạn</span>
-            <span className={s.permCount}>{permissions.length} quyền</span>
+            <span className={s.permTitle}>{t('roles.permissionsLabel')}</span>
+            <span className={s.permCount}>{t('roles.permCount', { n: permissions.length })}</span>
           </div>
 
           {permissions.length === 0 ? (
-            <div className={s.permsEmpty}>Không có quyền hạn.</div>
+            <div className={s.permsEmpty}>{t('roles.noPermissions')}</div>
           ) : (
             Object.entries(byModule).map(([mod, perms]) => (
               <div key={mod} className={s.moduleBlock}>
                 <div className={s.moduleHeader}>
-                  <span className={s.moduleName}>{moduleLabel(mod)}</span>
+                  <span className={s.moduleName}>{moduleLabel(mod, t)}</span>
                   <span className={s.moduleCount}>{perms.length}</span>
                 </div>
                 <div className={s.permList}>

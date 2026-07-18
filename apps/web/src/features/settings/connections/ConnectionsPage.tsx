@@ -4,6 +4,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   getSystemSettings, updateSystemServiceAccount, type SystemSettingsStatus,
 } from '../../../lib/api';
+import { copyText } from '../../../lib/clipboard';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
@@ -87,7 +88,8 @@ export default function ConnectionsPage() {
   }
 
   function handleCopyEmail(email: string) {
-    navigator.clipboard.writeText(email).then(() => {
+    copyText(email).then(ok => {
+      if (!ok) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });

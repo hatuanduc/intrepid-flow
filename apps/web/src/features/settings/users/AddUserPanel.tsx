@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { createUser, listRoles, listPermissions, type RoleItem, type PermissionItem } from '../../../lib/api';
 import RightPanel from '../../../components/common/RightPanel';
 import { useToast } from '../../../components/common/Toast';
+import { useT } from '../../../lib/i18n';
 import UserPermissionPicker from './UserPermissionPicker';
 import s from './AddUserPanel.module.css';
 
@@ -13,6 +14,7 @@ type Props = { open: boolean; onClose: () => void };
 
 export default function AddUserPanel({ open, onClose }: Props) {
   const toast = useToast();
+  const { t } = useT();
   const [emailInput, setEmailInput] = useState('');
   const [emailChip, setEmailChip] = useState('');
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
@@ -41,7 +43,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
     const trimmed = val.trim();
     if (!trimmed) return;
     if (!EMAIL_RE.test(trimmed)) {
-      setFieldErrors(p => ({ ...p, email: 'Email không hợp lệ.' }));
+      setFieldErrors(p => ({ ...p, email: t('users.emailInvalid') }));
       return;
     }
     setEmailChip(trimmed);
@@ -65,8 +67,8 @@ export default function AddUserPanel({ open, onClose }: Props) {
   function validate() {
     const errs: Record<string, string> = {};
     if (!emailChip) {
-      if (!emailInput.trim()) errs.email = 'Vui lòng nhập email.';
-      else errs.email = 'Nhấn Enter để xác nhận email.';
+      if (!emailInput.trim()) errs.email = t('users.emailRequired');
+      else errs.email = t('users.emailPressEnter');
     }
     return errs;
   }
@@ -101,20 +103,20 @@ export default function AddUserPanel({ open, onClose }: Props) {
     setSaving(true);
     try {
       await createUser({ email: emailChip, roleIds: selectedRoleIds, permissionIds: selectedPermissionIds });
-      toast.success('Đã gửi lời mời thành công.');
+      toast.success(t('users.inviteSuccess'));
       handleClose();
     } catch (err) {
       const code = err instanceof Error ? err.message : '';
       if (code === 'MAIL_ERROR') {
         // User was created in DB, only email delivery failed
-        toast.error('Tài khoản đã tạo nhưng gửi email thất bại. Kiểm tra cấu hình SMTP rồi dùng "Gửi lại lời mời".');
+        toast.error(t('users.inviteMailError'));
         handleClose();
       } else {
         const MSG: Record<string, string> = {
-          EMAIL_EXISTS:   'Email này đã được sử dụng.',
-          ROLE_NOT_FOUND: 'Vai trò không hợp lệ.',
+          EMAIL_EXISTS:   t('users.emailExists'),
+          ROLE_NOT_FOUND: t('users.roleInvalid'),
         };
-        setError(MSG[code] ?? 'Tạo tài khoản thất bại. Vui lòng thử lại.');
+        setError(MSG[code] ?? t('users.createUserFailed'));
       }
     } finally {
       setSaving(false);
@@ -130,22 +132,22 @@ export default function AddUserPanel({ open, onClose }: Props) {
 
   const footer = (
     <>
-      <button type="button" className={s.btnSecondary} onClick={handleClose}>Hủy</button>
+      <button type="button" className={s.btnSecondary} onClick={handleClose}>{t('common.cancel')}</button>
       <button type="submit" form="add-user-form" className={s.btnPrimary} disabled={saving || !canSubmit}>
-        {saving ? 'Đang gửi...' : 'Gửi lời mời'}
+        {saving ? t('users.sending') : t('users.sendInvite')}
       </button>
     </>
   );
 
   return (
-    <RightPanel title="Mời thành viên" open={open} onClose={handleClose} footer={footer}>
+    <RightPanel title={t('users.invitePanelTitle')} open={open} onClose={handleClose} footer={footer}>
       <form id="add-user-form" onSubmit={submit} className={s.form}>
         <div className={s.inviteNote}>
-          Hệ thống sẽ gửi email kèm link thiết lập mật khẩu. Người được mời tự đặt tên và mật khẩu khi kích hoạt tài khoản.
+          {t('users.inviteNote')}
         </div>
 
         <div className={s.field}>
-          <label className={s.label}>Địa chỉ email</label>
+          <label className={s.label}>{t('users.emailAddressLabel')}</label>
           <div
             className={`${s.emailInputWrap} ${fieldErrors.email ? s.emailInputWrapError : ''}`}
             onClick={() => inputRef.current?.focus()}
@@ -169,7 +171,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
                 onChange={e => { setEmailInput(e.target.value); setFieldErrors(p => { const n = { ...p }; delete n.email; return n; }); }}
                 onKeyDown={handleEmailKeyDown}
                 onBlur={handleEmailBlur}
-                placeholder={emailChip ? '' : 'nhập email và nhấn Enter'}
+                placeholder={emailChip ? '' : t('users.emailPlaceholder')}
                 autoFocus
               />
             )}
@@ -181,9 +183,9 @@ export default function AddUserPanel({ open, onClose }: Props) {
 
         <div className={s.roleSection}>
           <div className={s.roleSectionHead}>
-            <label className={s.label}>Chọn vai trò</label>
+            <label className={s.label}>{t('users.chooseRole')}</label>
             {selectedRoleIds.length > 0 && (
-              <span className={s.roleTotalCount}>{selectedRoleIds.length} đã chọn</span>
+              <span className={s.roleTotalCount}>{t('users.selectedCount', { n: selectedRoleIds.length })}</span>
             )}
           </div>
           <div className={s.roleSearchWrap}>
@@ -193,7 +195,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
             </svg>
             <input
               className={s.roleSearchInput}
-              placeholder="Tìm kiếm vai trò..."
+              placeholder={t('users.searchRolePlaceholder')}
               value={search}
               onChange={e => setSearch(e.target.value)}
             />
@@ -202,7 +204,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
 
         {filteredSystem.length > 0 && (
           <CollapsibleRoleGroup
-            label="Vai trò hệ thống"
+            label={t('users.systemRoles')}
             roles={filteredSystem}
             selectedIds={selectedRoleIds}
             onToggle={toggleRole}
@@ -211,7 +213,7 @@ export default function AddUserPanel({ open, onClose }: Props) {
 
         {filteredCustom.length > 0 && (
           <CollapsibleRoleGroup
-            label="Vai trò tùy chỉnh"
+            label={t('users.customRoles')}
             roles={filteredCustom}
             selectedIds={selectedRoleIds}
             onToggle={toggleRole}
@@ -219,19 +221,19 @@ export default function AddUserPanel({ open, onClose }: Props) {
         )}
 
         {filteredSystem.length === 0 && filteredCustom.length === 0 && (
-          <p className={s.noResult}>Không tìm thấy vai trò.</p>
+          <p className={s.noResult}>{t('users.noRoleFound')}</p>
         )}
 
         <div className={s.divider} />
 
         <div className={s.permSection}>
           <div className={s.permSectionHead}>
-            <label className={s.label}>Quyền tùy chỉnh theo module</label>
+            <label className={s.label}>{t('users.customPermissionsLabel')}</label>
             {selectedPermissionIds.length > 0 && (
-              <span className={s.roleTotalCount}>{selectedPermissionIds.length} đã chọn</span>
+              <span className={s.roleTotalCount}>{t('users.selectedCount', { n: selectedPermissionIds.length })}</span>
             )}
           </div>
-          <p className={s.permSectionDesc}>Gán thêm quyền riêng cho user này, cộng dồn với quyền từ vai trò đã chọn ở trên.</p>
+          <p className={s.permSectionDesc}>{t('users.customPermissionsDesc')}</p>
           <UserPermissionPicker
             permissions={permissions}
             selectedIds={selectedPermissionIds}
@@ -260,6 +262,7 @@ function ChevronIcon({ open }: { open: boolean }) {
 function CollapsibleRoleGroup({
   label, roles, selectedIds, onToggle,
 }: { label: string; roles: RoleItem[]; selectedIds: number[]; onToggle: (id: number) => void }) {
+  const { t } = useT();
   const [open, setOpen] = useState(true);
   const selectedCount = roles.filter(r => selectedIds.includes(r.id)).length;
 
@@ -271,7 +274,7 @@ function CollapsibleRoleGroup({
           <span className={s.roleGroupLabel}>{label}</span>
         </span>
         <span className={s.roleGroupCount}>
-          {selectedCount > 0 ? `${selectedCount} đã chọn` : '0 đã chọn'}
+          {t('users.selectedCount', { n: selectedCount })}
         </span>
       </button>
       {open && (
@@ -286,9 +289,11 @@ function CollapsibleRoleGroup({
 }
 
 function RoleOption({ role, selected, onToggle }: { role: RoleItem; selected: boolean; onToggle: (id: number) => void }) {
+  // Super Admin (key: admin) is only ever assigned via the seed script — never selectable here.
+  const disabled = role.key === 'admin';
   return (
-    <label className={[s.roleOption, selected ? s.roleOptionSelected : ''].filter(Boolean).join(' ')}>
-      <input type="checkbox" checked={selected} onChange={() => onToggle(role.id)} className={s.roleCheckbox} />
+    <label className={[s.roleOption, selected ? s.roleOptionSelected : '', disabled ? s.roleOptionDisabled : ''].filter(Boolean).join(' ')}>
+      <input type="checkbox" checked={selected} disabled={disabled} onChange={() => onToggle(role.id)} className={s.roleCheckbox} />
       <span className={s.roleInfo}>
         <span className={s.roleName}>{role.name}</span>
         {role.description && <span className={s.roleDesc}>{role.description}</span>}
