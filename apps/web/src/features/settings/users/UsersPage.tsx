@@ -12,6 +12,7 @@ import {
 import { startImpersonation } from '../../../lib/auth';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
+import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import AddUserPanel from './AddUserPanel';
 import EditUserPanel from './EditUserPanel';
 import RolePanel from '../roles/RolePanel';
@@ -239,8 +240,8 @@ function RoleGroup({ label, roles, onSelect, onDelete }: {
             onKeyDown={e => (e.key === 'Enter' || e.key === ' ') && onSelect(role)}
           >
             <div className={s.roleMain}>
-              <span className={s.roleName}>{role.name}</span>
-              {role.description && <span className={s.roleDesc}>{role.description}</span>}
+              <span className={s.roleName}>{roleName(role, t)}</span>
+              {role.description && <span className={s.roleDesc}>{roleDescription(role, t)}</span>}
             </div>
             <div className={s.roleMeta}>
               <span className={s.roleMetaItem}>
@@ -636,7 +637,7 @@ export default function UsersPage() {
                       <td className={s.td}>
                         {u.roles.length > 0 ? (
                           <div className={s.roleList}>
-                            <RoleBadge name={u.roles[0].name} />
+                            <RoleBadge name={roleName(u.roles[0], t)} />
                             {u.roles.length > 1 && <span className={s.roleMore}>+{u.roles.length - 1}</span>}
                           </div>
                         ) : (

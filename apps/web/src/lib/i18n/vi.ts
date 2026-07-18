@@ -739,4 +739,23 @@ export const vi: Translations = {
     reconcile: 'Reconcile',
     system: 'Hệ thống',
   },
+
+  systemRoles: {
+    admin: {
+      name: 'Super Admin',
+      description: 'Toàn quyền hệ thống — quản lý người dùng, cấu hình kết nối, thực hiện mọi thao tác.',
+    },
+    manager: {
+      name: 'Manager',
+      description: 'Quản lý người dùng và vận hành. Không thể truy cập cấu hình kết nối và secret keys.',
+    },
+    operator: {
+      name: 'Operator',
+      description: 'Chạy đồng bộ sao kê và xem báo cáo. Không thể quản lý người dùng hay cài đặt hệ thống.',
+    },
+    viewer: {
+      name: 'View Only',
+      description: 'Chỉ xem dữ liệu — tổng quan, sao kê, báo cáo. Không thể thực hiện bất kỳ thao tác nào.',
+    },
+  },
 };

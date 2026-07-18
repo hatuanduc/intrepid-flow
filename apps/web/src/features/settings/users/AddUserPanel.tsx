@@ -5,6 +5,7 @@ import { createUser, listRoles, listPermissions, type RoleItem, type PermissionI
 import RightPanel from '../../../components/common/RightPanel';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
+import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import UserPermissionPicker from './UserPermissionPicker';
 import s from './AddUserPanel.module.css';
 
@@ -289,14 +290,15 @@ function CollapsibleRoleGroup({
 }
 
 function RoleOption({ role, selected, onToggle }: { role: RoleItem; selected: boolean; onToggle: (id: number) => void }) {
+  const { t } = useT();
   // Super Admin (key: admin) is only ever assigned via the seed script — never selectable here.
   const disabled = role.key === 'admin';
   return (
     <label className={[s.roleOption, selected ? s.roleOptionSelected : '', disabled ? s.roleOptionDisabled : ''].filter(Boolean).join(' ')}>
       <input type="checkbox" checked={selected} disabled={disabled} onChange={() => onToggle(role.id)} className={s.roleCheckbox} />
       <span className={s.roleInfo}>
-        <span className={s.roleName}>{role.name}</span>
-        {role.description && <span className={s.roleDesc}>{role.description}</span>}
+        <span className={s.roleName}>{roleName(role, t)}</span>
+        {role.description && <span className={s.roleDesc}>{roleDescription(role, t)}</span>}
       </span>
     </label>
   );

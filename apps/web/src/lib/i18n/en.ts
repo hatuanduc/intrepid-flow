@@ -742,6 +742,25 @@ export const en = {
     reconcile: 'Reconcile',
     system: 'System',
   },
+
+  systemRoles: {
+    admin: {
+      name: 'Super Admin',
+      description: 'Full system access — manage users, connection settings, and perform any action.',
+    },
+    manager: {
+      name: 'Manager',
+      description: 'Manages users and operations. Cannot access connection settings or secret keys.',
+    },
+    operator: {
+      name: 'Operator',
+      description: 'Runs statement syncs and views reports. Cannot manage users or system settings.',
+    },
+    viewer: {
+      name: 'View Only',
+      description: 'View-only access — dashboard, statements, reports. Cannot perform any actions.',
+    },
+  },
 };
 
 export type Translations = typeof en;

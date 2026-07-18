@@ -3,6 +3,7 @@
 import { type RoleItem, type PermissionItem } from '../../../lib/api';
 import { moduleLabel } from '../../../lib/permissionModules';
 import { useT } from '../../../lib/i18n';
+import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import RightPanel from '../../../components/common/RightPanel';
 import s from './RolePanel.module.css';
 
@@ -24,7 +25,7 @@ export default function RolePanel({ role, open, onClose }: Props) {
 
   return (
     <RightPanel
-      title={role.name}
+      title={roleName(role, t)}
       open={open}
       onClose={onClose}
       footer={
@@ -33,7 +34,7 @@ export default function RolePanel({ role, open, onClose }: Props) {
     >
       <div className={s.content}>
         {role.description && (
-          <p className={s.desc}>{role.description}</p>
+          <p className={s.desc}>{roleDescription(role, t)}</p>
         )}
 
         <div className={s.permSection}>

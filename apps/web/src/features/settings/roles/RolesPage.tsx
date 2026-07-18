@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { listRoles, type RoleItem } from '../../../lib/api';
 import { useT } from '../../../lib/i18n';
+import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import RolePanel from './RolePanel';
 import { Spinner } from '../../../components/common/PageLoader';
 import s from './RolesPage.module.css';
@@ -87,8 +88,8 @@ function RoleGroup({ label, roles, onSelect }: {
         {roles.map(role => (
           <button key={role.id} className={s.roleRow} onClick={() => onSelect(role)}>
             <div className={s.roleMain}>
-              <span className={s.roleName}>{role.name}</span>
-              {role.description && <span className={s.roleDesc}>{role.description}</span>}
+              <span className={s.roleName}>{roleName(role, t)}</span>
+              {role.description && <span className={s.roleDesc}>{roleDescription(role, t)}</span>}
             </div>
             <div className={s.roleMeta}>
               <span className={s.roleMetaItem}>

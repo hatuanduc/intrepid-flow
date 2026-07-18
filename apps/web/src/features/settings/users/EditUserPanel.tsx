@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { updateUser, listRoles, listPermissions, type UserItem, type RoleItem, type PermissionItem } from '../../../lib/api';
 import RightPanel from '../../../components/common/RightPanel';
 import { useT } from '../../../lib/i18n';
+import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import UserPermissionPicker from './UserPermissionPicker';
 import s from './AddUserPanel.module.css';
 
@@ -237,6 +238,7 @@ function RoleOption({
   selected: boolean;
   onToggle: (id: number) => void;
 }) {
+  const { t } = useT();
   // Super Admin (key: admin) is only ever assigned via the seed script — never selectable here.
   const disabled = role.key === 'admin';
   return (
@@ -249,8 +251,8 @@ function RoleOption({
         className={s.roleCheckbox}
       />
       <span className={s.roleInfo}>
-        <span className={s.roleName}>{role.name}</span>
-        {role.description && <span className={s.roleDesc}>{role.description}</span>}
+        <span className={s.roleName}>{roleName(role, t)}</span>
+        {role.description && <span className={s.roleDesc}>{roleDescription(role, t)}</span>}
       </span>
     </label>
   );
