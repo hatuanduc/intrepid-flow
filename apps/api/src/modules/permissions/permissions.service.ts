@@ -99,22 +99,53 @@ export class PermissionsService implements OnApplicationBootstrap {
     this.logger.log(`Permissions synced: ${CORE_PERMISSIONS.length} core`);
   }
 
-  // Renames role keys in place (preserving id/UserRole assignments) so the upsert loop below
+  // Renames a role key in place (preserving id/UserRole assignments) so the upsert loop below
   // never mistakes an existing user-assigned role for a differently-scoped one sharing its old key.
+  // If a row already exists under newKey (e.g. a manual `db:seed` run created it under the new
+  // key before this migration ever ran), keep whichever row has real user assignments and merge
+  // the other one into it instead of silently overwriting a live assignment.
+  private async mergeRoleKey(oldKey: string, newKey: string) {
+    const oldRole = await this.prisma.role.findUnique({ where: { key: oldKey } });
+    if (!oldRole) return; // already migrated, or never existed
+
+    const newRole = await this.prisma.role.findUnique({ where: { key: newKey } });
+    if (!newRole) {
+      await this.prisma.role.update({ where: { key: oldKey }, data: { key: newKey } });
+      return;
+    }
+
+    const newRoleUserCount = await this.prisma.userRole.count({ where: { roleId: newRole.id } });
+    if (newRoleUserCount === 0) {
+      await this.prisma.role.delete({ where: { id: newRole.id } });
+      await this.prisma.role.update({ where: { key: oldKey }, data: { key: newKey } });
+      return;
+    }
+
+    // Both rows already have users assigned — move oldRole's assignments onto newRole one by
+    // one (skipping/dropping any user already assigned to both) to avoid a unique constraint
+    // violation on (userId, roleId), then drop the now-empty oldRole.
+    const oldAssignments = await this.prisma.userRole.findMany({ where: { roleId: oldRole.id } });
+    for (const a of oldAssignments) {
+      const alreadyOnNewRole = await this.prisma.userRole.findUnique({
+        where: { userId_roleId: { userId: a.userId, roleId: newRole.id } },
+      });
+      if (alreadyOnNewRole) {
+        await this.prisma.userRole.delete({ where: { userId_roleId: { userId: a.userId, roleId: oldRole.id } } });
+      } else {
+        await this.prisma.userRole.update({
+          where: { userId_roleId: { userId: a.userId, roleId: oldRole.id } },
+          data: { roleId: newRole.id },
+        });
+      }
+    }
+    await this.prisma.role.delete({ where: { id: oldRole.id } });
+  }
+
   // 'admin' -> 'superadmin' must run before 'manager' -> 'admin', so the 'admin' key is free
   // by the time the second rename claims it. No-op once both keys have already migrated.
   private async migrateRoleKeys() {
-    const oldAdmin = await this.prisma.role.findUnique({ where: { key: 'admin' } });
-    const superAdminExists = await this.prisma.role.findUnique({ where: { key: 'superadmin' } });
-    if (oldAdmin && !superAdminExists) {
-      await this.prisma.role.update({ where: { key: 'admin' }, data: { key: 'superadmin' } });
-    }
-
-    const oldManager = await this.prisma.role.findUnique({ where: { key: 'manager' } });
-    const adminExists = await this.prisma.role.findUnique({ where: { key: 'admin' } });
-    if (oldManager && !adminExists) {
-      await this.prisma.role.update({ where: { key: 'manager' }, data: { key: 'admin' } });
-    }
+    await this.mergeRoleKey('admin', 'superadmin');
+    await this.mergeRoleKey('manager', 'admin');
   }
 
   async syncRoles() {
