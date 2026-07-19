@@ -31,4 +31,11 @@ RUN pnpm --filter @intrepid/worker build
 # Not using `xvfb-run` — its SIGUSR1-based "Xvfb is ready" handshake relies on shell
 # job-control signal semantics that don't reliably work with a shell as container PID 1.
 # Starting Xvfb in the background with a fixed short sleep is more reliable here.
-CMD ["/bin/sh", "-c", "Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & sleep 2 && DISPLAY=:99 exec node apps/worker/dist/main.js"]
+#
+# rm -f the stale lock first: `restart: unless-stopped` restarts this same container
+# (filesystem intact) rather than recreating it, so if the host was hard-stopped
+# (e.g. EC2 stop/start) Xvfb never got to clean up /tmp/.X99-lock on its own. Left in
+# place, the next Xvfb refuses to bind :99 ("Server is already active for display 99")
+# and the script would otherwise carry on into `node` anyway with no real X server behind
+# DISPLAY=:99, so every Playwright job fails with "Missing X server or $DISPLAY".
+CMD ["/bin/sh", "-c", "rm -f /tmp/.X99-lock && Xvfb :99 -screen 0 1920x1080x24 -nolisten tcp & sleep 2 && DISPLAY=:99 exec node apps/worker/dist/main.js"]
