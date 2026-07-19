@@ -7,6 +7,7 @@ const CORE_PERMISSIONS = [
   { key: 'users:create',            module: 'users',           action: 'create',      label: 'Tạo người dùng' },
   { key: 'users:update',            module: 'users',           action: 'update',      label: 'Cập nhật người dùng' },
   { key: 'users:impersonate',       module: 'users',           action: 'impersonate', label: 'Đăng nhập với tư cách người dùng khác' },
+  { key: 'users:reset-password',    module: 'users',           action: 'reset-password', label: 'Đặt lại mật khẩu người dùng' },
   { key: 'roles:view',              module: 'roles',           action: 'view',        label: 'Xem vai trò' },
   { key: 'permissions:view',        module: 'permissions',     action: 'view',        label: 'Xem danh sách quyền hạn' },
   { key: 'bank_statement:view',     module: 'bank_statement',  action: 'view',        label: 'Xem sao kê ngân hàng' },
@@ -19,6 +20,10 @@ const CORE_PERMISSIONS = [
   { key: 'reconcile:config',        module: 'reconcile',       action: 'config',      label: 'Cấu hình công cụ Reconcile' },
   { key: 'system:config',           module: 'system',          action: 'config',      label: 'Cấu hình hệ thống (kết nối, secret keys)' },
 ];
+
+// Never grantable through the per-user/per-role custom-permission picker — only Super Admin
+// holds these, via its `permissionKeys: null` (all permissions) role definition below.
+export const RESTRICTED_PERMISSION_KEYS = new Set(['system:config', 'users:reset-password']);
 
 // null permissionKeys = all permissions (Administrator)
 const CORE_ROLES = [
@@ -184,6 +189,9 @@ export class PermissionsService implements OnApplicationBootstrap {
   }
 
   async listPermissions() {
-    return this.prisma.permission.findMany({ orderBy: [{ module: 'asc' }, { action: 'asc' }] });
+    return this.prisma.permission.findMany({
+      where: { key: { notIn: Array.from(RESTRICTED_PERMISSION_KEYS) } },
+      orderBy: [{ module: 'asc' }, { action: 'asc' }],
+    });
   }
 }

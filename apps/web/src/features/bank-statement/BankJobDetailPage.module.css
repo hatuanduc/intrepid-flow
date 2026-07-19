@@ -101,6 +101,7 @@
 .summaryHeader {
   display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
 }
+.summaryHeaderLeft { display: flex; align-items: center; gap: 10px; }
 .summaryTitle { font-size: 12px; font-weight: 600; color: var(--color-muted); text-transform: uppercase; letter-spacing: 0.04em; }
 .summaryMetricsLink {
   font-size: 12px; font-weight: 500; color: var(--color-accent-active);
@@ -344,11 +345,31 @@
   padding: 14px 16px; background: var(--bg-surface);
   border: 1px solid var(--color-border); border-radius: 10px;
 }
+.statCardClickable {
+  width: 100%; text-align: left; cursor: pointer; font-family: inherit;
+  transition: border-color 0.12s, background 0.12s;
+}
+.statCardClickable:hover { border-color: var(--color-border-strong); }
+.statCardActive {
+  border-color: var(--color-accent-active); background: var(--color-accent-light);
+}
 .statValue { font-size: 22px; font-weight: 600; color: var(--color-ink); }
 .statValueSynced { color: #0e6245; }
 .statValueErr { color: #df1b41; }
 .statValuePending { color: #92400e; }
 .statLabel { font-size: 12px; color: var(--color-muted); }
+
+.summaryDownloadFailed {
+  font-size: 11px; font-weight: 500; color: #df1b41;
+}
+.summaryFilterEmpty {
+  font-size: 13px; color: var(--color-subtle); padding: 24px 0; text-align: center;
+}
+.summaryClearFilter {
+  border: none; background: none; color: var(--color-accent); font-size: 12px;
+  font-weight: 500; cursor: pointer; padding: 0;
+}
+.summaryClearFilter:hover { color: var(--color-accent-hover); }
 
 .modalOverlay { composes: modalOverlay from '../../styles/ui.module.css'; }
 .modal        { composes: modal        from '../../styles/ui.module.css'; }

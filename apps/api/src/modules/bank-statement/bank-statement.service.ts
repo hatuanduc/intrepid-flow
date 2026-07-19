@@ -367,9 +367,22 @@ export class BankStatementService implements OnModuleInit {
     };
   }
 
+  // Based on every BankSyncJobAccount row for this job (not just ones with transactions),
+  // so accounts that failed to download or had nothing new to sync still show up — otherwise
+  // the "Accounts fetched" / "Already up to date" stat cards would have nothing to filter into.
   async getJobSummary(jobPublicId: string) {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const jobAccounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId: job.id },
+      include: {
+        bankAccount: { select: { accountNumber: true, accountName: true, accountCode: true, currency: true } },
+      },
+      orderBy: { bankAccount: { accountName: 'asc' } },
+    });
+
+    if (jobAccounts.length === 0) return [];
 
     const grouped = await this.prisma.bankTransaction.groupBy({
       by: ['bankAccountId'],
@@ -377,37 +390,23 @@ export class BankStatementService implements OnModuleInit {
       _sum: { creditAmount: true, debitAmount: true },
       _count: { id: true },
     });
+    const txByAccount = Object.fromEntries(grouped.map(g => [g.bankAccountId, g]));
 
-    if (grouped.length === 0) return [];
-
-    const accountMap = Object.fromEntries(
-      (await this.prisma.bankAccount.findMany({
-        where: { id: { in: grouped.map(g => g.bankAccountId) } },
-        select: { id: true, accountNumber: true, accountName: true, accountCode: true, currency: true },
-      })).map(a => [a.id, a]),
-    );
-
-    const syncStatusMap = Object.fromEntries(
-      (await this.prisma.bankSyncJobAccount.findMany({
-        where: { jobId: job.id, bankAccountId: { in: grouped.map(g => g.bankAccountId) } },
-        select: { bankAccountId: true, sheetsSyncStatus: true, sheetsSyncError: true },
-      })).map(a => [a.bankAccountId, a]),
-    );
-
-    return grouped.map(row => {
-      const acc = accountMap[row.bankAccountId];
-      const syncStatus = syncStatusMap[row.bankAccountId];
+    return jobAccounts.map(ja => {
+      const tx = txByAccount[ja.bankAccountId];
       return {
-        accountId: row.bankAccountId,
-        accountNumber: acc?.accountNumber ?? '',
-        accountName: acc?.accountName ?? '',
-        accountCode: acc?.accountCode ?? '',
-        currency: acc?.currency ?? '',
-        txCount: row._count.id,
-        totalCredit: Number(row._sum.creditAmount ?? 0),
-        totalDebit: Number(row._sum.debitAmount ?? 0),
-        sheetsSyncStatus: syncStatus?.sheetsSyncStatus ?? 'pending',
-        sheetsSyncError: syncStatus?.sheetsSyncError ?? null,
+        accountId: ja.bankAccountId,
+        accountNumber: ja.bankAccount.accountNumber,
+        accountName: ja.bankAccount.accountName,
+        accountCode: ja.bankAccount.accountCode,
+        currency: ja.bankAccount.currency,
+        txCount: tx?._count.id ?? 0,
+        totalCredit: Number(tx?._sum.creditAmount ?? 0),
+        totalDebit: Number(tx?._sum.debitAmount ?? 0),
+        downloadStatus: ja.status,
+        downloadError: ja.errorMessage,
+        sheetsSyncStatus: ja.sheetsSyncStatus,
+        sheetsSyncError: ja.sheetsSyncError,
       };
     });
   }

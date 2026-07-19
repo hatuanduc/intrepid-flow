@@ -413,6 +413,8 @@ export type JobAccountSummary = {
   txCount: number;
   totalCredit: number;
   totalDebit: number;
+  downloadStatus: 'pending' | 'completed' | 'failed';
+  downloadError: string | null;
   sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data';
   sheetsSyncError: string | null;
 };

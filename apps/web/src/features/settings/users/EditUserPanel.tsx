@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { updateUser, listRoles, listPermissions, type UserItem, type RoleItem, type PermissionItem } from '../../../lib/api';
 import RightPanel from '../../../components/common/RightPanel';
 import { useT } from '../../../lib/i18n';
+import { useUser } from '../../../app/(dashboard)/user-context';
 import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import UserPermissionPicker from './UserPermissionPicker';
 import s from './AddUserPanel.module.css';
@@ -17,6 +18,8 @@ type Props = {
 
 export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
   const { t } = useT();
+  const currentUser = useUser();
+  const isSelf = !!user && !!currentUser && user.id === currentUser.id;
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(true);
@@ -103,6 +106,7 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
       const MSG: Record<string, string> = {
         USER_NOT_FOUND: t('users.userNotFound'),
         ROLE_NOT_FOUND: t('users.roleInvalid'),
+        CANNOT_DEACTIVATE_SELF: t('users.cannotDeactivateSelf'),
       };
       setError(MSG[code] ?? t('users.updateFailed'));
     } finally {
@@ -164,10 +168,12 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
             <input
               type="checkbox"
               checked={isActive}
+              disabled={isSelf}
               onChange={e => setIsActive(e.target.checked)}
             />
             {t('users.activeCheckbox')}
           </label>
+          {isSelf && <p className={s.noResult}>{t('users.cannotDeactivateSelf')}</p>}
         </div>
 
         <div className={s.divider} />

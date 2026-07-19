@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import bcrypt from 'bcryptjs';
@@ -9,6 +9,7 @@ import type { UserListRow } from './types';
 import { CreateUserInput, UpdateUserInput } from './types';
 import { roleListArgs } from '../roles/types';
 import type { RoleSummary } from '../roles/types';
+import { RESTRICTED_PERMISSION_KEYS } from '../permissions/permissions.service';
 
 function toUserItem(user: UserListRow) {
   return {
@@ -57,6 +58,19 @@ export class UsersService {
     });
   }
 
+  // Restricted permissions (e.g. system:config, users:reset-password) only ever come from a
+  // role definition (Super Admin) — never honor them if smuggled into a direct permissionIds
+  // payload, since the picker UI never offers them in the first place.
+  private async stripRestrictedPermissionIds(permissionIds: number[]) {
+    if (permissionIds.length === 0) return permissionIds;
+    const restricted = await this.prisma.permission.findMany({
+      where: { key: { in: Array.from(RESTRICTED_PERMISSION_KEYS) } },
+      select: { id: true },
+    });
+    const restrictedIds = new Set(restricted.map((p) => p.id));
+    return permissionIds.filter((id) => !restrictedIds.has(id));
+  }
+
   async createUser(input: CreateUserInput) {
     const existed = await this.prisma.user.findUnique({
       where: { email: input.email },
@@ -73,7 +87,7 @@ export class UsersService {
       }
     }
 
-    const permissionIds = input.permissionIds ?? [];
+    const permissionIds = await this.stripRestrictedPermissionIds(input.permissionIds ?? []);
     if (permissionIds.length > 0) {
       const permissionCount = await this.prisma.permission.count({
         where: { id: { in: permissionIds } },
@@ -129,12 +143,25 @@ export class UsersService {
     return { ok: true };
   }
 
-  async updateUser(userId: number, input: UpdateUserInput) {
+  async updateUser(
+    userId: number,
+    input: UpdateUserInput,
+    currentUserId?: number,
+    actorPermissions: string[] = [],
+  ) {
     const existed = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
     });
     if (!existed) throw new NotFoundException('USER_NOT_FOUND');
+
+    if (input.isActive === false && userId === currentUserId) {
+      throw new UnprocessableEntityException('CANNOT_DEACTIVATE_SELF');
+    }
+
+    if (input.password && !actorPermissions.includes('users:reset-password')) {
+      throw new ForbiddenException('CANNOT_RESET_PASSWORD');
+    }
 
     if (input.roleIds) {
       const roleCount = await this.prisma.role.count({
@@ -146,6 +173,7 @@ export class UsersService {
     }
 
     if (input.permissionIds) {
+      input.permissionIds = await this.stripRestrictedPermissionIds(input.permissionIds);
       const permissionCount = await this.prisma.permission.count({
         where: { id: { in: input.permissionIds } },
       });

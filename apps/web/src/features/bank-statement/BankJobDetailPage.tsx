@@ -64,6 +64,21 @@ function SheetsSyncBadge({
   );
 }
 
+// Mirrors the bucket math in the API's computeJobStats() so a stat card's count always
+// matches the number of rows its filter produces.
+type StatFilter = 'fetched' | 'synced' | 'failed' | 'notSynced' | 'noData' | null;
+
+function matchesStatFilter(acc: JobAccountSummary, filter: StatFilter): boolean {
+  switch (filter) {
+    case 'fetched':   return acc.downloadStatus === 'completed';
+    case 'synced':    return acc.sheetsSyncStatus === 'completed';
+    case 'failed':    return acc.downloadStatus === 'failed' || acc.sheetsSyncStatus === 'failed';
+    case 'notSynced': return acc.downloadStatus === 'completed' && ['pending', 'skipped'].includes(acc.sheetsSyncStatus);
+    case 'noData':    return acc.sheetsSyncStatus === 'no_data';
+    default:          return true;
+  }
+}
+
 function isActive(status: string) {
   return !['completed', 'failed', 'cancelled'].includes(status);
 }
@@ -227,6 +242,7 @@ export default function BankJobDetailPage() {
   const [openSteps, setOpenSteps]         = useState<Set<string>>(new Set());
   const [summary, setSummary]   = useState<JobAccountSummary[]>([]);
   const [stats, setStats]       = useState<JobStats | null>(null);
+  const [statFilter, setStatFilter] = useState<StatFilter>(null);
   const [txPanel, setTxPanel]   = useState<{ acc: JobAccountSummary; rows: JobTransaction[] } | null>(null);
   const [txLoading, setTxLoading] = useState(false);
 
@@ -496,31 +512,51 @@ export default function BankJobDetailPage() {
             <>
             <SyncProgressBar stats={stats} t={t} />
             <div className={s.statsGrid}>
-              <div className={s.statCard}>
+              <button
+                type="button"
+                className={`${s.statCard} ${s.statCardClickable} ${statFilter === 'fetched' ? s.statCardActive : ''}`}
+                onClick={() => setStatFilter(f => f === 'fetched' ? null : 'fetched')}
+              >
                 <span className={s.statValue}>{stats.downloaded}</span>
                 <span className={s.statLabel}>{t('bankJob.statsFetched')}</span>
-              </div>
-              <div className={s.statCard}>
+              </button>
+              <button
+                type="button"
+                className={`${s.statCard} ${s.statCardClickable} ${statFilter === 'synced' ? s.statCardActive : ''}`}
+                onClick={() => setStatFilter(f => f === 'synced' ? null : 'synced')}
+              >
                 <span className={`${s.statValue} ${stats.synced > 0 ? s.statValueSynced : ''}`}>{stats.synced}</span>
                 <span className={s.statLabel}>{t('bankJob.statsSynced')}</span>
-              </div>
-              <div className={s.statCard}>
+              </button>
+              <button
+                type="button"
+                className={`${s.statCard} ${s.statCardClickable} ${statFilter === 'failed' ? s.statCardActive : ''}`}
+                onClick={() => setStatFilter(f => f === 'failed' ? null : 'failed')}
+              >
                 <span className={`${s.statValue} ${stats.syncFailed + stats.downloadFailed > 0 ? s.statValueErr : ''}`}>
                   {stats.syncFailed + stats.downloadFailed}
                 </span>
                 <span className={s.statLabel}>{t('bankJob.statsFailed')}</span>
-              </div>
-              <div className={s.statCard}>
+              </button>
+              <button
+                type="button"
+                className={`${s.statCard} ${s.statCardClickable} ${statFilter === 'notSynced' ? s.statCardActive : ''}`}
+                onClick={() => setStatFilter(f => f === 'notSynced' ? null : 'notSynced')}
+              >
                 <span className={`${s.statValue} ${stats.syncPending + stats.syncSkipped > 0 ? s.statValuePending : ''}`}>
                   {stats.syncPending + stats.syncSkipped}
                 </span>
                 <span className={s.statLabel}>{t('bankJob.statsNotSynced')}</span>
-              </div>
+              </button>
               {stats.syncNoData > 0 && (
-                <div className={s.statCard}>
+                <button
+                  type="button"
+                  className={`${s.statCard} ${s.statCardClickable} ${statFilter === 'noData' ? s.statCardActive : ''}`}
+                  onClick={() => setStatFilter(f => f === 'noData' ? null : 'noData')}
+                >
                   <span className={s.statValue}>{stats.syncNoData}</span>
                   <span className={s.statLabel}>{t('bankJob.statsNoData')}</span>
-                </div>
+                </button>
               )}
             </div>
             </>
@@ -530,13 +566,20 @@ export default function BankJobDetailPage() {
           {summary.length > 0 && (
             <div className={s.summarySection}>
               <div className={s.summaryHeader}>
-                <span className={s.summaryTitle}>{t('bankJob.transactionsSynced')}</span>
+                <span className={s.summaryHeaderLeft}>
+                  <span className={s.summaryTitle}>{t('bankJob.transactionsSynced')}</span>
+                  {statFilter && (
+                    <button className={s.summaryClearFilter} onClick={() => setStatFilter(null)}>
+                      {t('bankJob.clearFilter')}
+                    </button>
+                  )}
+                </span>
                 <Link href="/bank-metrics" className={s.summaryMetricsLink}>
                   {t('bankJob.viewInMetrics')}
                 </Link>
               </div>
               <div className={s.summaryTableWrap}>
-                {summary.map(acc => (
+                {summary.filter(acc => matchesStatFilter(acc, statFilter)).map(acc => (
                   <div
                     key={acc.accountId}
                     role="button"
@@ -561,12 +604,21 @@ export default function BankJobDetailPage() {
                     <span className={s.summaryTxCount}>{acc.txCount} {t('bankJob.transactions')}</span>
                     <span className={s.summaryCredit}>+{acc.totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className={s.summaryDebit}>{acc.totalDebit > 0 ? `-${acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
-                    <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
+                    {acc.downloadStatus === 'failed' ? (
+                      <span className={s.summaryDownloadFailed} title={acc.downloadError ?? undefined}>
+                        {t('bankJob.downloadFailed')}
+                      </span>
+                    ) : (
+                      <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
+                    )}
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.summaryArrow}>
                       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
                   </div>
                 ))}
+                {summary.filter(acc => matchesStatFilter(acc, statFilter)).length === 0 && (
+                  <div className={s.summaryFilterEmpty}>{t('bankJob.summaryFilterEmpty')}</div>
+                )}
               </div>
             </div>
           )}

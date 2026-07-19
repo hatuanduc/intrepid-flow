@@ -15,6 +15,36 @@ import s from './NotificationBell.module.css';
 const PAGE_SIZE = 15;
 const SCROLL_THRESHOLD = 60;
 
+function NotificationTypeIcon({ type }: { type: AppNotification['type'] }) {
+  if (type === 'job_failed') {
+    return (
+      <span className={`${s.itemIcon} ${s.itemIconFailed}`}>
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+          <path d="M6 3.5v3M6 8.25h.006" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
+          <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+        </svg>
+      </span>
+    );
+  }
+  if (type === 'job_waiting_2fa') {
+    return (
+      <span className={`${s.itemIcon} ${s.itemIconWaiting}`}>
+        <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+          <circle cx="6" cy="6" r="5" stroke="currentColor" strokeWidth="1.2"/>
+          <path d="M6 3.2V6l2 1.2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </span>
+    );
+  }
+  return (
+    <span className={`${s.itemIcon} ${s.itemIconCompleted}`}>
+      <svg width="11" height="11" viewBox="0 0 12 12" fill="none">
+        <path d="M3 6.2l2 2 4-4.4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    </span>
+  );
+}
+
 function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -140,10 +170,14 @@ export default function NotificationBell() {
                 {items.map(item => (
                   <button
                     key={item.id}
-                    className={`${s.item} ${!item.isRead ? s.itemUnread : ''}`}
+                    className={[
+                      s.item,
+                      !item.isRead ? s.itemUnread : '',
+                      item.type === 'job_failed' ? s.itemFailed : '',
+                    ].filter(Boolean).join(' ')}
                     onClick={() => handleClickItem(item)}
                   >
-                    {!item.isRead && <span className={s.itemDot} />}
+                    <NotificationTypeIcon type={item.type} />
                     <span className={s.itemBody}>
                       <span className={s.itemTitle}>{item.title}</span>
                       {item.body && <span className={s.itemDesc}>{item.body}</span>}
