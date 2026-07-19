@@ -6,19 +6,6 @@
   gap: 10px;
   margin-bottom: 24px;
 }
-.backBtn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1.5px solid var(--color-border);
-  border-radius: 6px;
-  background: var(--bg-surface);
-  color: var(--color-secondary);
-  cursor: pointer;
-}
-.backBtn:hover { background: var(--bg-page); }
 .pageTitle { font-size: 20px; font-weight: 600; color: var(--color-ink); margin: 0; letter-spacing: -0.3px; }
 
 /* Tabs */

@@ -1,8 +1,12 @@
 import { Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { MailService } from '../mail/mail.service';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { userWithAuthArgs } from './types';
+
+const RESET_TTL_HOURS = 1;
 
 type SafeUser = {
   id: number;
@@ -14,7 +18,10 @@ type SafeUser = {
 
 @Injectable()
 export class AuthService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private mail: MailService,
+  ) {}
 
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({
@@ -85,6 +92,53 @@ export class AuthService {
       },
     });
     await this.prisma.userInvite.delete({ where: { token } });
+    return { ok: true };
+  }
+
+  // Always resolves { ok: true } regardless of whether the email is registered —
+  // otherwise the response itself would leak which emails have an account.
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true, email: true, name: true, isActive: true, hasPassword: true },
+    });
+    if (user && user.isActive && user.hasPassword) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiredAt = new Date(Date.now() + RESET_TTL_HOURS * 60 * 60 * 1000);
+      await this.prisma.passwordReset.deleteMany({ where: { userId: user.id } });
+      await this.prisma.passwordReset.create({ data: { userId: user.id, token, expiredAt } });
+      try {
+        await this.mail.sendPasswordReset(user.email, user.name, token);
+      } catch {
+        // Swallow: the client response must stay identical whether or not delivery
+        // succeeded, so we don't leak account existence via a differing error path.
+        // MailService already logs the underlying failure.
+      }
+    }
+    return { ok: true };
+  }
+
+  async verifyResetToken(token: string) {
+    const reset = await this.prisma.passwordReset.findUnique({
+      where: { token },
+      include: { user: { select: { email: true } } },
+    });
+    if (!reset) throw new NotFoundException('RESET_NOT_FOUND');
+    if (reset.expiredAt < new Date()) throw new UnprocessableEntityException('RESET_EXPIRED');
+    return { valid: true, email: reset.user.email };
+  }
+
+  async resetPassword(token: string, password: string) {
+    const reset = await this.prisma.passwordReset.findUnique({
+      where: { token },
+      include: { user: { select: { id: true } } },
+    });
+    if (!reset) throw new NotFoundException('RESET_NOT_FOUND');
+    if (reset.expiredAt < new Date()) throw new UnprocessableEntityException('RESET_EXPIRED');
+
+    const hashed = await bcrypt.hash(password, 10);
+    await this.prisma.user.update({ where: { id: reset.user.id }, data: { password: hashed } });
+    await this.prisma.passwordReset.delete({ where: { token } });
     return { ok: true };
   }
 

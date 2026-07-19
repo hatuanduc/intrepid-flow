@@ -1,12 +1,6 @@
 .page { padding: 28px 32px; max-width: 860px; }
 
 .pageHeader { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
-.backBtn {
-  display: flex; align-items: center; justify-content: center;
-  width: 28px; height: 28px; border: none; background: none;
-  border-radius: 6px; color: var(--color-muted); cursor: pointer;
-}
-.backBtn:hover { background: var(--bg-page); color: var(--color-ink); }
 .pageTitle { font-size: 20px; font-weight: 600; color: var(--color-ink); letter-spacing: -0.3px; margin: 0; }
 
 .card {

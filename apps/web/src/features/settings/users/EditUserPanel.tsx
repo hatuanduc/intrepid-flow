@@ -21,7 +21,6 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
   const currentUser = useUser();
   const isSelf = !!user && !!currentUser && user.id === currentUser.id;
   const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
   const [isActive, setIsActive] = useState(true);
   const [selectedRoleIds, setSelectedRoleIds] = useState<number[]>([]);
   const [roles, setRoles] = useState<RoleItem[]>([]);
@@ -38,7 +37,6 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
     setPrevResetKey(resetKey);
     if (open && user) {
       setName(user.name ?? '');
-      setPassword('');
       setIsActive(user.isActive);
       setSelectedRoleIds(user.roles.map(r => r.id));
       setSelectedPermissionIds(user.permissions.map(p => p.id));
@@ -54,13 +52,8 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
     }
   }, [open]);
 
-  function clearField(field: string) {
-    setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
-  }
-
   function validate() {
     const errs: Record<string, string> = {};
-    if (password && password.length < 6) errs.password = t('users.newPasswordMinLength');
     if (selectedRoleIds.length === 0) errs.roleIds = t('users.atLeastOneRole');
     return errs;
   }
@@ -95,7 +88,6 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
     try {
       await updateUser(user.id, {
         name: name.trim() || undefined,
-        password: password || undefined,
         isActive,
         roleIds: selectedRoleIds,
         permissionIds: selectedPermissionIds,
@@ -148,18 +140,6 @@ export default function EditUserPanel({ user, open, onClose, onSaved }: Props) {
             onChange={e => setName(e.target.value)}
             autoFocus
           />
-        </div>
-
-        <div className={s.field}>
-          <label className={s.label}>{t('users.newPasswordLabel')}</label>
-          <input
-            className={`${s.input} ${fieldErrors.password ? s.inputError : ''}`}
-            type="password"
-            value={password}
-            onChange={e => { setPassword(e.target.value); clearField('password'); }}
-            placeholder={t('users.newPasswordPlaceholder')}
-          />
-          {fieldErrors.password && <span className={s.fieldError}>{fieldErrors.password}</span>}
         </div>
 
         <div className={s.field}>

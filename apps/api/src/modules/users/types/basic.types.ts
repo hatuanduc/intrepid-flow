@@ -7,7 +7,6 @@ export type CreateUserInput = {
 
 export type UpdateUserInput = {
   name?: string;
-  password?: string;
   isActive?: boolean;
   roleIds?: number[];
   permissionIds?: number[];

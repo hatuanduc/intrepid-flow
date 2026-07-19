@@ -1,0 +1,14 @@
+.backBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  color: var(--color-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.backBtn:hover { background: var(--bg-page); color: var(--color-ink); }

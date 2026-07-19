@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, ForbiddenException, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, UnprocessableEntityException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import bcrypt from 'bcryptjs';
@@ -7,7 +7,6 @@ import jwt from 'jsonwebtoken';
 import { userListArgs } from './types';
 import type { UserListRow } from './types';
 import { CreateUserInput, UpdateUserInput } from './types';
-import { roleListArgs } from '../roles/types';
 import type { RoleSummary } from '../roles/types';
 import { RESTRICTED_PERMISSION_KEYS } from '../permissions/permissions.service';
 
@@ -58,9 +57,9 @@ export class UsersService {
     });
   }
 
-  // Restricted permissions (e.g. system:config, users:reset-password) only ever come from a
-  // role definition (Super Admin) — never honor them if smuggled into a direct permissionIds
-  // payload, since the picker UI never offers them in the first place.
+  // Restricted permissions (e.g. system:config) only ever come from a role definition
+  // (Super Admin) — never honor them if smuggled into a direct permissionIds payload,
+  // since the picker UI never offers them in the first place.
   private async stripRestrictedPermissionIds(permissionIds: number[]) {
     if (permissionIds.length === 0) return permissionIds;
     const restricted = await this.prisma.permission.findMany({
@@ -143,12 +142,7 @@ export class UsersService {
     return { ok: true };
   }
 
-  async updateUser(
-    userId: number,
-    input: UpdateUserInput,
-    currentUserId?: number,
-    actorPermissions: string[] = [],
-  ) {
+  async updateUser(userId: number, input: UpdateUserInput, currentUserId?: number) {
     const existed = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -157,10 +151,6 @@ export class UsersService {
 
     if (input.isActive === false && userId === currentUserId) {
       throw new UnprocessableEntityException('CANNOT_DEACTIVATE_SELF');
-    }
-
-    if (input.password && !actorPermissions.includes('users:reset-password')) {
-      throw new ForbiddenException('CANNOT_RESET_PASSWORD');
     }
 
     if (input.roleIds) {
@@ -182,15 +172,11 @@ export class UsersService {
       }
     }
 
-    const nextPassword = input.password ? bcrypt.hashSync(input.password, 10) : undefined;
-
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: {
         name: input.name,
         isActive: input.isActive,
-        password: nextPassword,
-        hasPassword: nextPassword ? true : undefined,
         roles: input.roleIds
           ? {
               deleteMany: {},
@@ -231,77 +217,5 @@ export class UsersService {
       { expiresIn: '2h' },
     );
     return { token, user: { id: target.id, email: target.email, name: target.name } };
-  }
-
-  async createRole(input: {
-    key: string;
-    name: string;
-    description?: string;
-    permissionIds: number[];
-  }) {
-    const existed = await this.prisma.role.findUnique({
-      where: { key: input.key },
-      select: { id: true },
-    });
-    if (existed) throw new ConflictException('ROLE_KEY_EXISTS');
-
-    const permissionCount = await this.prisma.permission.count({
-      where: { id: { in: input.permissionIds } },
-    });
-    if (permissionCount !== input.permissionIds.length) {
-      throw new UnprocessableEntityException('PERMISSION_NOT_FOUND');
-    }
-
-    return this.prisma.role.create({
-      data: {
-        key: input.key,
-        name: input.name,
-        description: input.description,
-        isSystem: false,
-        permissions: {
-          create: input.permissionIds.map((permissionId) => ({ permissionId })),
-        },
-      },
-      ...roleListArgs,
-    });
-  }
-
-  async updateRole(
-    roleId: number,
-    input: {
-      name?: string;
-      description?: string;
-      permissionIds?: number[];
-    },
-  ) {
-    const role = await this.prisma.role.findUnique({
-      where: { id: roleId },
-      select: { id: true, isSystem: true },
-    });
-    if (!role) throw new NotFoundException('ROLE_NOT_FOUND');
-
-    if (input.permissionIds) {
-      const permissionCount = await this.prisma.permission.count({
-        where: { id: { in: input.permissionIds } },
-      });
-      if (permissionCount !== input.permissionIds.length) {
-        throw new UnprocessableEntityException('PERMISSION_NOT_FOUND');
-      }
-    }
-
-    return this.prisma.role.update({
-      where: { id: roleId },
-      data: {
-        name: input.name,
-        description: input.description,
-        permissions: input.permissionIds
-          ? {
-              deleteMany: {},
-              create: input.permissionIds.map((permissionId) => ({ permissionId })),
-            }
-          : undefined,
-      },
-      ...roleListArgs,
-    });
   }
 }

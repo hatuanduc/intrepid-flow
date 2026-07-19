@@ -1,6 +1,7 @@
 'use client';
 
 import BrandLogo from '../../components/BrandLogo';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { login } from '../../lib/api';
@@ -129,6 +130,7 @@ export default function LoginPage() {
                 </button>
               </div>
               {fieldErrors.password && <span className={styles.fieldError}>{fieldErrors.password}</span>}
+              <Link href="/forgot-password" className={styles.forgotLink}>{t('login.forgotPasswordLink')}</Link>
             </div>
 
             {error && (

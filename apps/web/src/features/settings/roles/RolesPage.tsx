@@ -5,6 +5,7 @@ import { listRoles, type RoleItem } from '../../../lib/api';
 import { useT } from '../../../lib/i18n';
 import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import RolePanel from './RolePanel';
+import BackButton from '../../../components/common/BackButton';
 import { Spinner } from '../../../components/common/PageLoader';
 import s from './RolesPage.module.css';
 
@@ -42,6 +43,7 @@ export default function RolesPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
+        <BackButton href="/settings" />
         <h1 className={s.pageTitle}>{t('roles.pageTitle')}</h1>
       </div>
 

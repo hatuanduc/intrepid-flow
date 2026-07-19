@@ -13,6 +13,7 @@ import { getToken } from '../../lib/auth';
 import { showHsbcAuthNotification } from '../../lib/notifications';
 import { useHasPermission } from '../../hooks/useHasPermission';
 import AccessDenied from '../../components/common/AccessDenied';
+import BackButton from '../../components/common/BackButton';
 import { Spinner } from '../../components/common/PageLoader';
 import { useToast } from '../../components/common/Toast';
 import { useT } from '../../lib/i18n';
@@ -432,10 +433,7 @@ export default function BankJobDetailPage() {
 
   return (
     <div className={s.page}>
-      {/* Back link */}
-      <Link href="/bank-statement" className={s.backBtn}>
-        {t('bankJob.back')}
-      </Link>
+      <BackButton href="/bank-statement" />
 
       {loading ? (
         <div className={s.loadingWrap}><Spinner size={24} /></div>

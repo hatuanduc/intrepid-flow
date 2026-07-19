@@ -49,4 +49,39 @@ export class MailService {
       throw new InternalServerErrorException('MAIL_ERROR');
     }
   }
+
+  async sendPasswordReset(email: string, name: string | null, token: string) {
+    const appUrl = (process.env.APP_URL ?? 'http://localhost:3000').replace(/\/$/, '');
+    const link = `${appUrl}/reset-password?token=${token}`;
+    const from = process.env.SMTP_FROM ?? process.env.SMTP_USER;
+    const displayName = name ?? email;
+
+    try {
+      await this.transporter.sendMail({
+        from: `"Intrepid Flow" <${from}>`,
+        to: email,
+        subject: 'Đặt lại mật khẩu tài khoản Intrepid Flow',
+        html: `
+          <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#1a1f36;">
+            <h2 style="font-size:20px;font-weight:600;margin:0 0 16px;">Xin chào ${displayName},</h2>
+            <p style="font-size:14px;line-height:1.6;color:#3c4257;margin:0 0 24px;">
+              Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản <strong>Intrepid Flow</strong> của bạn.<br>
+              Nhấn vào nút bên dưới để đặt mật khẩu mới.
+            </p>
+            <a href="${link}" style="display:inline-block;background:#635bff;color:#fff;font-size:14px;font-weight:500;padding:11px 22px;border-radius:6px;text-decoration:none;">
+              Đặt lại mật khẩu →
+            </a>
+            <p style="font-size:12px;color:#697386;margin:24px 0 0;">
+              Link sẽ hết hạn sau <strong>1 giờ</strong>.<br>
+              Nếu bạn không yêu cầu điều này, hãy bỏ qua email này — mật khẩu của bạn sẽ không thay đổi.
+            </p>
+          </div>
+        `,
+      });
+      this.logger.log(`Password reset email sent to ${email}`);
+    } catch (err) {
+      this.logger.error(`Failed to send password reset email to ${email}`, err);
+      throw new InternalServerErrorException('MAIL_ERROR');
+    }
+  }
 }

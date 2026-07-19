@@ -164,7 +164,6 @@ export async function updateUser(
   id: number,
   input: {
     name?: string;
-    password?: string;
     isActive?: boolean;
     roleIds?: number[];
     permissionIds?: number[];
@@ -635,6 +634,24 @@ export async function setPasswordWithToken(token: string, password: string, name
   return request<{ ok: boolean }>('/auth/set-password', {
     method: 'POST',
     body: JSON.stringify({ token, password, name }),
+  });
+}
+
+export async function forgotPassword(email: string) {
+  return request<{ ok: boolean }>('/auth/forgot-password', {
+    method: 'POST',
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function verifyResetToken(token: string) {
+  return request<{ valid: boolean; email: string }>(`/auth/reset-password/${token}`);
+}
+
+export async function resetPasswordWithToken(token: string, password: string) {
+  return request<{ ok: boolean }>('/auth/reset-password', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
   });
 }
 

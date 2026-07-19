@@ -1,14 +1,5 @@
 .page { padding: 28px 32px; }
 
-/* Back button */
-.backBtn {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 13px; font-weight: 500; color: var(--color-muted);
-  text-decoration: none; border: none; background: none; padding: 0;
-  cursor: pointer; transition: color 0.15s;
-}
-.backBtn:hover { color: var(--color-ink); }
-
 /* Page header */
 .pageHeader {
   display: flex; align-items: flex-start; justify-content: space-between;

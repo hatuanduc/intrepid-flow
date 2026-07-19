@@ -56,6 +56,45 @@ export const en = {
     invalidCredentials: 'Incorrect username or password.',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
+    forgotPasswordLink: 'Forgot password?',
+  },
+
+  forgotPassword: {
+    title: 'Forgot password',
+    desc: 'Enter your email and we will send you a link to reset your password.',
+    emailLabel: 'Email',
+    emailPlaceholder: 'you@example.com',
+    emailRequired: 'Please enter your email.',
+    emailInvalid: 'Invalid email address.',
+    submit: 'Send reset link',
+    sending: 'Sending...',
+    doneTitle: 'Check your email',
+    doneDesc: 'If an account exists for {email}, we have sent a password reset link. The link expires in 1 hour.',
+    backToLogin: '← Back to login',
+  },
+
+  resetPassword: {
+    verifying: 'Verifying link...',
+    invalidTitle: 'Invalid link',
+    invalidDesc: 'This reset link does not exist or has already been used.',
+    expiredTitle: 'Link expired',
+    expiredDesc: 'This reset link has expired after 1 hour. Please request a new one.',
+    requestNew: 'Request a new link',
+    title: 'Reset password',
+    accountLabel: 'Account',
+    newPasswordLabel: 'New password',
+    newPasswordPlaceholder: 'At least 6 characters',
+    confirmPasswordLabel: 'Confirm new password',
+    passwordRequired: 'Please enter a password.',
+    passwordMinLength: 'Password must be at least 6 characters.',
+    confirmRequired: 'Please confirm your password.',
+    passwordMismatch: 'Passwords do not match.',
+    submit: 'Reset password',
+    saving: 'Saving...',
+    doneTitle: 'Password reset!',
+    doneDesc: 'Your password has been changed. Sign in with your new password.',
+    goToLogin: 'Go to login',
+    genericError: 'Reset failed. Please try again.',
   },
 
   account: {
@@ -108,6 +147,7 @@ export const en = {
     saving: 'Saving...',
     deleting: 'Deleting...',
     noData: 'No data.',
+    back: 'Back',
   },
 
   home: {
@@ -171,7 +211,6 @@ export const en = {
 
   bankJob: {
     title: 'Job detail',
-    back: '← Bank statements',
     manual: 'Manual',
     retryAll: '↺ Retry all',
     retrying: 'Retrying...',
@@ -713,9 +752,6 @@ export const en = {
     editPanelTitle: 'Edit account',
     emailLabel: 'Email',
     displayNameLabel: 'Display name',
-    newPasswordLabel: 'New password',
-    newPasswordPlaceholder: 'Leave blank to keep unchanged',
-    newPasswordMinLength: 'Password must be at least 6 characters.',
     statusLabel: 'Status',
     activeCheckbox: 'Active',
     saveChanges: 'Save changes',

@@ -1,13 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   listArGsheets, createArGsheet, updateArGsheet,
   type ArGsheetConfig,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import AccessDenied from '../../../components/common/AccessDenied';
+import BackButton from '../../../components/common/BackButton';
 import PageLoader from '../../../components/common/PageLoader';
 import ServiceAccountShareInfo from '../../../components/common/ServiceAccountShareInfo';
 import Tooltip from '../../../components/common/Tooltip';
@@ -21,7 +21,6 @@ type T = ReturnType<typeof useT>['t'];
 
 export default function ReportArSettingsPage() {
   const canConfig = useHasPermission('report_ar:config');
-  const router = useRouter();
   const toast = useToast();
   const { t } = useT();
   const [tab, setTab] = useState<Tab>('gsheets');
@@ -49,11 +48,7 @@ export default function ReportArSettingsPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <button className={s.backBtn} onClick={() => router.push('/settings')}>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-            <path d="M10 13L5 8l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        <BackButton href="/settings" />
         <h1 className={s.pageTitle}>{t('reportArSettings.title')}</h1>
       </div>
 

@@ -2,8 +2,9 @@
 .page { padding: 28px 32px; }
 
 /* ── Shared via composes ── */
-.pageHeader   { composes: pageHeader   from '../../../styles/ui.module.css'; }
-.pageTitle    { composes: pageTitle    from '../../../styles/ui.module.css'; }
+.pageHeader     { composes: pageHeader     from '../../../styles/ui.module.css'; }
+.pageHeaderLeft { composes: pageHeaderLeft from '../../../styles/ui.module.css'; }
+.pageTitle      { composes: pageTitle      from '../../../styles/ui.module.css'; }
 .btnPrimary   { composes: btnPrimary   from '../../../styles/ui.module.css'; }
 .btnSecondary { composes: btnSecondary from '../../../styles/ui.module.css'; }
 .btnDanger    { composes: btnDanger    from '../../../styles/ui.module.css'; }

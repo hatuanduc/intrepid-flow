@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import {
   getReconcileSettings, updateReconcileSettings,
   getMasterCustomerInfo, replaceMasterCustomerFile,
@@ -9,6 +8,7 @@ import {
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import AccessDenied from '../../../components/common/AccessDenied';
+import BackButton from '../../../components/common/BackButton';
 import PageLoader, { Spinner } from '../../../components/common/PageLoader';
 import { useToast } from '../../../components/common/Toast';
 import { Dropzone } from '../../../components/common/FileDropzone';
@@ -19,12 +19,6 @@ import s from './ReconcileSettingsPage.module.css';
 
 const MAX_FILE_SIZE = 60 * 1024 * 1024; // 60MB — must match apps/api multer limit
 
-const BackIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-    <path d="M10 13L5 8l5-5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-  </svg>
-);
-
 const SearchIcon = (
   <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
     <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.4"/>
@@ -34,7 +28,6 @@ const SearchIcon = (
 
 export default function ReconcileSettingsPage() {
   const canConfig = useHasPermission('reconcile:config');
-  const router = useRouter();
   const toast = useToast();
   const { t, lang } = useT();
 
@@ -173,7 +166,7 @@ export default function ReconcileSettingsPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <button className={s.backBtn} onClick={() => router.back()}>{BackIcon}</button>
+        <BackButton href="/settings" />
         <h1 className={s.pageTitle}>{t('reconcileSettings.title')}</h1>
       </div>
 

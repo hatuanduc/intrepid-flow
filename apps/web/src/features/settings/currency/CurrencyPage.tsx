@@ -9,6 +9,7 @@ import { useHasPermission } from '../../../hooks/useHasPermission';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
 import AccessDenied from '../../../components/common/AccessDenied';
+import BackButton from '../../../components/common/BackButton';
 import PageLoader from '../../../components/common/PageLoader';
 import s from './CurrencyPage.module.css';
 
@@ -108,6 +109,7 @@ export default function CurrencyPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
+        <BackButton href="/settings" />
         <h1 className={s.pageTitle}>{t('currencySettings.title')}</h1>
       </div>
 

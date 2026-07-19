@@ -1,6 +1,6 @@
 .page { padding: 28px 32px; }
 
-.pageHeader { margin-bottom: 24px; }
+.pageHeader { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
 .pageTitle { font-size: 20px; font-weight: 600; color: var(--color-ink); margin: 0; letter-spacing: -0.3px; }
 
 .section {

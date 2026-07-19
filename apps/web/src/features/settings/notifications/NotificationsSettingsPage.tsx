@@ -7,6 +7,7 @@ import {
   requestPermission,
   setHsbcNotifEnabled,
 } from '../../../lib/notifications';
+import BackButton from '../../../components/common/BackButton';
 import s from './NotificationsSettingsPage.module.css';
 
 export default function NotificationsSettingsPage() {
@@ -51,6 +52,7 @@ export default function NotificationsSettingsPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
+        <BackButton href="/settings" />
         <h1 className={s.pageTitle}>Thông báo</h1>
       </div>
 

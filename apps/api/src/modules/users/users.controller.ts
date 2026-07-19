@@ -37,7 +37,7 @@ export class UsersController {
   @ApiOperation({ summary: 'Cập nhật người dùng' })
   @ApiResponse({ status: 200, type: UserResponseDto })
   async putUser(@Param('id') id: string, @Body() body: UpdateUserDto, @Req() req: any) {
-    return this.users.updateUser(Number(id), body, req.authUser.id, req.authUser.permissions);
+    return this.users.updateUser(Number(id), body, req.authUser.id);
   }
 
   @Delete('users/:id')

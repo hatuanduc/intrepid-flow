@@ -7,7 +7,6 @@ const CORE_PERMISSIONS = [
   { key: 'users:create',            module: 'users',           action: 'create',      label: 'Tạo người dùng' },
   { key: 'users:update',            module: 'users',           action: 'update',      label: 'Cập nhật người dùng' },
   { key: 'users:impersonate',       module: 'users',           action: 'impersonate', label: 'Đăng nhập với tư cách người dùng khác' },
-  { key: 'users:reset-password',    module: 'users',           action: 'reset-password', label: 'Đặt lại mật khẩu người dùng' },
   { key: 'roles:view',              module: 'roles',           action: 'view',        label: 'Xem vai trò' },
   { key: 'permissions:view',        module: 'permissions',     action: 'view',        label: 'Xem danh sách quyền hạn' },
   { key: 'bank_statement:view',     module: 'bank_statement',  action: 'view',        label: 'Xem sao kê ngân hàng' },
@@ -23,7 +22,7 @@ const CORE_PERMISSIONS = [
 
 // Never grantable through the per-user/per-role custom-permission picker — only Super Admin
 // holds these, via its `permissionKeys: null` (all permissions) role definition below.
-export const RESTRICTED_PERMISSION_KEYS = new Set(['system:config', 'users:reset-password']);
+export const RESTRICTED_PERMISSION_KEYS = new Set(['system:config']);
 
 // null permissionKeys = all permissions (Administrator)
 const CORE_ROLES = [
@@ -101,6 +100,13 @@ export class PermissionsService implements OnApplicationBootstrap {
         update: { label: p.label },
       });
     }
+
+    // Drop stale rows for permissions removed from CORE_PERMISSIONS — cascades to
+    // role_permissions/user_permissions so no role/user is left holding a dead grant.
+    const coreKeys = CORE_PERMISSIONS.map((p) => p.key);
+    const pruned = await this.prisma.permission.deleteMany({ where: { key: { notIn: coreKeys } } });
+    if (pruned.count > 0) this.logger.log(`Permissions pruned: ${pruned.count} stale`);
+
     this.logger.log(`Permissions synced: ${CORE_PERMISSIONS.length} core`);
   }
 

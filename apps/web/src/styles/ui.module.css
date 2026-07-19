@@ -17,6 +17,11 @@
   letter-spacing: -0.3px;
   margin: 0;
 }
+.pageHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
 /* ── Buttons ── */
 .btnPrimary {

@@ -1,6 +1,6 @@
 import { Body, Controller, Post, Put, Get, Param, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiResponse, ApiProperty } from '@nestjs/swagger';
-import { IsString, IsOptional, MinLength } from 'class-validator';
+import { IsString, IsOptional, IsEmail, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { LoginDto } from './dto/login.dto';
@@ -34,6 +34,22 @@ class SetPasswordDto {
   @ApiProperty({ required: false })
   @IsOptional() @IsString() @MinLength(1)
   name?: string;
+}
+
+class ForgotPasswordDto {
+  @ApiProperty()
+  @IsEmail()
+  email!: string;
+}
+
+class ResetPasswordDto {
+  @ApiProperty()
+  @IsString() @MinLength(1)
+  token!: string;
+
+  @ApiProperty()
+  @IsString() @MinLength(6)
+  password!: string;
 }
 
 @ApiTags('Auth')
@@ -87,5 +103,23 @@ export class AuthController {
   @ApiOperation({ summary: 'Set password with invite token (public)' })
   async setPassword(@Body() body: SetPasswordDto) {
     return this.auth.setPasswordWithToken(body.token, body.password, body.name);
+  }
+
+  @Post('forgot-password')
+  @ApiOperation({ summary: 'Yêu cầu link đặt lại mật khẩu qua email (public)' })
+  async forgotPassword(@Body() body: ForgotPasswordDto) {
+    return this.auth.forgotPassword(body.email);
+  }
+
+  @Get('reset-password/:token')
+  @ApiOperation({ summary: 'Verify password reset token (public)' })
+  async verifyResetToken(@Param('token') token: string) {
+    return this.auth.verifyResetToken(token);
+  }
+
+  @Post('reset-password')
+  @ApiOperation({ summary: 'Đặt lại mật khẩu bằng reset token (public)' })
+  async resetPassword(@Body() body: ResetPasswordDto) {
+    return this.auth.resetPassword(body.token, body.password);
   }
 }

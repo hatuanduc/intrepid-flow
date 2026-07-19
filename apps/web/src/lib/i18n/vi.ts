@@ -58,6 +58,45 @@ export const vi: Translations = {
     invalidCredentials: 'Tên đăng nhập hoặc mật khẩu không đúng.',
     showPassword: 'Hiện mật khẩu',
     hidePassword: 'Ẩn mật khẩu',
+    forgotPasswordLink: 'Quên mật khẩu?',
+  },
+
+  forgotPassword: {
+    title: 'Quên mật khẩu',
+    desc: 'Nhập email của bạn, chúng tôi sẽ gửi link để đặt lại mật khẩu.',
+    emailLabel: 'Email',
+    emailPlaceholder: 'you@example.com',
+    emailRequired: 'Vui lòng nhập email.',
+    emailInvalid: 'Email không hợp lệ.',
+    submit: 'Gửi link đặt lại',
+    sending: 'Đang gửi...',
+    doneTitle: 'Kiểm tra email của bạn',
+    doneDesc: 'Nếu tài khoản với email {email} tồn tại, chúng tôi đã gửi link đặt lại mật khẩu. Link hết hạn sau 1 giờ.',
+    backToLogin: '← Quay lại đăng nhập',
+  },
+
+  resetPassword: {
+    verifying: 'Đang xác thực link...',
+    invalidTitle: 'Link không hợp lệ',
+    invalidDesc: 'Link đặt lại mật khẩu này không tồn tại hoặc đã được sử dụng.',
+    expiredTitle: 'Link đã hết hạn',
+    expiredDesc: 'Link đặt lại mật khẩu đã hết hạn sau 1 giờ. Vui lòng yêu cầu link mới.',
+    requestNew: 'Yêu cầu link mới',
+    title: 'Đặt lại mật khẩu',
+    accountLabel: 'Tài khoản',
+    newPasswordLabel: 'Mật khẩu mới',
+    newPasswordPlaceholder: 'Tối thiểu 6 ký tự',
+    confirmPasswordLabel: 'Xác nhận mật khẩu mới',
+    passwordRequired: 'Vui lòng nhập mật khẩu.',
+    passwordMinLength: 'Mật khẩu tối thiểu 6 ký tự.',
+    confirmRequired: 'Vui lòng xác nhận mật khẩu.',
+    passwordMismatch: 'Mật khẩu xác nhận không khớp.',
+    submit: 'Đặt lại mật khẩu',
+    saving: 'Đang lưu...',
+    doneTitle: 'Đặt lại mật khẩu thành công!',
+    doneDesc: 'Mật khẩu của bạn đã được thay đổi. Đăng nhập với mật khẩu mới.',
+    goToLogin: 'Đến trang đăng nhập',
+    genericError: 'Đặt lại mật khẩu thất bại. Vui lòng thử lại.',
   },
 
   account: {
@@ -110,6 +149,7 @@ export const vi: Translations = {
     saving: 'Đang lưu...',
     deleting: 'Đang xóa...',
     noData: 'Không có dữ liệu.',
+    back: 'Quay lại',
   },
 
   home: {
@@ -173,7 +213,6 @@ export const vi: Translations = {
 
   bankJob: {
     title: 'Chi tiết job',
-    back: '← Sao kê ngân hàng',
     manual: 'Thủ công',
     retryAll: '↺ Chạy lại toàn bộ',
     retrying: 'Đang chạy...',
@@ -710,9 +749,6 @@ export const vi: Translations = {
     editPanelTitle: 'Chỉnh sửa tài khoản',
     emailLabel: 'Email',
     displayNameLabel: 'Tên hiển thị',
-    newPasswordLabel: 'Mật khẩu mới',
-    newPasswordPlaceholder: 'Để trống nếu không đổi',
-    newPasswordMinLength: 'Mật khẩu tối thiểu 6 ký tự.',
     statusLabel: 'Trạng thái',
     activeCheckbox: 'Đang hoạt động',
     saveChanges: 'Lưu thay đổi',

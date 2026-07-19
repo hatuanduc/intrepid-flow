@@ -19,6 +19,7 @@ import RolePanel from '../roles/RolePanel';
 import { Spinner } from '../../../components/common/PageLoader';
 import Pagination from '../../../components/common/Pagination';
 import AccessDenied from '../../../components/common/AccessDenied';
+import BackButton from '../../../components/common/BackButton';
 import { useUser } from '../../../app/(dashboard)/user-context';
 import s from './UsersPage.module.css';
 
@@ -493,7 +494,10 @@ export default function UsersPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
-        <h1 className={s.pageTitle}>{t('users.pageTitle')}</h1>
+        <div className={s.pageHeaderLeft}>
+          <BackButton href="/settings" />
+          <h1 className={s.pageTitle}>{t('users.pageTitle')}</h1>
+        </div>
         {mainTab === 'users' && canCreateUser && (
           <button className={s.btnPrimary} onClick={() => setShowAdd(true)}>{t('users.addAccount')}</button>
         )}

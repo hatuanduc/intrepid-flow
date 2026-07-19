@@ -9,6 +9,7 @@ import { useHasPermission } from '../../../hooks/useHasPermission';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
 import AccessDenied from '../../../components/common/AccessDenied';
+import BackButton from '../../../components/common/BackButton';
 import RightPanel from '../../../components/common/RightPanel';
 import PageLoader from '../../../components/common/PageLoader';
 import s from './ConnectionsPage.module.css';
@@ -135,6 +136,7 @@ export default function ConnectionsPage() {
   return (
     <div className={s.page}>
       <div className={s.pageHeader}>
+        <BackButton href="/settings" />
         <h1 className={s.pageTitle}>{t('connections.title')}</h1>
       </div>
 

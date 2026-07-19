@@ -8,12 +8,6 @@ export class UpdateUserDto {
   @MinLength(1)
   name?: string;
 
-  @ApiPropertyOptional({ minLength: 6 })
-  @IsOptional()
-  @IsString()
-  @MinLength(6)
-  password?: string;
-
   @ApiPropertyOptional()
   @IsOptional()
   @IsBoolean()
