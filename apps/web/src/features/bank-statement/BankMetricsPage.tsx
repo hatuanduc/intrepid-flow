@@ -337,7 +337,7 @@ export default function BankMetricsPage() {
         else { credit += a.creditUsd; debit += a.debitUsd ?? 0; }
       }
     }
-    return { credit, debit, net: credit - debit, missing: [...missing] };
+    return { credit, debit, net: credit + debit, missing: [...missing] };
   }, [filteredGroups]);
 
   const chartData = useMemo(() => {
@@ -508,8 +508,8 @@ export default function BankMetricsPage() {
               </thead>
               <tbody>
                 {paginated.map(row => {
-                  const net    = row.totalCredit - row.totalDebit;
-                  const netUsd = row.creditUsd !== null ? row.creditUsd - (row.debitUsd ?? 0) : null;
+                  const net    = row.totalCredit + row.totalDebit;
+                  const netUsd = row.creditUsd !== null ? row.creditUsd + (row.debitUsd ?? 0) : null;
                   const showUsd = row.creditUsd !== null && row.currency !== 'USD';
                   return (
                     <tr key={`${row.accountId}__${row.currency}`} className={s.tr} onClick={() => openTxPanel(row)} style={{ cursor: 'pointer' }}>
@@ -534,12 +534,12 @@ export default function BankMetricsPage() {
                       </td>
                       <td className={`${s.td} ${s.tdRight}`}>{fmtNumber(row.txCount)}</td>
                       <td className={`${s.td} ${s.tdRight}`}>
-                        <span className={s.credit}>{fmtAmount(row.totalCredit)}</span>
-                        {showUsd && <div className={s.usdHint}>≈ ${fmtAmount(row.creditUsd!)}</div>}
+                        <span className={s.credit}>{row.totalCredit !== 0 ? fmtAmount(row.totalCredit) : '—'}</span>
+                        {showUsd && row.totalCredit !== 0 && <div className={s.usdHint}>≈ ${fmtAmount(row.creditUsd!)}</div>}
                       </td>
                       <td className={`${s.td} ${s.tdRight}`}>
-                        <span>{fmtAmount(row.totalDebit)}</span>
-                        {showUsd && <div className={s.usdHint}>≈ ${fmtAmount(row.debitUsd!)}</div>}
+                        <span>{row.totalDebit !== 0 ? fmtAmount(row.totalDebit) : '—'}</span>
+                        {showUsd && row.totalDebit !== 0 && <div className={s.usdHint}>≈ ${fmtAmount(row.debitUsd!)}</div>}
                       </td>
                       <td className={`${s.td} ${s.tdRight}`}>
                         <span style={{ color: net >= 0 ? '#059669' : '#df1b41' }}>

@@ -601,7 +601,7 @@ export default function BankJobDetailPage() {
                     <span className={s.summaryCurrency}>{acc.currency}</span>
                     <span className={s.summaryTxCount}>{acc.txCount} {t('bankJob.transactions')}</span>
                     <span className={s.summaryCredit}>+{acc.totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-                    <span className={s.summaryDebit}>{acc.totalDebit > 0 ? `-${acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}</span>
+                    <span className={s.summaryDebit}>{acc.totalDebit !== 0 ? acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</span>
                     {acc.downloadStatus === 'failed' ? (
                       <span className={s.summaryDownloadFailed} title={acc.downloadError ?? undefined}>
                         {t('bankJob.downloadFailed')}

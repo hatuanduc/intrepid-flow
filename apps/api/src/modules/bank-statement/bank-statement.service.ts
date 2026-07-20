@@ -290,7 +290,7 @@ export class BankStatementService implements OnModuleInit {
       summary: {
         totalCredit,
         totalDebit,
-        netFlow: totalCredit - totalDebit,
+        netFlow: totalCredit + totalDebit,
         txCount: daily.reduce((s, r) => s + r.txCount, 0),
         accountCount: new Set(daily.map(r => r.accountId)).size,
       },
