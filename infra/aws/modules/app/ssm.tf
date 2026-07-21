@@ -58,6 +58,14 @@ resource "aws_ssm_parameter" "api_base_url" {
   lifecycle { ignore_changes = [value] }
 }
 
+resource "aws_ssm_parameter" "hsbcnet_url" {
+  name        = "/intrepid/${var.env}/HSBCNET_URL"
+  description = "HSBCnet portal URL cho bank-sync worker — mặc định HSBCnet thật; dev có thể tạm đổi sang mock-hsbc khi cần test pipeline"
+  type        = "String"
+  value       = "https://www1.secure.hsbcnet.com"
+  lifecycle { ignore_changes = [value] }
+}
+
 resource "aws_ssm_parameter" "smtp_user" {
   name        = "/intrepid/${var.env}/SMTP_USER"
   description = "Gmail address used to send email"

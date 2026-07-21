@@ -54,7 +54,15 @@ resource "aws_iam_role_policy" "app_ssm_params" {
         "ssm:GetParameter",
         "ssm:GetParameters"
       ]
-      Resource = "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}/*"
+      Resource = [
+        # Cả path ARN (không /*) lẫn /* — GetParametersByPath authorize trên chính path,
+        # còn GetParameter authorize trên từng param bên trong
+        "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}",
+        "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/${var.env}/*",
+        # Cert Cloudflare Origin CA dùng chung (setup-nginx.sh pull) — xem shared/main.tf
+        "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/shared",
+        "arn:aws:ssm:${var.aws_region}:*:parameter/intrepid/shared/*",
+      ]
     }]
   })
 }

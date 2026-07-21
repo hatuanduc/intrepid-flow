@@ -81,6 +81,34 @@ resource "aws_route_table_association" "public" {
   route_table_id = aws_route_table.public.id
 }
 
+# ── SSM: Cloudflare Origin CA cert (dùng chung dev + prod) ──────────
+# Cert wildcard *.naronx.asia — nginx trên mỗi EC2 dùng làm SSL origin cert.
+# Nằm ở /intrepid/shared/ (KHÔNG phải /intrepid/{env}/) vì deploy.sh đổ toàn bộ
+# path env vào /app/.env — PEM nhiều dòng sẽ phá format .env.
+# setup-nginx.sh pull 2 params này và ghi ra /etc/ssl/cloudflare/.
+#
+# Set giá trị thật sau khi tạo cert trên Cloudflare (SSL/TLS → Origin Server):
+#   aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_ORIGIN_CERT" \
+#     --value file://origin.pem --type SecureString --overwrite --region ap-southeast-1
+#   aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_ORIGIN_KEY" \
+#     --value file://origin.key --type SecureString --overwrite --region ap-southeast-1
+
+resource "aws_ssm_parameter" "cloudflare_origin_cert" {
+  name        = "/intrepid/shared/CLOUDFLARE_ORIGIN_CERT"
+  description = "Cloudflare Origin CA certificate (PEM) — nginx SSL cho naronx.asia + *.naronx.asia"
+  type        = "SecureString"
+  value       = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "cloudflare_origin_key" {
+  name        = "/intrepid/shared/CLOUDFLARE_ORIGIN_KEY"
+  description = "Private key của Cloudflare Origin CA certificate"
+  type        = "SecureString"
+  value       = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
 # ── Outputs ──────────────────────────────────────────────────────────
 output "vpc_id" {
   description = "Shared VPC ID — pass to environments/prod and dev"

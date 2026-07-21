@@ -157,13 +157,17 @@ SMTP_USER=your@gmail.com
 SMTP_PASS=gmail_app_password
 SMTP_FROM=your@gmail.com
 
-APP_URL=https://dev.your-domain.com
-NEXT_PUBLIC_API_BASE_URL=https://api.dev.your-domain.com
+# Dev: dev-intrepid.naronx.asia / api-dev-intrepid.naronx.asia
+# Prod: intrepid.naronx.asia / api-intrepid.naronx.asia
+APP_URL=https://dev-intrepid.naronx.asia
+NEXT_PUBLIC_API_BASE_URL=https://api-dev-intrepid.naronx.asia
 
-# HSBCnet portal URL — bank-sync worker login vào đây để tải sao kê.
-# Dev EC2: trỏ về mock-hsbc của chính domain dev (test full pipeline mà không đụng ngân hàng thật).
-# Prod EC2: KHÔNG set biến này — worker tự dùng default https://www1.secure.hsbcnet.com (HSBCnet thật).
-HSBCNET_URL=https://dev.your-domain.com/mock-hsbc
+# HSBCNET_URL: mặc định HSBCnet thật (SSM param do terraform tạo sẵn giá trị này).
+# Dev khi cần test pipeline với mock thì tạm đổi:
+#   aws ssm put-parameter --name "/intrepid/dev/HSBCNET_URL" \
+#     --value "https://dev-intrepid.naronx.asia/mock-hsbc" --type String --overwrite --region ap-southeast-1
+# rồi deploy lại; test xong đổi về https://www1.secure.hsbcnet.com.
+HSBCNET_URL=https://www1.secure.hsbcnet.com
 EOF
 
 chmod 600 /app/.env
@@ -203,20 +207,66 @@ cd /app && bash infra/aws/scripts/deploy.sh
 **First deploy sẽ mất 10–20 phút** (Docker build api + web + worker với Playwright).
 Các lần sau dùng layer cache: ~2–5 phút.
 
-### Bước 5 — Nginx + SSL
+### Bước 5 — Nginx + SSL (Cloudflare)
+
+Traffic đi: **Browser → Cloudflare (proxy) → nginx :443 trên EC2 → app**. SSL giữa
+Cloudflare và EC2 dùng **Cloudflare Origin CA cert** (miễn phí, 15 năm, không cần renew)
+— **không dùng certbot**.
+
+Domains (subdomain 1 cấp — Universal SSL của Cloudflare chỉ cover `*.naronx.asia` 1 cấp):
+
+| Env | Web | API |
+|---|---|---|
+| dev | `dev-intrepid.naronx.asia` | `api-dev-intrepid.naronx.asia` |
+| prod | `intrepid.naronx.asia` | `api-intrepid.naronx.asia` |
+
+**5a. Tạo Origin CA cert và đẩy lên SSM (1 lần, dùng chung dev + prod):**
+Cloudflare dashboard → zone `naronx.asia` → SSL/TLS → Origin Server → Create Certificate
+→ hostnames: `naronx.asia`, `*.naronx.asia` → validity 15 years.
+Lưu cert/key ra 2 file tạm rồi đẩy lên SSM (từ máy local, xóa file tạm sau khi xong):
 
 ```bash
-ssh -i ~/.ssh/intrepid_rsa ubuntu@<ELASTIC_IP>
-
-# Copy Nginx config và sửa domain
-sudo cp /app/infra/aws/scripts/nginx.conf /etc/nginx/sites-available/intrepid
-sudo nano /etc/nginx/sites-available/intrepid   # điền domain thực tế
-sudo ln -s /etc/nginx/sites-available/intrepid /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-
-# SSL (domain phải trỏ về Elastic IP trước)
-sudo certbot --nginx -d dev.your-domain.com -d api.dev.your-domain.com
+aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_ORIGIN_CERT" \
+  --value file://origin.pem --type SecureString --overwrite --region ap-southeast-1
+aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_ORIGIN_KEY" \
+  --value file://origin.key --type SecureString --overwrite --region ap-southeast-1
+rm origin.pem origin.key
 ```
+
+(2 param này do `infra/aws/shared` terraform tạo sẵn PLACEHOLDER — nằm ở path `shared/`
+thay vì `{env}/` để không bị deploy.sh đổ PEM nhiều dòng vào `/app/.env`.)
+
+**5b. Chạy setup script trên EC2** (script tự pull cert từ SSM → `/etc/ssl/cloudflare/`,
+render config, reload nginx):
+
+```bash
+INSTANCE_ID=$(cd infra/aws/environments/dev && terraform output -raw instance_id)
+aws ssm start-session --target $INSTANCE_ID --region ap-southeast-1
+
+sudo bash /app/infra/aws/scripts/setup-nginx.sh dev    # hoặc: prod
+```
+
+**5c. Cloudflare DNS + SSL mode:**
+- DNS: thêm 2 record `A` (web + api domain) trỏ về Elastic IP, **Proxy status: Proxied** (mây cam)
+- SSL/TLS → Overview → mode: **Full (strict)**
+
+**5d. Cập nhật SSM params** (deploy.sh generate `/app/.env` từ đây mỗi lần deploy):
+
+```bash
+# dev
+aws ssm put-parameter --name "/intrepid/dev/APP_URL" \
+  --value "https://dev-intrepid.naronx.asia" --type String --overwrite --region ap-southeast-1
+aws ssm put-parameter --name "/intrepid/dev/NEXT_PUBLIC_API_BASE_URL" \
+  --value "https://api-dev-intrepid.naronx.asia" --type String --overwrite --region ap-southeast-1
+
+# prod
+aws ssm put-parameter --name "/intrepid/prod/APP_URL" \
+  --value "https://intrepid.naronx.asia" --type String --overwrite --region ap-southeast-1
+aws ssm put-parameter --name "/intrepid/prod/NEXT_PUBLIC_API_BASE_URL" \
+  --value "https://api-intrepid.naronx.asia" --type String --overwrite --region ap-southeast-1
+```
+
+Sau đó **deploy lại** để web build lại với `NEXT_PUBLIC_API_BASE_URL` mới (build arg, bake vào bundle).
 
 ### Bước 6 — GitHub: tạo Environments và Secrets
 
