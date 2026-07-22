@@ -176,6 +176,11 @@ export class SheetsService {
       return { skipped: true, reason: 'all_duplicates' };
     }
 
+    // HSBC's export lists rows newest-first; Sheets only ever appends at the bottom,
+    // so writing them as-is would zigzag the date column after each sync. Sort
+    // oldest-first to keep the sheet reading chronologically top-to-bottom.
+    newRows.sort((a, b) => a.postDate.getTime() - b.postDate.getTime());
+
     // ── Determine append start row (≥ 11) ─────────────────────────────────
     // Find the last occupied row in column D to know where to start appending.
     const lastOccupied =
@@ -210,8 +215,15 @@ export class SheetsService {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatDate(d: Date): string {
-  const dd = String(d.getDate()).padStart(2, '0');
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  return `${dd}/${mm}/${yyyy}`;
+  // postDate is built via Date.UTC(...) upstream (excel.service.ts parseDate) —
+  // must read it back with the UTC getters, or a non-UTC server timezone shifts
+  // the day by one.
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  // ISO 8601 (YYYY-MM-DD): Sheets parses this identically regardless of
+  // spreadsheet locale. DD/MM/YYYY is ambiguous — a US-locale (MM/DD/YYYY)
+  // spreadsheet silently reads day/month swapped, corrupting the date. The
+  // account sheet's own column format still renders the result as dd-MMM-yy.
+  return `${yyyy}-${mm}-${dd}`;
 }

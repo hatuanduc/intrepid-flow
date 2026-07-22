@@ -571,7 +571,7 @@ export default function BankMetricsPage() {
         title={txPanel?.row.accountName ?? ''}
         open={txPanel !== null}
         onClose={() => setTxPanel(null)}
-        width={640}
+        width={1200}
       >
         {txPanel && (
           <MetricsTxPanel
@@ -617,6 +617,14 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
       ) : (
         <div className={s.txTableWrap}>
           <table className={s.txTable}>
+            <colgroup>
+              <col style={{ width: '90px' }} />
+              {/* Narrative — không set width: table-layout fixed tự cho nó phần còn lại */}
+              <col />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '130px' }} />
+              <col style={{ width: '130px' }} />
+            </colgroup>
             <thead>
               <tr>
                 <th className={s.txTh}>Post date</th>

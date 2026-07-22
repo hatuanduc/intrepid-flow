@@ -135,17 +135,18 @@
 .txPanelLoading { display: flex; justify-content: center; padding: 40px 0; }
 
 .txTableWrap { overflow-x: auto; margin: 0 -24px; }
-.txTable { width: 100%; border-collapse: collapse; min-width: 500px; }
+/* table-layout: fixed + <colgroup> (JSX) — cột Narrative luôn được phần rộng còn lại. */
+.txTable { width: 100%; border-collapse: collapse; min-width: 600px; table-layout: fixed; }
 .txTh {
   font-size: 11px; font-weight: 600; color: var(--color-secondary);
   padding: 8px 12px; background: var(--bg-table-head);
   border-bottom: 1px solid var(--color-border); text-align: left; white-space: nowrap;
 }
-.txTd { font-size: 12px; color: var(--color-secondary); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; }
-.txTdNarrative { font-size: 12px; color: var(--color-secondary); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); max-width: 180px; vertical-align: top; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.txTdMono { font-size: 11px; font-family: monospace; color: var(--color-muted); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; }
-.txTdCredit { font-size: 12px; font-weight: 600; color: #059669; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; }
-.txTdDebit  { font-size: 12px; font-weight: 600; color: #df1b41; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; }
+.txTd { font-size: 12px; color: var(--color-secondary); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+.txTdNarrative { font-size: 12px; color: var(--color-secondary); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); vertical-align: top; white-space: normal; word-break: break-word; }
+.txTdMono { font-size: 11px; font-family: monospace; color: var(--color-muted); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
+.txTdCredit { font-size: 12px; font-weight: 600; color: #059669; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.txTdDebit  { font-size: 12px; font-weight: 600; color: #df1b41; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 .txRow:last-child .txTd,
 .txRow:last-child .txTdNarrative,
 .txRow:last-child .txTdMono,

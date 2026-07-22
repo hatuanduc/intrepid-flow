@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { ACCOUNT_TRANSACTIONS, parseDMY } from '../../../mock-hsbc/_data';
+import { ACCOUNT_TRANSACTIONS, parseDMY, daysAgoDMY } from '../../../mock-hsbc/_data';
 
 // Column order matches real HSBC export exactly
 const HEADERS = [
@@ -60,13 +60,13 @@ export async function GET(request: Request) {
     'Active',
     'Current account',
     closingBalance,
-    fromParam || '28/06/2026',
+    fromParam || daysAgoDMY(2),
     closingBalance,
-    fromParam || '28/06/2026',
+    fromParam || daysAgoDMY(2),
     closingBalance,
-    `${toParam || '30/06/2026'} 08:00`,
+    `${toParam || daysAgoDMY(0)} 08:00`,
     closingBalance,
-    `${toParam || '30/06/2026'} 08:00`,
+    `${toParam || daysAgoDMY(0)} 08:00`,
   ];
 
   const wb = new ExcelJS.Workbook();

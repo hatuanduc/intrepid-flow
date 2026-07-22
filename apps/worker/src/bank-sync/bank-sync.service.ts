@@ -391,7 +391,7 @@ export class BankSyncService {
         if (excelBuffer === null) {
           await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
-          await this.markSyncedThrough(account.id, dateTo);
+          if (dateRangeSettled) await this.markSyncedThrough(account.id, dateTo);
           continue;
         }
 
@@ -413,7 +413,7 @@ export class BankSyncService {
 
         if (rows.length === 0) {
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', rowsDownloaded: 0, sheetsSyncStatus: 'no_data' });
-          await this.markSyncedThrough(account.id, dateTo);
+          if (dateRangeSettled) await this.markSyncedThrough(account.id, dateTo);
           continue;
         }
 
@@ -425,7 +425,7 @@ export class BankSyncService {
           rowsInserted: inserted,
           rowsDuplicate: duplicates,
         });
-        await this.markSyncedThrough(account.id, dateTo);
+        if (dateRangeSettled) await this.markSyncedThrough(account.id, dateTo);
 
         // Include the account even with 0 new rows if it has never been synced to
         // GSheets successfully — otherwise a fixed config/retry would never get a
@@ -721,8 +721,11 @@ export class BankSyncService {
   }
 
   // Only called after a confirmed-complete fetch (data stored, or genuinely no
-  // transactions in range) — never on a download/validation failure, since we don't
-  // want a future run to skip a range we never actually got a confirmed result for.
+  // transactions in range), and only by callers that already checked dateRangeSettled —
+  // never on a download/validation failure, and never for a range still containing
+  // today (mode 'today' or an override reaching today), since that day's data can keep
+  // changing until it's over. Recording it anyway would make tomorrow's "already synced,
+  // skip" check (see dateRangeSettled above) trust a fetch that was only ever provisional.
   private async markSyncedThrough(accountId: number, to: Date): Promise<void> {
     await this.prisma.bankAccount.update({ where: { id: accountId }, data: { lastSyncedTo: to } });
   }

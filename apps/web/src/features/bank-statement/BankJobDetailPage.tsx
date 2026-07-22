@@ -641,7 +641,7 @@ export default function BankJobDetailPage() {
         title={txPanel?.acc.accountName ?? ''}
         open={txPanel !== null}
         onClose={() => setTxPanel(null)}
-        width={640}
+        width={1200}
       >
         {txPanel && (
           <TxDetailPanel
@@ -703,6 +703,15 @@ function TxDetailPanel({ acc, rows, loading }: {
       ) : (
         <div className={s.txTableWrap}>
           <table className={s.txTable}>
+            <colgroup>
+              <col style={{ width: '90px' }} />
+              {/* Narrative — không set width: table-layout fixed tự cho nó phần còn lại */}
+              <col />
+              <col style={{ width: '150px' }} />
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '120px' }} />
+              <col style={{ width: '140px' }} />
+            </colgroup>
             <thead>
               <tr>
                 <th className={s.txTh}>{t('bankJob.postDate')}</th>
