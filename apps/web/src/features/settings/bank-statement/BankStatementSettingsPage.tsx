@@ -24,6 +24,7 @@ import s from './BankStatementSettingsPage.module.css';
 type Tab = 'schedule' | 'connect' | 'accounts' | 'gsheets';
 
 export default function BankStatementSettingsPage() {
+  const canView = useHasPermission('bank_statement:view');
   const canConfig = useHasPermission('bank_statement:config');
   const toast = useToast();
   const { t } = useT();
@@ -55,10 +56,10 @@ export default function BankStatementSettingsPage() {
 
   useEffect(() => {
     // Deferred a tick so load()'s internal setState isn't synchronous with the effect itself.
-    if (canConfig) Promise.resolve().then(() => load());
-  }, [canConfig]);
+    if (canView) Promise.resolve().then(() => load());
+  }, [canView]);
 
-  if (!canConfig) return <AccessDenied />;
+  if (!canView) return <AccessDenied />;
 
   if (loading) return <PageLoader />;
 
@@ -89,10 +90,10 @@ export default function BankStatementSettingsPage() {
       </div>
 
       {tab === 'schedule' && settings && (
-        <ScheduleTab settings={settings} onSaved={(s) => { setSettings(s); toast.success(t('bankSettings.scheduleSaved')); }} />
+        <ScheduleTab settings={settings} canConfig={canConfig} onSaved={(s) => { setSettings(s); toast.success(t('bankSettings.scheduleSaved')); }} />
       )}
       {tab === 'connect' && settings && (
-        <ConnectTab settings={settings} onSaved={(s) => { setSettings(s); toast.success(t('bankSettings.connectSaved')); }} />
+        <ConnectTab settings={settings} canConfig={canConfig} onSaved={(s) => { setSettings(s); toast.success(t('bankSettings.connectSaved')); }} />
       )}
       {tab === 'accounts' && (
         <AccountsTab accountNames={accountNames} bankAccounts={bankAccounts} />
@@ -102,6 +103,7 @@ export default function BankStatementSettingsPage() {
           settings={settings}
           gsheets={gsheets}
           accountNames={accountNames}
+          canConfig={canConfig}
           onSaved={(s) => { if (s) setSettings(s); else load(); }}
           toast={toast}
         />
@@ -134,7 +136,7 @@ function formatRunDate(d: Date, lang: string) {
   return `${dayName}, ${day}/${month}/${d.getFullYear()}`;
 }
 
-function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved: (s: BankJobSettings) => void }) {
+function ScheduleTab({ settings, canConfig, onSaved }: { settings: BankJobSettings; canConfig: boolean; onSaved: (s: BankJobSettings) => void }) {
   const { t, lang } = useT();
   const router = useRouter();
   const toast = useToast();
@@ -207,7 +209,8 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
           </div>
           <button
             className={`${s.toggle} ${isScheduled ? s.toggleOn : ''}`}
-            onClick={() => setIsScheduled(v => !v)}
+            onClick={() => canConfig && setIsScheduled(v => !v)}
+            disabled={!canConfig}
           />
         </div>
 
@@ -218,13 +221,13 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
             <div className={s.timePicker}>
               <span className={s.timeLabel}>{t('bankSettings.runAt')}</span>
               <div className={s.timeSelects}>
-                <select className={s.timeSelect} value={hour} onChange={e => setHour(parseInt(e.target.value))}>
+                <select className={s.timeSelect} value={hour} onChange={e => setHour(parseInt(e.target.value))} disabled={!canConfig}>
                   {Array.from({ length: 24 }, (_, i) => (
                     <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
                   ))}
                 </select>
                 <span className={s.timeSep}>:</span>
-                <select className={s.timeSelect} value={minute} onChange={e => setMinute(parseInt(e.target.value))}>
+                <select className={s.timeSelect} value={minute} onChange={e => setMinute(parseInt(e.target.value))} disabled={!canConfig}>
                   {MINUTE_OPTIONS.map(m => (
                     <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
                   ))}
@@ -270,6 +273,7 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
             className={s.timeSelect}
             value={syncDateMode}
             onChange={e => setSyncDateMode(e.target.value as SyncDateMode)}
+            disabled={!canConfig}
           >
             {(Object.entries(syncDateModeLabels) as [SyncDateMode, string][]).map(([v, label]) => (
               <option key={v} value={v}>{label}</option>
@@ -285,6 +289,7 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
                 className={s.customDaysInput}
                 value={syncCustomDays}
                 onChange={e => setSyncCustomDays(Math.max(1, parseInt(e.target.value) || 1))}
+                disabled={!canConfig}
               />
               <span className={s.scheduleDesc}>{t('bankSettings.days')}</span>
             </>
@@ -330,18 +335,20 @@ function ScheduleTab({ settings, onSaved }: { settings: BankJobSettings; onSaved
         </div>
       )}
 
-      <div>
-        <button className={s.btnPrimary} onClick={save} disabled={saving}>
-          {saving ? t('bankSettings.saving') : t('bankSettings.saveSettings')}
-        </button>
-      </div>
+      {canConfig && (
+        <div>
+          <button className={s.btnPrimary} onClick={save} disabled={saving}>
+            {saving ? t('bankSettings.saving') : t('bankSettings.saveSettings')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Tab: Connection ──────────────────────────────────────────────────────────
 
-function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved: (s: BankJobSettings) => void }) {
+function ConnectTab({ settings, canConfig, onSaved }: { settings: BankJobSettings; canConfig: boolean; onSaved: (s: BankJobSettings) => void }) {
   const { t } = useT();
   const [editing, setEditing] = useState(false);
   const [username, setUsername] = useState(settings.hsbcnetUsername ?? '');
@@ -373,9 +380,11 @@ function ConnectTab({ settings, onSaved }: { settings: BankJobSettings; onSaved:
         <div className={s.cardHead}>
           <span className={s.cardTitle}>HSBCnet</span>
           {!editing ? (
-            <button className={s.btnEdit} onClick={startEdit}>
-              <EditIcon /> {t('common.edit')}
-            </button>
+            canConfig && (
+              <button className={s.btnEdit} onClick={startEdit}>
+                <EditIcon /> {t('common.edit')}
+              </button>
+            )
           ) : (
             <div className={s.editActions}>
               <button className={s.btnCancel} type="button" onClick={cancelEdit} disabled={saving}>{t('common.cancel')}</button>
@@ -509,11 +518,12 @@ function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccount
 // ─── Tab: Google Sheets ───────────────────────────────────────────────────────
 
 function GsheetsTab({
-  settings, gsheets, accountNames, onSaved, toast,
+  settings, gsheets, accountNames, canConfig, onSaved, toast,
 }: {
   settings: BankJobSettings;
   gsheets: BankGsheetConfig[];
   accountNames: BankAccountNameItem[];
+  canConfig: boolean;
   onSaved: (s?: BankJobSettings) => void;
   toast: ReturnType<typeof useToast>;
 }) {
@@ -538,6 +548,7 @@ function GsheetsTab({
             accountCode={an.accountCode}
             countryName={an.name}
             existing={configMap[an.accountCode] ?? null}
+            canConfig={canConfig}
             toast={toast}
           />
         ))}
@@ -545,16 +556,17 @@ function GsheetsTab({
 
       <div className={s.globalConfigSection}>
         <div className={s.globalConfigDivider} />
-        <GlobalGsheetConfig settings={settings} onSaved={onSaved} toast={toast} />
+        <GlobalGsheetConfig settings={settings} canConfig={canConfig} onSaved={onSaved} toast={toast} />
       </div>
     </div>
   );
 }
 
 function GlobalGsheetConfig({
-  settings, onSaved, toast,
+  settings, canConfig, onSaved, toast,
 }: {
   settings: BankJobSettings;
+  canConfig: boolean;
   onSaved: (s: BankJobSettings) => void;
   toast: ReturnType<typeof useToast>;
 }) {
@@ -614,6 +626,7 @@ function GlobalGsheetConfig({
             onChange={e => { setTemplateSpreadsheetId(e.target.value); setIdError(null); }}
             onBlur={e => setTemplateSpreadsheetId(extractSpreadsheetId(e.target.value))}
             placeholder={t('bankSettings.spreadsheetIdPlaceholder')}
+            disabled={!canConfig}
           />
           {idError && <span className={s.fieldError}>{idError}</span>}
         </div>
@@ -627,6 +640,7 @@ function GlobalGsheetConfig({
             value={templateSheet}
             onChange={e => setTemplateSheet(e.target.value)}
             placeholder="template"
+            disabled={!canConfig}
           />
         </div>
       </div>
@@ -635,21 +649,24 @@ function GlobalGsheetConfig({
         <ServiceAccountShareInfo accessLevel="editor" />
       </div>
 
-      <div className={s.actionRow} style={{ marginTop: 12 }}>
-        <button className={s.btnPrimary} onClick={save} disabled={saving}>
-          {saving ? t('bankSettings.saving') : t('bankSettings.saveGlobalConfig')}
-        </button>
-      </div>
+      {canConfig && (
+        <div className={s.actionRow} style={{ marginTop: 12 }}>
+          <button className={s.btnPrimary} onClick={save} disabled={saving}>
+            {saving ? t('bankSettings.saving') : t('bankSettings.saveGlobalConfig')}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 function GsheetCountryCard({
-  accountCode, countryName, existing, toast,
+  accountCode, countryName, existing, canConfig, toast,
 }: {
   accountCode: string;
   countryName: string;
   existing: BankGsheetConfig | null;
+  canConfig: boolean;
   onSaved?: () => void;
   toast: ReturnType<typeof useToast>;
 }) {
@@ -686,6 +703,7 @@ function GsheetCountryCard({
   }
 
   async function toggleActive() {
+    if (!canConfig) return;
     // Enable/disable works independently — card just opens/closes to match.
     const next = !isActive;
     setIsActive(next);
@@ -701,6 +719,7 @@ function GsheetCountryCard({
   }
 
   function startEdit() {
+    if (!canConfig) return;
     setExpanded(true); setEditing(true);
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -740,6 +759,7 @@ function GsheetCountryCard({
             className={`${s.toggle} ${isActive ? s.toggleOn : ''}`}
             onClick={e => { e.stopPropagation(); void toggleActive(); }}
             title={isActive ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
+            disabled={!canConfig}
           />
         </div>
       </div>
@@ -766,13 +786,15 @@ function GsheetCountryCard({
                 {saving && <span className={s.fieldHint}>{t('bankSettings.saving')}</span>}
               </>
             ) : (
-              <div className={s.spreadsheetDisplay} onClick={startEdit}>
+              <div className={s.spreadsheetDisplay} onClick={canConfig ? startEdit : undefined} style={!canConfig ? { cursor: 'default' } : undefined}>
                 <span className={s.spreadsheetText}>
                   {displayId || <span className={s.spreadsheetPlaceholder}>{t('bankSettings.spreadsheetNotConfigured')}</span>}
                 </span>
-                <svg className={s.spreadsheetEditIcon} width="12" height="12" viewBox="0 0 13 13" fill="none">
-                  <path d="M9.2 1.8l2 2L4 11H2v-2L9.2 1.8z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                {canConfig && (
+                  <svg className={s.spreadsheetEditIcon} width="12" height="12" viewBox="0 0 13 13" fill="none">
+                    <path d="M9.2 1.8l2 2L4 11H2v-2L9.2 1.8z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
               </div>
             )}
           </div>

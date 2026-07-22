@@ -199,8 +199,12 @@ export class AuthService {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, ...userWithAuthArgs });
     if (!user) return null;
     const roleRows = user.roles ?? [];
+    const directPermissions = user.permissions ?? [];
     const permissions = Array.from(
-      new Set(roleRows.flatMap((r) => r.role.permissions.map((rp) => rp.permission.key))),
+      new Set([
+        ...roleRows.flatMap((r) => r.role.permissions.map((rp) => rp.permission.key)),
+        ...directPermissions.map((up) => up.permission.key),
+      ]),
     );
     return {
       user: {

@@ -353,13 +353,22 @@ export class BankSyncService {
         // lastSyncedTo covering it means nothing has or will change. Skip re-driving
         // the whole Playwright flow (account switch, date filter, export) for nothing.
         //
+        // Only safe for a single-day request (dateFrom === dateTo): lastSyncedTo only
+        // proves THAT one day was checked before, not any earlier days. A multi-day
+        // range (wider lookback, manual backfill) must always be re-attempted even if
+        // dateTo <= lastSyncedTo — otherwise a prior single-day "yesterday" run can
+        // permanently mask a real gap in earlier days from ever being (re-)fetched.
+        // Re-fetching already-covered days here is harmless — storeTransactions
+        // dedups by dataHash, so already-stored rows just come back as duplicates.
+        //
         // lastSyncedTo is a per-account field, not scoped to this job — it can get
         // set by a DIFFERENT job's success (e.g. a later scheduled run) after THIS
         // job's own row for this account was left 'failed' from an earlier attempt.
         // Without upserting here, this job's own stats would show that stale
         // 'failed' status forever, even though the account is confirmed fine —
         // explicitly mark it "completed, already up to date" for this job's record.
-        if (dateRangeSettled && account.lastSyncedTo && account.lastSyncedTo.getTime() >= dateTo.getTime()) {
+        const isSingleDayRequest = dateFrom.getTime() === dateTo.getTime();
+        if (isSingleDayRequest && dateRangeSettled && account.lastSyncedTo && account.lastSyncedTo.getTime() >= dateTo.getTime()) {
           await this.log(jobId, `  → ${account.accountNumber}: already synced through ${formatDateLabel(account.lastSyncedTo)}, skipping.`, 'bank_sync');
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
           continue;

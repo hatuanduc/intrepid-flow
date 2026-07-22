@@ -20,7 +20,6 @@ function formatUSD(n: number): string {
 export default function ReportArPage() {
   const { t } = useT();
   const canView   = useHasPermission('report_ar:view');
-  const canConfig = useHasPermission('report_ar:config');
   const [tab, setTab] = useState<Tab>('summary');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +78,7 @@ export default function ReportArPage() {
             </svg>
             {loading ? t('reportAr.refreshing') : t('reportAr.refresh')}
           </button>
-          {canConfig && (
+          {canView && (
             <a href="/settings/job/report-ar" className={s.settingsLink}>
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
                 <path d="M5.8 1.5h2.4l.4 1.6a5 5 0 011.1.65l1.55-.55 1.2 2.08-1.2 1.06a5 5 0 010 1.28l1.2 1.06-1.2 2.08-1.55-.55a5 5 0 01-1.1.65l-.4 1.62H5.8l-.4-1.62a5 5 0 01-1.1-.65l-1.55.55L1.55 8.7l1.2-1.06a5 5 0 010-1.28L1.55 5.3l1.2-2.08 1.55.55a5 5 0 011.1-.65L5.8 1.5z" stroke="currentColor" strokeWidth="1.2"/>

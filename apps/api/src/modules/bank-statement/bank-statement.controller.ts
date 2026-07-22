@@ -25,7 +25,7 @@ export class BankStatementController {
   // ─── Schedule Settings ───────────────────────────────────────────────────────
 
   @Get('settings')
-  @HasPermission('bank_statement:config')
+  @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Lấy cài đặt lịch trình' })
   getSettings() {
     return this.service.getSettings();
@@ -50,7 +50,7 @@ export class BankStatementController {
   // ─── Download Template ───────────────────────────────────────────────────────
 
   @Get('settings/template')
-  @HasPermission('bank_statement:config')
+  @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Lấy template header download' })
   getTemplate() {
     return this.service.getTemplate();
@@ -66,7 +66,7 @@ export class BankStatementController {
   // ─── GSheet Configs ──────────────────────────────────────────────────────────
 
   @Get('settings/gsheets')
-  @HasPermission('bank_statement:config')
+  @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Danh sách cấu hình Google Sheets' })
   listGsheets() {
     return this.service.listGsheetConfigs();

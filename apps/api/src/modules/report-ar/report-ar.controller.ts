@@ -17,7 +17,7 @@ export class ReportArController {
   // ─── Settings ─────────────────────────────────────────────────────────────
 
   @Get('settings')
-  @HasPermission('report_ar:config')
+  @HasPermission('report_ar:view')
   @ApiOperation({ summary: 'Lấy cài đặt AR Report' })
   getSettings() {
     return this.service.getSettings();
@@ -33,7 +33,7 @@ export class ReportArController {
   // ─── GSheet Configs ────────────────────────────────────────────────────────
 
   @Get('settings/gsheets')
-  @HasPermission('report_ar:config')
+  @HasPermission('report_ar:view')
   @ApiOperation({ summary: 'Danh sách gsheet configs' })
   listGsheets() {
     return this.service.listGsheets();

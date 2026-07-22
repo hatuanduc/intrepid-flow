@@ -20,6 +20,7 @@ type Tab = 'connect' | 'gsheets';
 type T = ReturnType<typeof useT>['t'];
 
 export default function ReportArSettingsPage() {
+  const canView = useHasPermission('report_ar:view');
   const canConfig = useHasPermission('report_ar:config');
   const toast = useToast();
   const { t } = useT();
@@ -39,10 +40,10 @@ export default function ReportArSettingsPage() {
 
   useEffect(() => {
     // Deferred a tick so load()'s internal setState isn't synchronous with the effect itself.
-    if (canConfig) Promise.resolve().then(() => load());
-  }, [canConfig]);
+    if (canView) Promise.resolve().then(() => load());
+  }, [canView]);
 
-  if (!canConfig) return <AccessDenied />;
+  if (!canView) return <AccessDenied />;
   if (loading) return <PageLoader />;
 
   return (
@@ -71,6 +72,7 @@ export default function ReportArSettingsPage() {
       {tab === 'gsheets' && (
         <GsheetsTab
           gsheets={gsheets}
+          canConfig={canConfig}
           onSaved={() => load()}
           toast={toast}
           t={t}
@@ -94,11 +96,13 @@ function ConnectTab() {
 
 function GsheetsTab({
   gsheets,
+  canConfig,
   onSaved,
   toast,
   t,
 }: {
   gsheets: ArGsheetConfig[];
+  canConfig: boolean;
   onSaved: () => void;
   toast: ReturnType<typeof useToast>;
   t: T;
@@ -119,7 +123,7 @@ function GsheetsTab({
           <div className={s.sectionTitle}>{t('reportArSettings.spreadsheetByCountryTitle')}</div>
           <div className={s.sectionDesc}>{t('reportArSettings.spreadsheetByCountryDesc')}</div>
         </div>
-        <button className={s.btnPrimary} onClick={openNew}>{t('reportArSettings.addBtn')}</button>
+        {canConfig && <button className={s.btnPrimary} onClick={openNew}>{t('reportArSettings.addBtn')}</button>}
       </div>
 
       {gsheets.length === 0 && !addingNew ? (
@@ -140,14 +144,14 @@ function GsheetsTab({
                   ? <span className={s.badgeActive}>{t('reportArSettings.active')}</span>
                   : <span className={s.badgeInactive}>{t('reportArSettings.inactive')}</span>
                 }
-                <button className={s.editBtn} onClick={() => openEdit(g.countryCode)}>{t('reportArSettings.edit')}</button>
+                {canConfig && <button className={s.editBtn} onClick={() => openEdit(g.countryCode)}>{t('reportArSettings.edit')}</button>}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {(addingNew || editingCode) && (
+      {canConfig && (addingNew || editingCode) && (
         <GsheetForm
           initial={editing}
           onClose={closeForm}
