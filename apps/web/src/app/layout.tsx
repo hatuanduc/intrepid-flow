@@ -29,9 +29,6 @@ export default function RootLayout({
 }>) {
   const apiBaseUrl =
     (process.env.NEXT_PUBLIC_API_BASE_URL || process.env.API_BASE_URL || 'http://localhost:4000').toString().trim();
-  // Google OAuth Web client ID — empty string hides the Google sign-in button entirely.
-  const googleClientId =
-    (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '').toString().trim();
 
   return (
     <html lang="vi" className={`${geistSans.variable} ${geistMono.variable}`}>
@@ -40,7 +37,7 @@ export default function RootLayout({
           id="intrepid-config"
           strategy="afterInteractive"
           dangerouslySetInnerHTML={{
-            __html: `window.__INTREPID__ = { apiBaseUrl: ${JSON.stringify(apiBaseUrl)}, googleClientId: ${JSON.stringify(googleClientId)} };`,
+            __html: `window.__INTREPID__ = { apiBaseUrl: ${JSON.stringify(apiBaseUrl)} };`,
           }}
         />
         <Providers>{children}</Providers>

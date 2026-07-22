@@ -4,7 +4,6 @@ declare global {
   interface Window {
     __INTREPID__?: {
       apiBaseUrl?: string;
-      googleClientId?: string;
     };
     // Minimal Google Identity Services surface — only what the login page uses.
     google?: {
@@ -14,6 +13,7 @@ declare global {
             client_id: string;
             callback: (response: { credential: string }) => void;
             auto_select?: boolean;
+            login_hint?: string;
           }): void;
           renderButton(
             parent: HTMLElement,

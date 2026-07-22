@@ -19,7 +19,7 @@ class ChangeMyPasswordDto {
   currentPassword!: string;
 
   @ApiProperty()
-  @IsString() @MinLength(6)
+  @IsString() @MinLength(8)
   newPassword!: string;
 }
 
@@ -29,7 +29,7 @@ class SetPasswordDto {
   token!: string;
 
   @ApiProperty()
-  @IsString() @MinLength(6)
+  @IsString() @MinLength(8)
   password!: string;
 
   @ApiProperty({ required: false })
@@ -49,7 +49,7 @@ class ResetPasswordDto {
   token!: string;
 
   @ApiProperty()
-  @IsString() @MinLength(6)
+  @IsString() @MinLength(8)
   password!: string;
 }
 

@@ -11,6 +11,13 @@ import { useT } from '../../lib/i18n';
 
 import styles from './page.module.css';
 
+// NEXT_PUBLIC_* được Next.js inline thẳng vào bundle lúc build — cùng 1 giá trị
+// trên cả server-render lẫn client, nên đọc trực tiếp ở top-level là an toàn (khác
+// với localStorage/window — xem quy tắc effects ở ui-reference.md §12). Nhờ vậy nút
+// Google có mặt ngay từ lần render đầu tiên, không "giật" thêm vào sau như khi phải
+// đợi effect đọc window.__INTREPID__.
+const GOOGLE_CLIENT_ID = (process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || '').trim();
+
 export default function LoginPage() {
   const router = useRouter();
   const { t, lang } = useT();
@@ -20,8 +27,6 @@ export default function LoginPage() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  // '' khi chưa/không cấu hình — đọc trong effect để tránh hydration mismatch
-  const [googleClientId, setGoogleClientId] = useState('');
   const [gisFailed, setGisFailed] = useState(false);
   const googleBtnRef = useRef<HTMLDivElement>(null);
 
@@ -32,7 +37,6 @@ export default function LoginPage() {
   useEffect(() => {
     const token = getToken();
     if (token) router.replace('/');
-    Promise.resolve().then(() => setGoogleClientId(window.__INTREPID__?.googleClientId ?? ''));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -77,10 +81,9 @@ export default function LoginPage() {
   }
 
   function initGoogle() {
-    const clientId = window.__INTREPID__?.googleClientId;
-    if (!clientId || !window.google || !googleBtnRef.current) return;
+    if (!GOOGLE_CLIENT_ID || !window.google || !googleBtnRef.current) return;
     window.google.accounts.id.initialize({
-      client_id: clientId,
+      client_id: GOOGLE_CLIENT_ID,
       callback: (res) => void handleGoogleCredential(res.credential),
       auto_select: false, // button-only — không dùng One Tap prompt
     });
@@ -189,12 +192,17 @@ export default function LoginPage() {
               {t('login.submit')}
             </button>
 
-            {googleClientId && !gisFailed && (
+            {GOOGLE_CLIENT_ID && !gisFailed && (
               <>
                 <div className={styles.divider}><span>{t('login.orDivider')}</span></div>
                 <div ref={googleBtnRef} className={styles.googleWrap} />
                 <Script
-                  src="https://accounts.google.com/gsi/client"
+                  // key={lang}: đổi ngôn ngữ app → remount script → GIS render lại nút
+                  // đúng ngôn ngữ. `hl` trên URL script mới là cách GIS thật sự tôn trọng —
+                  // tham số `locale` truyền cho renderButton() không đáng tin cậy, GIS hay
+                  // tự lấy theo ngôn ngữ trình duyệt/OS thay vì theo giá trị này.
+                  key={lang}
+                  src={`https://accounts.google.com/gsi/client?hl=${lang}`}
                   strategy="afterInteractive"
                   onReady={initGoogle}
                   onError={() => setGisFailed(true)}

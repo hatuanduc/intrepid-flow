@@ -90,7 +90,7 @@ export default function AccountPage() {
     const errs: Record<string, string> = {};
     if (!currentPw) errs.currentPw = t('account.currentPasswordRequired');
     if (!newPw) errs.newPw = t('account.newPasswordRequired');
-    else if (newPw.length < 6) errs.newPw = t('account.newPasswordMinLength');
+    else if (newPw.length < 8) errs.newPw = t('account.newPasswordMinLength');
     if (!confirmPw) errs.confirmPw = t('account.confirmPasswordRequired');
     else if (newPw && confirmPw !== newPw) errs.confirmPw = t('account.passwordMismatch');
     if (Object.keys(errs).length > 0) { setPwErrors(errs); return; }

@@ -294,7 +294,7 @@ function validate() {
   if (!email.trim()) errs.email = 'Vui lòng nhập email.';
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = 'Email không hợp lệ.';
   if (!password) errs.password = 'Vui lòng nhập mật khẩu.';
-  else if (password.length < 6) errs.password = 'Mật khẩu tối thiểu 6 ký tự.';
+  else if (password.length < 8) errs.password = 'Mật khẩu tối thiểu 8 ký tự.';
   return errs;
 }
 
@@ -326,7 +326,7 @@ CSS cần có trong module (thêm vào `.module.css` của form):
 **Fields cần validate:**
 - `required`: thông báo "Vui lòng nhập..."
 - `email`: check format với regex
-- `password` (create): min 6 ký tự
+- `password` (create): min 8 ký tự
 - `password` (edit): chỉ check nếu có nhập
 - `roleIds` / select list: ít nhất 1 item
 

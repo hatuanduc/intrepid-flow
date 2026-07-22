@@ -35,7 +35,7 @@ export default function ResetPasswordPage() {
   function validate() {
     const errs: Record<string, string> = {};
     if (!password) errs.password = t('resetPassword.passwordRequired');
-    else if (password.length < 6) errs.password = t('resetPassword.passwordMinLength');
+    else if (password.length < 8) errs.password = t('resetPassword.passwordMinLength');
     if (!confirm) errs.confirm = t('resetPassword.confirmRequired');
     else if (password && confirm !== password) errs.confirm = t('resetPassword.passwordMismatch');
     return errs;
