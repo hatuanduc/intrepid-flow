@@ -92,6 +92,14 @@ export async function login(email: string, password: string) {
   });
 }
 
+export async function googleLogin(credential: string) {
+  return request<LoginResponse>('/auth/google', {
+    method: 'POST',
+    body: JSON.stringify({ credential }),
+    skipAuthRedirect: true,
+  });
+}
+
 export async function me() {
   return request<{
     user: {
@@ -631,7 +639,8 @@ export async function verifyInviteToken(token: string) {
 }
 
 export async function setPasswordWithToken(token: string, password: string, name?: string) {
-  return request<{ ok: boolean }>('/auth/set-password', {
+  // Trả kèm session token — user vừa kích hoạt được auto-login luôn.
+  return request<{ ok: boolean } & LoginResponse>('/auth/set-password', {
     method: 'POST',
     body: JSON.stringify({ token, password, name }),
   });

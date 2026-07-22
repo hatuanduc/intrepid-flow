@@ -4,6 +4,7 @@ import { IsString, IsOptional, IsEmail, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { LoginResponseDto, AuthUserDto } from './dto/auth-response.dto';
 
 class UpdateMyProfileDto {
@@ -66,6 +67,13 @@ export class AuthController {
     return result;
   }
 
+  @Post('google')
+  @ApiOperation({ summary: 'Đăng nhập bằng Google (GIS ID token) — chỉ user đã được mời' })
+  @ApiResponse({ status: 201, type: LoginResponseDto })
+  async googleLogin(@Body() body: GoogleLoginDto) {
+    return this.auth.googleLogin(body.credential);
+  }
+
   @Get('me')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
@@ -100,7 +108,8 @@ export class AuthController {
   }
 
   @Post('set-password')
-  @ApiOperation({ summary: 'Set password with invite token (public)' })
+  @ApiOperation({ summary: 'Set password with invite token (public) — trả kèm session token để auto-login' })
+  @ApiResponse({ status: 201, type: LoginResponseDto })
   async setPassword(@Body() body: SetPasswordDto) {
     return this.auth.setPasswordWithToken(body.token, body.password, body.name);
   }

@@ -1,4 +1,11 @@
-import { Injectable, NotFoundException, UnauthorizedException, UnprocessableEntityException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { OAuth2Client } from 'google-auth-library';
 import { PrismaService } from '../../prisma/prisma.service';
 import { MailService } from '../mail/mail.service';
 import bcrypt from 'bcryptjs';
@@ -18,10 +25,26 @@ type SafeUser = {
 
 @Injectable()
 export class AuthService {
+  private googleClient = new OAuth2Client();
+
   constructor(
     private prisma: PrismaService,
     private mail: MailService,
   ) {}
+
+  // Shared session-issuing step for every login path (password, Google, invite activation).
+  // roles/permissions are intentionally empty here — JwtAuthGuard / me() resolve them from DB.
+  private issueLoginResponse(user: { id: number; email: string; name: string | null }) {
+    const token = jwt.sign(
+      { sub: user.id, email: user.email },
+      process.env.JWT_SECRET || 'dev-secret',
+      { expiresIn: '7d' },
+    );
+    return {
+      token,
+      user: { id: user.id, email: user.email, name: user.name, roles: [], permissions: [] },
+    };
+  }
 
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({
@@ -31,16 +54,43 @@ export class AuthService {
     if (!user || !user.isActive) return null;
     const match = await bcrypt.compare(password, user.password);
     if (!match) return null;
-    const token = jwt.sign(
-      { sub: user.id, email: user.email },
-      process.env.JWT_SECRET || 'dev-secret',
-      { expiresIn: '7d' },
-    );
+    return this.issueLoginResponse(user);
+  }
 
-    return {
-      token,
-      user: { id: user.id, email: user.email, name: user.name, roles: [], permissions: [] },
-    };
+  // Google Sign-In (GIS ID token). Invited-only: the Google email must match an
+  // existing user — there is no self-signup. Pending users (hasPassword=false)
+  // may log in this way; their verified Google email is sufficient proof.
+  async googleLogin(credential: string) {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) throw new UnauthorizedException('GOOGLE_AUTH_FAILED');
+
+    let payload;
+    try {
+      const ticket = await this.googleClient.verifyIdToken({
+        idToken: credential,
+        audience: clientId,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new UnauthorizedException('GOOGLE_AUTH_FAILED');
+    }
+    if (!payload?.email || payload.email_verified !== true) {
+      throw new UnauthorizedException('GOOGLE_AUTH_FAILED');
+    }
+
+    // Emails are stored as-entered (no normalization) while Google always returns
+    // lowercase — so match case-insensitively. findFirst because the citext-less
+    // @unique can in theory hold case-variant duplicates.
+    const user = await this.prisma.user.findFirst({
+      where: { email: { equals: payload.email, mode: 'insensitive' } },
+      select: { id: true, email: true, name: true, isActive: true },
+    });
+    // 403 (not 401) on purpose: the web request() helper discards 401 bodies,
+    // and these codes must reach the login page for a meaningful error message.
+    if (!user) throw new ForbiddenException('GOOGLE_NOT_INVITED');
+    if (!user.isActive) throw new ForbiddenException('USER_INACTIVE');
+
+    return this.issueLoginResponse(user);
   }
 
   async updateMyProfile(userId: number, name: string) {
@@ -83,16 +133,19 @@ export class AuthService {
     if (invite.expiredAt < new Date()) throw new UnprocessableEntityException('INVITE_EXPIRED');
 
     const hashed = await bcrypt.hash(password, 10);
-    await this.prisma.user.update({
+    const user = await this.prisma.user.update({
       where: { id: invite.user.id },
       data: {
         password: hashed,
         hasPassword: true,
         ...(name?.trim() ? { name: name.trim() } : {}),
       },
+      select: { id: true, email: true, name: true },
     });
     await this.prisma.userInvite.delete({ where: { token } });
-    return { ok: true };
+    // Also issue a session so the invited user lands in the app immediately
+    // instead of bouncing to the login page.
+    return { ok: true, ...this.issueLoginResponse(user) };
   }
 
   // Always resolves { ok: true } regardless of whether the email is registered —

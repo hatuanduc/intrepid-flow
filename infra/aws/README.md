@@ -268,6 +268,25 @@ aws ssm put-parameter --name "/intrepid/prod/NEXT_PUBLIC_API_BASE_URL" \
 
 Sau đó **deploy lại** để web build lại với `NEXT_PUBLIC_API_BASE_URL` mới (build arg, bake vào bundle).
 
+### Bước 5b — Google OAuth (Sign in with Google)
+
+1. Google Cloud Console → APIs & Services → Credentials → **Create Credentials → OAuth client ID**
+   - Application type: **Web application**
+   - Authorized JavaScript origins: `http://localhost:3000` (dev local) + domain thật của từng env
+     (vd `https://dev-intrepid.naronx.asia`, sau này thêm `https://intrepid.naronx.asia`)
+   - **Không cần** Authorized redirect URIs, không cần client secret — dùng Google Identity
+     Services (GIS) ID-token flow, không phải authorization-code flow
+2. Copy **Client ID**, set vào SSM (1 param dùng chung cho cả api verify token lẫn web build arg):
+
+```bash
+aws ssm put-parameter --name "/intrepid/dev/GOOGLE_CLIENT_ID" \
+  --value "xxxx.apps.googleusercontent.com" --type String --overwrite --region ap-southeast-1
+```
+
+3. Deploy lại — web build với `NEXT_PUBLIC_GOOGLE_CLIENT_ID` mới, api có `GOOGLE_CLIENT_ID` để verify.
+4. Chỉ user **đã tồn tại trong hệ thống** (đã được admin invite, `isActive`) mới login Google được —
+   không có self-signup. Nếu thêm domain mới sau này (vd prod), nhớ quay lại bước 1 thêm origin.
+
 ### Bước 6 — GitHub: tạo Environments và Secrets
 
 ```

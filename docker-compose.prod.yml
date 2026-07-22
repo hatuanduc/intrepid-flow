@@ -87,6 +87,7 @@ services:
       AWS_REGION: ${AWS_REGION}
       RECONCILE_BUCKET: ${RECONCILE_BUCKET}
       RECONCILE_LAMBDA_NAME: ${RECONCILE_LAMBDA_NAME}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       # CloudWatch doesn't render ANSI color codes — Nest's ConsoleLogger colorizes by default.
       NO_COLOR: "1"
     depends_on:
@@ -113,6 +114,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
     ports:
       - "3000:3000"
     depends_on:

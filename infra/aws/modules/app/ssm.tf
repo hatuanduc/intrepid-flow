@@ -58,6 +58,14 @@ resource "aws_ssm_parameter" "api_base_url" {
   lifecycle { ignore_changes = [value] }
 }
 
+resource "aws_ssm_parameter" "google_client_id" {
+  name        = "/intrepid/${var.env}/GOOGLE_CLIENT_ID"
+  description = "Google OAuth Web client ID (Google Sign-In) — api dùng verify ID token, web bake vào build làm NEXT_PUBLIC_GOOGLE_CLIENT_ID"
+  type        = "String"
+  value       = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
 resource "aws_ssm_parameter" "hsbcnet_url" {
   name        = "/intrepid/${var.env}/HSBCNET_URL"
   description = "HSBCnet portal URL cho bank-sync worker — mặc định HSBCnet thật; dev có thể tạm đổi sang mock-hsbc khi cần test pipeline"

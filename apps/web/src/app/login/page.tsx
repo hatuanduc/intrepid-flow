@@ -2,9 +2,10 @@
 
 import BrandLogo from '../../components/BrandLogo';
 import Link from 'next/link';
+import Script from 'next/script';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
-import { login } from '../../lib/api';
+import { useEffect, useRef, useState } from 'react';
+import { googleLogin, login } from '../../lib/api';
 import { getToken, setToken } from '../../lib/auth';
 import { useT } from '../../lib/i18n';
 
@@ -12,13 +13,17 @@ import styles from './page.module.css';
 
 export default function LoginPage() {
   const router = useRouter();
-  const { t } = useT();
+  const { t, lang } = useT();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  // '' khi chưa/không cấu hình — đọc trong effect để tránh hydration mismatch
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [gisFailed, setGisFailed] = useState(false);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
 
   function clearField(field: string) {
     setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
@@ -27,6 +32,7 @@ export default function LoginPage() {
   useEffect(() => {
     const token = getToken();
     if (token) router.replace('/');
+    Promise.resolve().then(() => setGoogleClientId(window.__INTREPID__?.googleClientId ?? ''));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -50,6 +56,41 @@ export default function LoginPage() {
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === 'Enter') void doLogin();
+  }
+
+  async function handleGoogleCredential(credential: string) {
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await googleLogin(credential);
+      setToken(result.token);
+      router.replace('/');
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      setError(
+        code === 'GOOGLE_NOT_INVITED' ? t('login.googleNotInvited')
+        : code === 'USER_INACTIVE' ? t('login.googleInactive')
+        : t('login.googleFailed'),
+      );
+      setLoading(false);
+    }
+  }
+
+  function initGoogle() {
+    const clientId = window.__INTREPID__?.googleClientId;
+    if (!clientId || !window.google || !googleBtnRef.current) return;
+    window.google.accounts.id.initialize({
+      client_id: clientId,
+      callback: (res) => void handleGoogleCredential(res.credential),
+      auto_select: false, // button-only — không dùng One Tap prompt
+    });
+    window.google.accounts.id.renderButton(googleBtnRef.current, {
+      theme: 'outline',
+      size: 'large',
+      text: 'signin_with',
+      width: 320,
+      locale: lang === 'vi' ? 'vi' : 'en',
+    });
   }
 
   return (
@@ -147,6 +188,19 @@ export default function LoginPage() {
             >
               {t('login.submit')}
             </button>
+
+            {googleClientId && !gisFailed && (
+              <>
+                <div className={styles.divider}><span>{t('login.orDivider')}</span></div>
+                <div ref={googleBtnRef} className={styles.googleWrap} />
+                <Script
+                  src="https://accounts.google.com/gsi/client"
+                  strategy="afterInteractive"
+                  onReady={initGoogle}
+                  onError={() => setGisFailed(true)}
+                />
+              </>
+            )}
           </div>
         </div>
       </div>
