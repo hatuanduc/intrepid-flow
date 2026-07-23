@@ -1,16 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import EmojiPicker, { EmojiStyle } from 'emoji-picker-react';
 import { createGasLink, updateGasLink, type GasLink } from '../../lib/api';
 import RightPanel from '../../components/common/RightPanel';
 import { useToast } from '../../components/common/Toast';
 import { useT } from '../../lib/i18n';
 import s from './GasLinkPanel.module.css';
 
-const ICON_PRESETS = [
-  '💰', '💵', '💴', '💶', '💷', '📊', '📈', '📉', '🧾', '💳', '🏦',
-  '🇻🇳', '🇮🇩', '🇲🇾', '🇸🇬', '🇵🇭', '🇹🇭',
-];
+const DEFAULT_ICON = '🔗';
 
 type Props = {
   target: GasLink | 'new' | null;
@@ -31,6 +29,17 @@ export default function GasLinkPanel({ target, open, onClose, onSaved }: Props) 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pickerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!pickerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) setPickerOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [pickerOpen]);
 
   useEffect(() => {
     if (!open) return;
@@ -59,7 +68,6 @@ export default function GasLinkPanel({ target, open, onClose, onSaved }: Props) 
     else {
       try { new URL(url.trim()); } catch { errs.url = t('gasLinks.urlInvalid'); }
     }
-    if (!icon.trim()) errs.icon = t('gasLinks.iconRequired');
     return errs;
   }
 
@@ -71,7 +79,7 @@ export default function GasLinkPanel({ target, open, onClose, onSaved }: Props) 
     setError(null);
     setSaving(true);
     try {
-      const body = { name: name.trim(), url: url.trim(), icon: icon.trim(), description: description.trim() || undefined };
+      const body = { name: name.trim(), url: url.trim(), icon: icon.trim() || DEFAULT_ICON, description: description.trim() || undefined };
       if (isEdit && target) await updateGasLink(target.id, body);
       else await createGasLink(body);
       toast.success(isEdit ? t('gasLinks.updateSuccess') : t('gasLinks.createSuccess'));
@@ -103,27 +111,32 @@ export default function GasLinkPanel({ target, open, onClose, onSaved }: Props) 
       <form id="gas-link-form" onSubmit={submit} className={s.form}>
         <div className={s.field}>
           <label className={s.label}>{t('gasLinks.iconLabel')}</label>
-          <div className={s.iconPresets}>
-            {ICON_PRESETS.map(e => (
-              <button
-                key={e}
-                type="button"
-                className={`${s.iconPreset} ${icon === e ? s.iconPresetSelected : ''}`}
-                onClick={() => { setIcon(e); clearField('icon'); }}
-              >
-                {e}
-              </button>
-            ))}
+          <div className={s.iconTriggerWrap} ref={pickerRef}>
+            <button
+              type="button"
+              className={s.iconTrigger}
+              onClick={() => setPickerOpen(v => !v)}
+            >
+              {icon || DEFAULT_ICON}
+            </button>
+            <button type="button" className={s.iconTriggerLabel} onClick={() => setPickerOpen(v => !v)}>
+              {t('gasLinks.changeIcon')}
+            </button>
+            {pickerOpen && (
+              <div className={s.emojiPickerWrap}>
+                <EmojiPicker
+                  onEmojiClick={data => { setIcon(data.emoji); setPickerOpen(false); }}
+                  emojiStyle={EmojiStyle.NATIVE}
+                  skinTonesDisabled
+                  previewConfig={{ showPreview: false }}
+                  lazyLoadEmojis
+                  autoFocusSearch
+                  width={320}
+                  height={360}
+                />
+              </div>
+            )}
           </div>
-          <input
-            className={`${s.input} ${fieldErrors.icon ? s.inputError : ''}`}
-            value={icon}
-            onChange={e => { setIcon(e.target.value); clearField('icon'); }}
-            placeholder={t('gasLinks.iconInputPlaceholder')}
-            maxLength={8}
-          />
-          <span className={s.hint}>{t('gasLinks.iconPickHint')}</span>
-          {fieldErrors.icon && <span className={s.fieldError}>{fieldErrors.icon}</span>}
         </div>
 
         <div className={s.field}>
@@ -154,10 +167,12 @@ export default function GasLinkPanel({ target, open, onClose, onSaved }: Props) 
           <textarea
             className={s.textarea}
             value={description}
-            onChange={e => setDescription(e.target.value)}
+            onChange={e => setDescription(e.target.value.slice(0, 200))}
             placeholder={t('gasLinks.descPlaceholder')}
             rows={3}
+            maxLength={200}
           />
+          <span className={s.charCount}>{description.length}/200</span>
         </div>
 
         {error && <div className={s.error}>{error}</div>}

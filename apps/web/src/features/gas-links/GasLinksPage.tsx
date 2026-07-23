@@ -14,7 +14,16 @@ import GasLinkPanel from './GasLinkPanel';
 import GasLinkFrameModal from './GasLinkFrameModal';
 import s from './GasLinksPage.module.css';
 
-function MoreMenu({ onEdit, onDelete }: { onEdit?: () => void; onDelete?: () => void }) {
+function EditIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+      <path d="M8.5 1.5a1.414 1.414 0 012 2L3.5 10.5l-3 .5.5-3L8.5 1.5z"
+        stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+function MoreMenu({ onDelete }: { onDelete?: () => void }) {
   const { t } = useT();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -28,7 +37,7 @@ function MoreMenu({ onEdit, onDelete }: { onEdit?: () => void; onDelete?: () => 
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  if (!onEdit && !onDelete) return null;
+  if (!onDelete) return null;
 
   return (
     <div className={`${s.moreWrap} ${open ? s.moreWrapOpen : ''}`} ref={ref} onClick={e => e.stopPropagation()}>
@@ -41,7 +50,6 @@ function MoreMenu({ onEdit, onDelete }: { onEdit?: () => void; onDelete?: () => 
       </button>
       {open && (
         <div className={s.moreDropdown}>
-          {onEdit && <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>{t('common.edit')}</button>}
           {onDelete && <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpen(false); onDelete(); }}>{t('common.delete')}</button>}
         </div>
       )}
@@ -143,13 +151,22 @@ export default function GasLinksPage() {
             <div key={link.id} className={s.card} onClick={() => setFrameTarget(link)}>
               <div className={s.cardTop}>
                 <span className={s.iconWrap}>{link.icon}</span>
-                <MoreMenu
-                  onEdit={canEdit ? () => setPanelTarget(link) : undefined}
-                  onDelete={canDelete ? () => setDeleteTarget(link) : undefined}
-                />
+                <div className={s.cardActions}>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      className={s.editBtn}
+                      onClick={e => { e.stopPropagation(); setPanelTarget(link); }}
+                      title={t('common.edit')}
+                    >
+                      <EditIcon />
+                    </button>
+                  )}
+                  <MoreMenu onDelete={canDelete ? () => setDeleteTarget(link) : undefined} />
+                </div>
               </div>
               <h3 className={s.cardTitle}>{link.name}</h3>
-              {link.description && <p className={s.cardDesc}>{link.description}</p>}
+              {link.description && <p className={s.cardDesc} title={link.description}>{link.description}</p>}
               <div className={s.cardFooter}>
                 {t('gasLinks.createdBy', { name: link.createdBy?.name ?? link.createdBy?.email ?? '—' })}
               </div>

@@ -65,8 +65,25 @@
   flex-shrink: 0;
 }
 
-.moreBtn { opacity: 0; }
-.card:hover .moreBtn, .moreBtnOpen { opacity: 1; }
+.cardActions { display: flex; align-items: center; gap: 2px; }
+
+.editBtn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--color-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+.editBtn:hover { background: var(--bg-subtle); color: var(--color-ink); }
+
+.moreBtn, .editBtn { opacity: 0; }
+.card:hover .moreBtn, .card:hover .editBtn, .moreBtnOpen { opacity: 1; }
 
 .cardTitle {
   font-size: 14px;

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { type GasLink } from '../../lib/api';
 import { useT } from '../../lib/i18n';
 import s from './GasLinkFrameModal.module.css';
@@ -12,6 +12,13 @@ type Props = {
 
 export default function GasLinkFrameModal({ link, onClose }: Props) {
   const { t } = useT();
+  const [showHint, setShowHint] = useState(false);
+  const [prevLinkId, setPrevLinkId] = useState<number | null>(link?.id ?? null);
+
+  if ((link?.id ?? null) !== prevLinkId) {
+    setPrevLinkId(link?.id ?? null);
+    setShowHint(false);
+  }
 
   useEffect(() => {
     if (!link) return;
@@ -29,6 +36,9 @@ export default function GasLinkFrameModal({ link, onClose }: Props) {
           <span className={s.headerIcon}>{link.icon}</span>
           <span className={s.headerTitle}>{link.name}</span>
           <div className={s.headerActions}>
+            <button type="button" className={s.hintToggle} onClick={() => setShowHint(v => !v)}>
+              {t('gasLinks.notLoading')}
+            </button>
             <a className={s.openTab} href={link.url} target="_blank" rel="noopener noreferrer">
               {t('gasLinks.openInNewTab')}
             </a>
@@ -39,7 +49,7 @@ export default function GasLinkFrameModal({ link, onClose }: Props) {
             </button>
           </div>
         </div>
-        <p className={s.hint}>{t('gasLinks.frameLoadHint')}</p>
+        {showHint && <p className={s.hint}>{t('gasLinks.frameLoadHint')}</p>}
         <div className={s.body}>
           <iframe
             src={link.url}

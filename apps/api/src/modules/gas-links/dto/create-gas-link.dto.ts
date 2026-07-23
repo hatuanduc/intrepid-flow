@@ -1,4 +1,4 @@
-import { IsString, IsUrl, IsOptional, MinLength } from 'class-validator';
+import { IsString, IsUrl, IsOptional, MinLength, MaxLength } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateGasLinkDto {
@@ -19,5 +19,6 @@ export class CreateGasLinkDto {
   @ApiProperty({ required: false })
   @IsOptional()
   @IsString()
+  @MaxLength(200)
   description?: string;
 }
