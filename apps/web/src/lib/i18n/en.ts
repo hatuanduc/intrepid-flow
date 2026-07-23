@@ -400,6 +400,7 @@ export const en = {
     upcomingRuns: 'Upcoming runs',
     syncRange: 'Sync date range',
     syncRangeDesc: 'Date range HSBCnet will fetch statements each run',
+    syncRangePreview: 'Currently: {from} → {to}',
     syncToday: 'Today',
     syncYesterday: 'Yesterday',
     syncLast7: 'Last 7 days',

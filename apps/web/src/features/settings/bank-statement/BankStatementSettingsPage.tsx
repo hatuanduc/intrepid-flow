@@ -128,6 +128,37 @@ function getNextRuns(cronHour: number, cronMinute: number, count: number): Date[
   return results;
 }
 
+// Mirrors computeDateRange() in apps/worker/src/bank-sync/services/playwright.service.ts —
+// preview only (client-side), so the setting makes clear upfront which dates a mode
+// actually covers (e.g. "Last 7 days" never includes today — HSBC data for today can
+// still change through the day, so the range always ends at yesterday).
+function computeSyncRangePreview(mode: SyncDateMode, customDays: number): { from: Date; to: Date } {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const yesterday = new Date(today);
+  yesterday.setUTCDate(today.getUTCDate() - 1);
+
+  if (mode === 'today') return { from: today, to: today };
+  if (mode === 'last_7_days') {
+    const from = new Date(yesterday);
+    from.setUTCDate(yesterday.getUTCDate() - 6);
+    return { from, to: yesterday };
+  }
+  if (mode === 'custom') {
+    const days = customDays > 0 ? customDays : 1;
+    const from = new Date(yesterday);
+    from.setUTCDate(yesterday.getUTCDate() - (days - 1));
+    return { from, to: yesterday };
+  }
+  return { from: yesterday, to: yesterday }; // 'yesterday'
+}
+
+function formatDMY(d: Date): string {
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  return `${dd}/${mm}/${d.getUTCFullYear()}`;
+}
+
 function formatRunDate(d: Date, lang: string) {
   const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
   const dayName = d.toLocaleDateString(locale, { weekday: 'long' });
@@ -157,6 +188,7 @@ function ScheduleTab({ settings, canConfig, onSaved }: { settings: BankJobSettin
 
   const cron = `${minute} ${hour} * * *`;
   const nextRuns = isScheduled ? getNextRuns(hour, minute, 5) : [];
+  const syncRangePreview = computeSyncRangePreview(syncDateMode, syncCustomDays);
 
   const syncDateModeLabels: Record<SyncDateMode, string> = {
     today:       t('bankSettings.syncToday'),
@@ -294,6 +326,9 @@ function ScheduleTab({ settings, canConfig, onSaved }: { settings: BankJobSettin
               <span className={s.scheduleDesc}>{t('bankSettings.days')}</span>
             </>
           )}
+        </div>
+        <div className={s.syncRangePreview}>
+          {t('bankSettings.syncRangePreview', { from: formatDMY(syncRangePreview.from), to: formatDMY(syncRangePreview.to) })}
         </div>
       </div>
 

@@ -120,7 +120,11 @@ function SearchBar() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
-  function navigate(href: string) {
+  function navigate(href: string, newTab = false) {
+    if (newTab) {
+      window.open(href, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setOpen(false);
     setQuery('');
     inputRef.current?.blur();
@@ -131,7 +135,7 @@ function SearchBar() {
     if (e.key === 'Escape') { setOpen(false); setQuery(''); inputRef.current?.blur(); return; }
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(a => Math.min(a + 1, filtered.length - 1)); }
     if (e.key === 'ArrowUp')   { e.preventDefault(); setActive(a => Math.max(a - 1, 0)); }
-    if (e.key === 'Enter' && filtered[active]) navigate(filtered[active].href);
+    if (e.key === 'Enter' && filtered[active]) navigate(filtered[active].href, e.ctrlKey || e.metaKey);
   }
 
   const isMac = typeof navigator !== 'undefined' && /mac/i.test(navigator.platform);
@@ -170,7 +174,11 @@ function SearchBar() {
                   ref={i === active ? activeRef : null}
                   className={`${s.searchResult} ${i === active ? s.searchResultActive : ''}`}
                   onMouseEnter={() => setActive(i)}
-                  onMouseDown={e => { e.preventDefault(); navigate(item.href); }}
+                  onMouseDown={e => {
+                    if (e.button === 2) return; // right-click — let the context menu show
+                    e.preventDefault();
+                    navigate(item.href, e.ctrlKey || e.metaKey || e.button === 1);
+                  }}
                 >
                   <span className={s.searchResultIcon}>{item.icon}</span>
                   <span className={s.searchResultLabel}>
@@ -389,12 +397,12 @@ export default function DashboardLayout({ user, children }: { user: User; childr
                 </div>
               </div>
               <div className={s.dropdownDivider} />
-              <button className={s.dropdownItem} onClick={() => { setAccountOpen(false); router.push('/account'); }}>
+              <Link href="/account" className={s.dropdownItem} onClick={() => setAccountOpen(false)}>
                 <span className={s.dropdownItemIcon}>{AccountMenuIcon}</span>{t('layout.account')}
-              </button>
-              <button className={s.dropdownItem} onClick={() => { setAccountOpen(false); router.push('/settings'); }}>
+              </Link>
+              <Link href="/settings" className={s.dropdownItem} onClick={() => setAccountOpen(false)}>
                 <span className={s.dropdownItemIcon}>{SettingsMenuIcon}</span>{t('layout.settings')}
-              </button>
+              </Link>
               <div className={s.dropdownDivider} />
               <button className={s.dropdownItem} onClick={handleLogout}>
                 <span className={s.dropdownItemIcon}>{SignOutMenuIcon}</span>{t('layout.signOut')}
@@ -407,7 +415,7 @@ export default function DashboardLayout({ user, children }: { user: User; childr
 
         <div className={s.rightActions}>
           <NotificationBell />
-          <button className={s.iconBtn} title={t('layout.settings')} onClick={() => router.push('/settings')}><GearIcon /></button>
+          <Link href="/settings" className={s.iconBtn} title={t('layout.settings')}><GearIcon /></Link>
         </div>
       </header>
 

@@ -401,6 +401,7 @@ export const vi: Translations = {
     upcomingRuns: 'Lịch chạy sắp tới',
     syncRange: 'Khoảng ngày đồng bộ',
     syncRangeDesc: 'Phạm vi ngày HSBCnet sẽ tải sao kê mỗi lần chạy',
+    syncRangePreview: 'Hiện tại: {from} → {to}',
     syncToday: 'Hôm nay',
     syncYesterday: 'Hôm qua',
     syncLast7: '7 ngày gần nhất',
