@@ -253,41 +253,12 @@ export class BankSyncService {
   private async runBankSync(jobId: number): Promise<Map<string, TransactionRow[]>> {
     const result = new Map<string, TransactionRow[]>();
 
-    // ── 1a. Browser + auth ────────────────────────────────────────────────────
-    await this.playwright.init();
-    await this.log(jobId, 'Browser ready — checking session...', 'bank_sync');
-    await this.updateJob(jobId, JOB_STATUS.CHECKING_SESSION);
-
     const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
 
-    if (!(await this.playwright.isLoggedIn())) {
-      await this.log(jobId, 'Session expired — logging in.', 'bank_sync');
-      await this.updateJob(jobId, JOB_STATUS.LOGGING_IN);
-      const username = settings?.hsbcnetUsername ?? '';
-      if (!username) {
-        throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
-      }
-      await this.playwright.login(username);
-      await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, 'bank_sync');
-      await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
-      await this.notify(jobId, 'job_waiting_2fa', 'HSBCnet cần xác nhận đăng nhập', 'Mở app HSBCnet trên điện thoại để xác nhận đăng nhập.');
-      await this.playwright.wait2FA(() => this.isJobCancelled(jobId));
-      await this.log(jobId, '2FA confirmed.', 'bank_sync', 'success');
-      await this.playwright.saveSession();
-      await this.log(jobId, 'Session saved for reuse.', 'bank_sync', 'success');
-    } else {
-      await this.log(jobId, 'Session still valid — skipping authentication.', 'bank_sync', 'success');
-    }
-
-    await this.updateJob(jobId, JOB_STATUS.AUTHENTICATED);
-    await this.log(jobId, 'Authenticated successfully.', 'bank_sync', 'success');
-
-    // ── 1b. Discover accounts from HSBCnet switcher → upsert BankAccount ─────
-    await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
-    await this.discoverAndSyncAccounts(jobId);
-
-    // ── 1c. Compute date range — per-run override takes priority over settings ──
-    // A manual "Run now" can supply an explicit dateFrom/dateTo (stored on this job
+    // ── 1a. Compute date range up front — pure DB/date math, no HSBC login needed —
+    // so the "already synced, skip everything" check below can run before ever
+    // touching Playwright/2FA. Per-run override takes priority over settings: a
+    // manual "Run now" can supply an explicit dateFrom/dateTo (stored on this job
     // row only, never written back to BankJobSettings) — scheduled cron runs never
     // set these, so they always fall through to the default syncDateMode/syncCustomDays.
     const job = await this.prisma.bankSyncJob.findUnique({
@@ -319,7 +290,71 @@ export class BankSyncService {
     const todayUtc = new Date(Date.UTC(nowForSettledCheck.getUTCFullYear(), nowForSettledCheck.getUTCMonth(), nowForSettledCheck.getUTCDate()));
     const dateRangeSettled = dateTo.getTime() < todayUtc.getTime();
 
-    // ── 1d. Download per active account (grouped by accountName) ─────────────
+    // ── 1b. Bail out before ever opening a browser if every known account already
+    // covers this range — avoids a pointless login/2FA round-trip for a job that's
+    // going to skip every account anyway. Uses whatever accounts are already in DB
+    // (no live HSBCnet discovery) — if that misses a brand-new account, the next
+    // scheduled run still discovers it normally once a real login happens (see 1d).
+    const knownAccounts = await this.prisma.bankAccount.findMany({ where: { isActive: true } });
+    const allAlreadyCovered = dateRangeSettled && knownAccounts.length > 0 && knownAccounts.every(a =>
+      a.lastSyncedFrom && a.lastSyncedTo &&
+      dateFrom.getTime() >= a.lastSyncedFrom.getTime() &&
+      dateTo.getTime() <= a.lastSyncedTo.getTime(),
+    );
+    if (allAlreadyCovered) {
+      await this.log(jobId, `All ${pl(knownAccounts.length, 'account number')} already synced ${rangeLabel} — skipping HSBC login entirely.`, 'bank_sync', 'success');
+      for (const account of knownAccounts) {
+        // Same per-account detail (existing count + log line) as the in-loop skip path
+        // below — otherwise this early-exit path silently reports "0 transactions" for
+        // everything, hiding how much data is actually already on file.
+        const existingCount = await this.prisma.bankTransaction.count({
+          where: { bankAccountId: account.id, postDate: { gte: dateFrom, lte: dateTo } },
+        });
+        await this.log(jobId, `  → ${account.accountNumber}: already synced ${formatDateLabel(account.lastSyncedFrom!)} → ${formatDateLabel(account.lastSyncedTo!)} (${pl(existingCount, 'transaction')} on file), skipping.`, 'bank_sync');
+        await this.upsertJobAccount(jobId, account.id, {
+          status: 'completed',
+          sheetsSyncStatus: 'no_data',
+          rowsDownloaded: existingCount,
+          rowsInserted: 0,
+          rowsDuplicate: existingCount,
+        });
+        await this.registerJobOwnership(jobId, account.id, dateFrom, dateTo);
+      }
+      return result;
+    }
+
+    // ── 1c. Browser + auth ────────────────────────────────────────────────────
+    await this.playwright.init();
+    await this.log(jobId, 'Browser ready — checking session...', 'bank_sync');
+    await this.updateJob(jobId, JOB_STATUS.CHECKING_SESSION);
+
+    if (!(await this.playwright.isLoggedIn())) {
+      await this.log(jobId, 'Session expired — logging in.', 'bank_sync');
+      await this.updateJob(jobId, JOB_STATUS.LOGGING_IN);
+      const username = settings?.hsbcnetUsername ?? '';
+      if (!username) {
+        throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
+      }
+      await this.playwright.login(username);
+      await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, 'bank_sync');
+      await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
+      await this.notify(jobId, 'job_waiting_2fa', 'HSBCnet cần xác nhận đăng nhập', 'Mở app HSBCnet trên điện thoại để xác nhận đăng nhập.');
+      await this.playwright.wait2FA(() => this.isJobCancelled(jobId));
+      await this.log(jobId, '2FA confirmed.', 'bank_sync', 'success');
+      await this.playwright.saveSession();
+      await this.log(jobId, 'Session saved for reuse.', 'bank_sync', 'success');
+    } else {
+      await this.log(jobId, 'Session still valid — skipping authentication.', 'bank_sync', 'success');
+    }
+
+    await this.updateJob(jobId, JOB_STATUS.AUTHENTICATED);
+    await this.log(jobId, 'Authenticated successfully.', 'bank_sync', 'success');
+
+    // ── 1d. Discover accounts from HSBCnet switcher → upsert BankAccount ─────
+    await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
+    await this.discoverAndSyncAccounts(jobId);
+
+    // ── 1e. Download per active account (grouped by accountName) ─────────────
     const accounts = await this.prisma.bankAccount.findMany({
       where: { isActive: true },
       orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
