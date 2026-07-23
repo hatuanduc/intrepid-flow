@@ -64,6 +64,14 @@ export const ToolIcon = (
     <path d="M9.5 1.5a3 3 0 00-3.7 3.7L1.5 9.5v2h2l4.3-4.3a3 3 0 003.7-3.7L9.7 5.2 8.8 4.3l1.7-1.7z" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
+export const GasLinksIcon = (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <rect x="1.5" y="2.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="8" y="2.5" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="1.5" y="7" width="4.5" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M10.25 7v4.5M8 9.25h4.5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
 
 /* ── Nav definitions (labels are i18n keys, translated in DashboardLayout) ── */
 export const MAIN_NAV: NavItem[] = [
@@ -99,6 +107,7 @@ export const NAV_GROUPS: NavGroupDef[] = [
     icon: ToolIcon,
     children: [
       { label: 'nav.reconcile', href: '/reconcile', icon: ReconcileIcon },
+      { label: 'nav.gasLinks', href: '/gas-links', icon: GasLinksIcon },
     ],
   },
 ];

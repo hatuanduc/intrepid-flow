@@ -17,6 +17,10 @@ const CORE_PERMISSIONS = [
   { key: 'reconcile:view',          module: 'reconcile',       action: 'view',        label: 'Xem công cụ Reconcile' },
   { key: 'reconcile:run',           module: 'reconcile',       action: 'run',         label: 'Chạy gộp hóa đơn' },
   { key: 'reconcile:config',        module: 'reconcile',       action: 'config',      label: 'Cấu hình công cụ Reconcile' },
+  { key: 'gas_links:view',          module: 'gas_links',       action: 'view',        label: 'Xem GAS Links' },
+  { key: 'gas_links:create',        module: 'gas_links',       action: 'create',      label: 'Thêm GAS Link' },
+  { key: 'gas_links:edit',          module: 'gas_links',       action: 'edit',        label: 'Sửa GAS Link' },
+  { key: 'gas_links:delete',        module: 'gas_links',       action: 'delete',      label: 'Xóa GAS Link' },
   { key: 'system:config',           module: 'system',          action: 'config',      label: 'Cấu hình hệ thống (kết nối, secret keys)' },
 ];
 
@@ -49,6 +53,7 @@ const CORE_ROLES = [
       'bank_statement:view', 'bank_statement:run', 'bank_statement:config',
       'report_ar:view', 'report_ar:config',
       'reconcile:view', 'reconcile:run', 'reconcile:config',
+      'gas_links:view', 'gas_links:create', 'gas_links:edit', 'gas_links:delete',
     ],
   },
   {
@@ -63,6 +68,7 @@ const CORE_ROLES = [
       'bank_statement:view', 'bank_statement:run',
       'report_ar:view',
       'reconcile:view', 'reconcile:run',
+      'gas_links:view', 'gas_links:create', 'gas_links:edit', 'gas_links:delete',
     ],
   },
   {

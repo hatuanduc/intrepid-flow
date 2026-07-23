@@ -21,6 +21,7 @@ model User {
   invite        UserInvite?
   passwordReset PasswordReset?
   notifications Notification[]
+  gasLinks      GasLink[]
 
   @@map("users")
 }
@@ -253,6 +254,21 @@ model BankGsheetConfig {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("bank_gsheet_configs")
+}
+
+model GasLink {
+  id          Int      @id @default(autoincrement())
+  name        String
+  url         String
+  icon        String
+  description String?
+  createdById Int?     @map("created_by_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+
+  @@map("gas_links")
 }
 
 model BankJobSettings {

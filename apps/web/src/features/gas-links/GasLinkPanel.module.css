@@ -1,0 +1,59 @@
+.btnPrimary { composes: btnPrimary from '../../styles/ui.module.css'; }
+.btnSecondary { composes: btnSecondary from '../../styles/ui.module.css'; }
+.inputError { composes: inputError from '../../styles/ui.module.css'; }
+.fieldError { composes: fieldError from '../../styles/ui.module.css'; }
+
+.form  { display: flex; flex-direction: column; gap: 16px; }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.label { font-size: 13px; font-weight: 500; color: var(--color-secondary); }
+.hint  { font-size: 12px; color: var(--color-muted); }
+
+.input, .textarea {
+  padding: 9px 12px;
+  border-radius: 6px;
+  border: 1.5px solid var(--color-border);
+  background: var(--bg-surface);
+  font-size: 14px;
+  color: var(--color-ink);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+.input:focus, .textarea:focus {
+  border-color: var(--color-accent-active);
+  box-shadow: 0 0 0 3px rgba(98,90,250,.10);
+}
+.input::placeholder, .textarea::placeholder { color: var(--color-subtle); }
+.textarea { resize: vertical; }
+
+.iconPresets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.iconPreset {
+  width: 34px;
+  height: 34px;
+  font-size: 17px;
+  border-radius: 8px;
+  border: 1.5px solid var(--color-border);
+  background: var(--bg-surface);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.15s, background 0.15s;
+}
+.iconPreset:hover { border-color: var(--color-border-strong); background: var(--bg-page); }
+.iconPresetSelected { border-color: var(--color-accent-active); background: var(--color-accent-light); }
+
+.error {
+  font-size: 13px;
+  color: #df1b41;
+  background: #fff0f3;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  padding: 10px 12px;
+}

@@ -848,3 +848,50 @@ export async function replaceMasterCustomerFile(formData: FormData): Promise<Mas
   const res = await multipartFetch('/management/reconcile/master-customer', formData);
   return res.json() as Promise<MasterCustomerInfo>;
 }
+
+export type GasLink = {
+  id: number;
+  name: string;
+  url: string;
+  icon: string;
+  description: string | null;
+  createdById: number | null;
+  createdAt: string;
+  updatedAt: string;
+  createdBy: { id: number; name: string | null; email: string } | null;
+};
+
+export async function listGasLinks() {
+  return request<{ items: GasLink[] }>('/management/gas-links', { auth: true });
+}
+
+export async function createGasLink(body: {
+  name: string;
+  url: string;
+  icon: string;
+  description?: string;
+}) {
+  return request<{ item: GasLink }>('/management/gas-links', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateGasLink(
+  id: number,
+  body: Partial<{ name: string; url: string; icon: string; description: string }>,
+) {
+  return request<{ item: GasLink }>(`/management/gas-links/${id}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteGasLink(id: number) {
+  return request<{ ok: boolean }>(`/management/gas-links/${id}`, {
+    method: 'DELETE',
+    auth: true,
+  });
+}
