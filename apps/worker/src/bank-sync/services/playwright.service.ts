@@ -216,7 +216,7 @@ export class PlaywrightService {
     }
   }
 
-  async wait2FA(): Promise<void> {
+  async wait2FA(shouldCancel?: () => Promise<boolean>): Promise<void> {
     const page = this.requirePage();
     this.logger.log('Waiting for 2FA approval on mobile…');
 
@@ -231,12 +231,27 @@ export class PlaywrightService {
         );
       });
 
+    // The dashboard/authError selectors use timeout:0 (wait forever) — up to 5 minutes
+    // of real wall-clock time (TWO_FA_TIMEOUT_MS) where a Cancel click from the UI would
+    // otherwise go unnoticed, since nothing here ever re-checked job status while blocked.
+    // Poll shouldCancel alongside the other racers so a cancel actually interrupts this.
+    const cancelWatch: Promise<'cancelled'> = shouldCancel
+      ? (async (): Promise<'cancelled'> => {
+          for (;;) {
+            await new Promise(r => setTimeout(r, 3_000));
+            if (await shouldCancel()) return 'cancelled';
+          }
+        })()
+      : new Promise<'cancelled'>(() => {}); // no shouldCancel provided — never resolves, inert racer
+
     const result = await Promise.race([
       page.waitForSelector(SELECTORS.dashboardEl, { timeout: 0 }).then(() => 'ok' as const),
       page.waitForSelector(SELECTORS.authError,   { timeout: 0 }).then(() => 'err' as const),
       new Promise<'err'>((r) => setTimeout(() => r('err'), TWO_FA_TIMEOUT_MS)),
+      cancelWatch,
     ]);
 
+    if (result === 'cancelled') throw new Error('JOB_CANCELLED');
     if (result !== 'ok') throw new Error('TIMEOUT_2FA');
 
     const userName = await page.$(SELECTORS.loggedInUser)

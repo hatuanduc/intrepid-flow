@@ -108,7 +108,7 @@
 
 .summaryRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px 90px 140px 140px 160px 14px;
+  grid-template-columns: minmax(0, 1fr) 56px 90px 140px 140px 160px 24px 14px;
   align-items: center; gap: 12px;
   padding: 10px 14px; text-decoration: none;
   border-bottom: 1px solid var(--color-border-light);
@@ -141,6 +141,15 @@
 .summaryDebit   { font-size: 12px; font-weight: 600; color: #df1b41; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .summarySyncBadge { justify-self: start; width: fit-content; }
 .summaryArrow   { color: var(--color-subtle); justify-self: center; }
+
+.summaryResyncBtn {
+  width: 24px; height: 24px; border: none; background: none; border-radius: 6px;
+  color: var(--color-muted); display: flex; align-items: center; justify-content: center;
+  justify-self: center; cursor: pointer; opacity: 0; transition: opacity 0.12s, background 0.12s;
+}
+.summaryRow:hover .summaryResyncBtn { opacity: 1; }
+.summaryResyncBtn:hover:not(:disabled) { background: var(--bg-subtle); color: var(--color-ink); }
+.summaryResyncBtn:disabled { opacity: 1; cursor: not-allowed; }
 
 /* ── Unified vertical job timeline ── */
 .jobTimeline { display: flex; flex-direction: column; }

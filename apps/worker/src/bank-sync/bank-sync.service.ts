@@ -271,7 +271,7 @@ export class BankSyncService {
       await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, 'bank_sync');
       await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
       await this.notify(jobId, 'job_waiting_2fa', 'HSBCnet cần xác nhận đăng nhập', 'Mở app HSBCnet trên điện thoại để xác nhận đăng nhập.');
-      await this.playwright.wait2FA();
+      await this.playwright.wait2FA(() => this.isJobCancelled(jobId));
       await this.log(jobId, '2FA confirmed.', 'bank_sync', 'success');
       await this.playwright.saveSession();
       await this.log(jobId, 'Session saved for reuse.', 'bank_sync', 'success');
@@ -349,17 +349,16 @@ export class BankSyncService {
 
         // HSBC data for this range is already settled and previously confirmed —
         // dateRangeSettled rules out 'today' mode (or a manual override reaching
-        // today), where the same day's data can still change — so a stored
-        // lastSyncedTo covering it means nothing has or will change. Skip re-driving
-        // the whole Playwright flow (account switch, date filter, export) for nothing.
-        //
-        // Only safe for a single-day request (dateFrom === dateTo): lastSyncedTo only
-        // proves THAT one day was checked before, not any earlier days. A multi-day
-        // range (wider lookback, manual backfill) must always be re-attempted even if
-        // dateTo <= lastSyncedTo — otherwise a prior single-day "yesterday" run can
-        // permanently mask a real gap in earlier days from ever being (re-)fetched.
-        // Re-fetching already-covered days here is harmless — storeTransactions
-        // dedups by dataHash, so already-stored rows just come back as duplicates.
+        // today), where the same day's data can still change. Skip re-driving the
+        // whole Playwright flow (account switch, date filter, export) only when the
+        // REQUESTED RANGE IS FULLY WITHIN what was actually fetched last time — both
+        // bounds matter. Checking lastSyncedTo alone (ignoring dateFrom) would wrongly
+        // skip a WIDER range whose earlier start was never actually fetched (e.g. a
+        // single-day "yesterday" job followed later by a "last 7 days" job) — a real
+        // gap that then never gets filled in. lastSyncedFrom/To are overwritten (not
+        // merged/accumulated) after each real fetch, so this is a safe subset check —
+        // worst case a disconnected range re-fetches a bit more than strictly needed,
+        // never wrongly skips something never confirmed.
         //
         // lastSyncedTo is a per-account field, not scoped to this job — it can get
         // set by a DIFFERENT job's success (e.g. a later scheduled run) after THIS
@@ -367,9 +366,12 @@ export class BankSyncService {
         // Without upserting here, this job's own stats would show that stale
         // 'failed' status forever, even though the account is confirmed fine —
         // explicitly mark it "completed, already up to date" for this job's record.
-        const isSingleDayRequest = dateFrom.getTime() === dateTo.getTime();
-        if (isSingleDayRequest && dateRangeSettled && account.lastSyncedTo && account.lastSyncedTo.getTime() >= dateTo.getTime()) {
-          await this.log(jobId, `  → ${account.accountNumber}: already synced through ${formatDateLabel(account.lastSyncedTo)}, skipping.`, 'bank_sync');
+        const rangeAlreadyCovered =
+          account.lastSyncedFrom && account.lastSyncedTo &&
+          dateFrom.getTime() >= account.lastSyncedFrom.getTime() &&
+          dateTo.getTime() <= account.lastSyncedTo.getTime();
+        if (dateRangeSettled && rangeAlreadyCovered) {
+          await this.log(jobId, `  → ${account.accountNumber}: already synced ${formatDateLabel(account.lastSyncedFrom!)} → ${formatDateLabel(account.lastSyncedTo!)}, skipping.`, 'bank_sync');
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
           continue;
         }
@@ -400,7 +402,7 @@ export class BankSyncService {
         if (excelBuffer === null) {
           await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
-          if (dateRangeSettled) await this.markSyncedThrough(account.id, dateTo);
+          if (dateRangeSettled) await this.markSyncedThrough(account.id, dateFrom, dateTo);
           continue;
         }
 
@@ -422,7 +424,7 @@ export class BankSyncService {
 
         if (rows.length === 0) {
           await this.upsertJobAccount(jobId, account.id, { status: 'completed', rowsDownloaded: 0, sheetsSyncStatus: 'no_data' });
-          if (dateRangeSettled) await this.markSyncedThrough(account.id, dateTo);
+          if (dateRangeSettled) await this.markSyncedThrough(account.id, dateFrom, dateTo);
           continue;
         }
 
@@ -434,7 +436,7 @@ export class BankSyncService {
           rowsInserted: inserted,
           rowsDuplicate: duplicates,
         });
-        if (dateRangeSettled) await this.markSyncedThrough(account.id, dateTo);
+        if (dateRangeSettled) await this.markSyncedThrough(account.id, dateFrom, dateTo);
 
         // Include the account even with 0 new rows if it has never been synced to
         // GSheets successfully — otherwise a fixed config/retry would never get a
@@ -519,7 +521,6 @@ export class BankSyncService {
           const msg = reason === 'no_gsheet_config'
             ? `no GSheet config for ${accountName ?? accountNumber}`
             : reason === 'no_service_key' ? 'no Google service key configured'
-            : reason === 'all_duplicates' ? 'all rows already exist (duplicates)'
             : reason;
           await this.log(jobId, `${label}: skipped — ${msg}`, 'sheets_sync', 'warn');
           if (bankAccountId) {
@@ -735,8 +736,8 @@ export class BankSyncService {
   // today (mode 'today' or an override reaching today), since that day's data can keep
   // changing until it's over. Recording it anyway would make tomorrow's "already synced,
   // skip" check (see dateRangeSettled above) trust a fetch that was only ever provisional.
-  private async markSyncedThrough(accountId: number, to: Date): Promise<void> {
-    await this.prisma.bankAccount.update({ where: { id: accountId }, data: { lastSyncedTo: to } });
+  private async markSyncedThrough(accountId: number, from: Date, to: Date): Promise<void> {
+    await this.prisma.bankAccount.update({ where: { id: accountId }, data: { lastSyncedFrom: from, lastSyncedTo: to } });
   }
 
   private async log(
@@ -767,6 +768,53 @@ export class BankSyncService {
       data: { userId, type, title, body: body ?? null, jobPublicId: job.publicId },
     });
     await this.redis.publish('notifications', JSON.stringify({ userId, notification }));
+  }
+
+  // Manual repair path: the normal sync (`run`) only re-pushes to Sheets when a fresh
+  // HSBC download inserted new DB rows — an account that's ever synced successfully
+  // once gets permanently skipped after that unless new transactions show up (see
+  // `withNew`/`everSynced` above). If a user deletes rows/the whole sheet, there's no
+  // "new" DB row to trigger a re-push, so it silently never gets repaired. This bypasses
+  // that gate entirely and re-sends this job's stored transactions for the account —
+  // scoped to jobId (not the account's whole history) to match what the job's own
+  // panel shows and avoid dumping unrelated older syncs into the sheet.
+  async forceResyncSheets(bankAccountId: number, jobId: number): Promise<{ accountNumber: string; rowsSynced: number; skipped: boolean; reason?: string }> {
+    const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    if (!account) throw new Error('BANK_ACCOUNT_NOT_FOUND');
+    const label = `${account.accountName} (${account.accountNumber})`;
+
+    try {
+      const dbRows = await this.prisma.bankTransaction.findMany({
+        where: { bankAccountId, jobId },
+        orderBy: { postDate: 'asc' },
+      });
+
+      const rows: TransactionRow[] = dbRows.map(r => ({
+        postDate: r.postDate,
+        narrative: r.narrative,
+        bankReference: r.bankReference,
+        customerReference: r.customerReference,
+        trnType: r.trnType,
+        creditAmount: r.creditAmount ? Number(r.creditAmount) : null,
+        debitAmount: r.debitAmount ? Number(r.debitAmount) : null,
+        balance: r.balance ? Number(r.balance) : null,
+        dataHash: r.dataHash,
+        rawData: r.rawData as Record<string, unknown>,
+      }));
+
+      const result = await this.sheets.sync(account.accountNumber, rows);
+      if (result.skipped) {
+        const reason = result.reason === 'no_gsheet_config' ? `no GSheet config for ${account.accountName}` : (result.reason ?? 'unknown');
+        await this.log(jobId, `Force resync — ${label}: skipped — ${reason}`, 'sheets_sync', 'warn');
+      } else {
+        await this.log(jobId, `Force resync — ${label}: pushed ${pl(result.rowsSynced ?? 0, 'row')} to GSheets.`, 'sheets_sync', 'success');
+      }
+      return { accountNumber: account.accountNumber, rowsSynced: result.rowsSynced ?? 0, skipped: result.skipped, reason: result.reason };
+    } catch (err) {
+      const msg = (err as Error).message ?? 'Unknown error';
+      await this.log(jobId, `Force resync — ${label}: failed — ${msg}`, 'sheets_sync', 'error');
+      throw err;
+    }
   }
 }
 

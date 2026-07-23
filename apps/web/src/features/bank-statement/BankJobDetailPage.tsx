@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import {
   getBankJob, retryBankJob, cancelBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
-  getJobAccountTransactions, getBankJobStats,
+  getJobAccountTransactions, getBankJobStats, resyncBankAccountSheets, resyncBankJobSheets,
   type BankSyncJob, type JobAccountSummary, type JobTransaction, type JobStats,
 } from '../../lib/api';
 import RightPanel from '../../components/common/RightPanel';
@@ -85,7 +85,7 @@ function isActive(status: string) {
 }
 
 function isRunning(status: string) {
-  return !['completed', 'failed', 'pending'].includes(status);
+  return !['completed', 'failed', 'cancelled', 'pending'].includes(status);
 }
 
 function formatDuration(ms: number | null): string {
@@ -237,6 +237,8 @@ export default function BankJobDetailPage() {
   const [cancelling, setCancelling] = useState(false);
   const [deleting, setDeleting]   = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [resyncingRowId, setResyncingRowId] = useState<number | null>(null);
+  const [resyncingAll, setResyncingAll] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showRaw, setShowRaw]   = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
@@ -342,14 +344,72 @@ export default function BankJobDetailPage() {
     }
   }
 
+  // Force resync writes a log line to an already-completed job — the SSE stream
+  // already closed for good at that point (by design: nothing changes on a finished
+  // job otherwise), so there's no live channel left to pick this up. Short-poll
+  // instead: re-fetch until the log actually grew, or give up after a few tries.
+  async function pollForNewLog(jobId: string, prevLogCount: number) {
+    for (let attempt = 0; attempt < 8; attempt++) {
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      try {
+        const updated = await getBankJob(jobId);
+        if ((updated.logs?.length ?? 0) > prevLogCount) {
+          setJob(updated);
+          return;
+        }
+        if (attempt === 7) setJob(updated);
+      } catch {
+        // keep trying — a transient fetch error here shouldn't surface to the user
+      }
+    }
+  }
+
+  async function handleForceResyncRow(e: React.MouseEvent, accountId: number) {
+    if (!job) return;
+    e.stopPropagation();
+    setResyncingRowId(accountId);
+    try {
+      await resyncBankAccountSheets(job.id, accountId);
+      toast.success(t('bankJob.forceResyncQueued'));
+      void pollForNewLog(job.id, job.logs?.length ?? 0);
+    } catch {
+      toast.error(t('bankJob.forceResyncFailed'));
+    } finally {
+      setResyncingRowId(null);
+    }
+  }
+
+  async function handleForceResyncAll() {
+    if (!job) return;
+    setResyncingAll(true);
+    try {
+      const res = await resyncBankJobSheets(job.id);
+      toast.success(t('bankJob.forceResyncAllQueued', { count: String(res.count) }));
+      void pollForNewLog(job.id, job.logs?.length ?? 0);
+    } catch {
+      toast.error(t('bankJob.forceResyncAllFailed'));
+    } finally {
+      setResyncingAll(false);
+    }
+  }
+
   async function handleCancel() {
     if (!job) return;
     setCancelling(true);
     try {
       await cancelBankJob(job.id);
       toast.success(t('bankJob.cancelSuccess'));
+      // job.status flips to 'cancelled' in the DB immediately, but the currently
+      // running step only gets marked failed/cancelled once the worker itself notices
+      // and unwinds — re-fetch now for the immediate status change, then keep polling
+      // briefly to pick up that trailing step update too (SSE already stopped since it
+      // only follows non-terminal statuses, and 'cancelled' is terminal from this point).
+      const updated = await getBankJob(job.id);
+      setJob(updated);
+      void pollForNewLog(job.id, updated.logs?.length ?? 0);
     } catch {
       toast.error(t('bankJob.cancelFailed'));
+    } finally {
       setCancelling(false);
     }
   }
@@ -450,6 +510,16 @@ export default function BankJobDetailPage() {
               <p className={s.pageMeta}>{formatDateTime(job.createdAt)} · {job.triggeredBy === 'cron' ? t('bankStatement.schedule') : job.triggeredByName ?? t('bankJob.manual')}</p>
             </div>
             <div className={s.headerActions}>
+              {['failed', 'completed', 'cancelled'].includes(job.status) && canRun && (
+                <button
+                  className={s.btnSecondary}
+                  disabled={resyncingAll}
+                  onClick={handleForceResyncAll}
+                  title={t('bankJob.forceResyncHint')}
+                >
+                  {resyncingAll ? t('bankJob.forceResyncAllRunning') : t('bankJob.forceResyncAll')}
+                </button>
+              )}
               {['failed', 'completed', 'cancelled'].includes(job.status) && canRun && (
                 <button
                   className={s.btnPrimary}
@@ -609,6 +679,23 @@ export default function BankJobDetailPage() {
                     ) : (
                       <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
                     )}
+                    {canRun && (
+                      <button
+                        type="button"
+                        className={s.summaryResyncBtn}
+                        onClick={e => handleForceResyncRow(e, acc.accountId)}
+                        disabled={resyncingRowId === acc.accountId}
+                        title={t('bankJob.forceResyncHint')}
+                      >
+                        {resyncingRowId === acc.accountId ? (
+                          <Spinner size={14} />
+                        ) : (
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M11.5 3.5a5 5 0 1 0 1.2 5.1M12 1.5v3h-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        )}
+                      </button>
+                    )}
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.summaryArrow}>
                       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
                     </svg>
@@ -643,11 +730,14 @@ export default function BankJobDetailPage() {
         onClose={() => setTxPanel(null)}
         width={1200}
       >
-        {txPanel && (
+        {txPanel && job && (
           <TxDetailPanel
             acc={txPanel.acc}
             rows={txPanel.rows}
             loading={txLoading}
+            canRun={canRun}
+            jobId={job.id}
+            onResynced={() => pollForNewLog(job.id, job.logs?.length ?? 0)}
           />
         )}
       </RightPanel>
@@ -682,18 +772,48 @@ function formatDate(iso: string): string {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
 }
 
-function TxDetailPanel({ acc, rows, loading }: {
+function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
   acc: JobAccountSummary;
   rows: JobTransaction[];
   loading: boolean;
+  canRun: boolean;
+  jobId: string;
+  onResynced: () => void;
 }) {
   const { t } = useT();
+  const toast = useToast();
+  const [resyncing, setResyncing] = useState(false);
+
+  async function handleResyncSheets() {
+    setResyncing(true);
+    try {
+      await resyncBankAccountSheets(jobId, acc.accountId);
+      toast.success(t('bankJob.forceResyncQueued'));
+      onResynced();
+    } catch {
+      toast.error(t('bankJob.forceResyncFailed'));
+    } finally {
+      setResyncing(false);
+    }
+  }
+
   return (
     <div className={s.txPanel}>
       <div className={s.txPanelMeta}>
         <span className={s.txPanelAccNum}>{acc.accountNumber}</span>
         <span className={s.summaryCurrency}>{acc.currency}</span>
         <span className={s.txPanelCount}>{acc.txCount} {t('bankJob.transactions')}</span>
+        {canRun && (
+          <button
+            type="button"
+            className={s.btnSecondary}
+            onClick={handleResyncSheets}
+            disabled={resyncing}
+            title={t('bankJob.forceResyncHint')}
+          >
+            {resyncing ? t('bankJob.forceResyncRunning') : t('bankJob.forceResync')}
+          </button>
+        )}
       </div>
 
       {loading ? (
@@ -811,7 +931,11 @@ function JobTimeline({
                   className={`${s.stepHeader} ${hasLogs ? s.stepHeaderClickable : ''}`}
                   onClick={hasLogs ? () => onToggleStep(step.key) : undefined}
                 >
-                  <span className={s.stepLabel}>{step.label}</span>
+                  <span className={s.stepLabel}>
+                    {step.key === 'bank_sync' ? t('bankJob.stepBankSync')
+                      : step.key === 'sheets_sync' ? t('bankJob.stepSheetsSync')
+                      : step.label}
+                  </span>
                   {step.completedAt && step.startedAt && (
                     <span className={s.stepDuration}>
                       {formatDuration(new Date(step.completedAt).getTime() - new Date(step.startedAt).getTime())}

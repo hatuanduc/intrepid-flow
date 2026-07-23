@@ -430,6 +430,20 @@ export async function listBankAccounts() {
   return request<BankAccount[]>('/management/bank-statement/accounts', { auth: true });
 }
 
+export async function resyncBankAccountSheets(jobPublicId: string, bankAccountId: number) {
+  return request<{ ok: boolean }>(`/management/bank-statement/jobs/${jobPublicId}/accounts/${bankAccountId}/resync-sheets`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function resyncBankJobSheets(jobPublicId: string) {
+  return request<{ ok: boolean; count: number }>(`/management/bank-statement/jobs/${jobPublicId}/resync-sheets`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
 export async function getBankMetrics(from: string, to: string, accountCode?: string, accountId?: number) {
   const params = new URLSearchParams({ from, to });
   if (accountCode) params.set('accountCode', accountCode);

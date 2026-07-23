@@ -18,8 +18,9 @@ export class SheetsService {
    *   Row 11+: B=postDate(DD/MM/YYYY), C=narrative, D=bankReference,
    *             E=creditAmount, F=debitAmount
    *
-   * Duplicate detection: reads existing bank references from column D rows 11+
-   * before appending, so re-runs are safe.
+   * No duplicate detection here — this always appends every row it's given.
+   * Deciding what's worth sending (already synced? force resync?) is entirely
+   * the caller's responsibility (see BankSyncService).
    */
   async sync(accountNumber: string, rows: TransactionRow[]): Promise<{ skipped: boolean; reason?: string; accountName?: string; rowsSynced?: number }> {
     if (rows.length === 0) {
@@ -153,43 +154,26 @@ export class SheetsService {
       },
     });
 
-    // ── Read existing bank references (D11:D) for deduplication ───────────
-    const existingRefsResp = await sheets.spreadsheets.values.get({
+    // ── Find append position ────────────────────────────────────────────────
+    // No dedup here — "should this row be sent at all" is entirely the caller's
+    // call (normal sync only passes rows the DB hasn't marked synced yet; force
+    // resync deliberately passes everything, duplicates or not). This function's
+    // only job is appending at the right row. Column B (post date) is used to
+    // count existing rows since it's always populated, unlike D (bankReference,
+    // legitimately blank for some transaction types).
+    const existingRowsResp = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: `'${sheetTab}'!D11:D`,
+      range: `'${sheetTab}'!B11:B`,
     });
-    const existingRefs = new Set<string>(
-      (existingRefsResp.data.values ?? [])
-        .flat()
-        .map(v => String(v).trim())
-        .filter(Boolean),
-    );
-
-    // ── Filter to new-only rows ────────────────────────────────────────────
-    // Rows without bankReference are always treated as new (can't dedup them).
-    const newRows = rows.filter(
-      r => !r.bankReference || !existingRefs.has(r.bankReference),
-    );
-
-    if (newRows.length === 0) {
-      this.logger.log(`No new rows to append for ${accountNumber} (all duplicates)`);
-      return { skipped: true, reason: 'all_duplicates' };
-    }
+    const existingRowCount = (existingRowsResp.data.values ?? []).length;
+    const startRow = 11 + existingRowCount;
 
     // HSBC's export lists rows newest-first; Sheets only ever appends at the bottom,
     // so writing them as-is would zigzag the date column after each sync. Sort
     // oldest-first to keep the sheet reading chronologically top-to-bottom.
-    newRows.sort((a, b) => a.postDate.getTime() - b.postDate.getTime());
+    const sortedRows = [...rows].sort((a, b) => a.postDate.getTime() - b.postDate.getTime());
 
-    // ── Determine append start row (≥ 11) ─────────────────────────────────
-    // Find the last occupied row in column D to know where to start appending.
-    const lastOccupied =
-      (existingRefsResp.data.values ?? []).length > 0
-        ? 11 + (existingRefsResp.data.values ?? []).length
-        : 11;
-    const startRow = Math.max(lastOccupied, 11);
-
-    const appendValues = newRows.map(r => [
+    const appendValues = sortedRows.map(r => [
       '',                                         // A — empty
       r.postDate ? formatDate(r.postDate) : '',   // B — post date
       r.narrative ?? '',                          // C — narrative
@@ -206,9 +190,9 @@ export class SheetsService {
     });
 
     this.logger.log(
-      `Appended ${newRows.length} rows to sheet "${accountNumber}" starting at row ${startRow}`,
+      `Appended ${sortedRows.length} rows to sheet "${accountNumber}" starting at row ${startRow}`,
     );
-    return { skipped: false, rowsSynced: newRows.length };
+    return { skipped: false, rowsSynced: sortedRows.length };
   }
 }
 

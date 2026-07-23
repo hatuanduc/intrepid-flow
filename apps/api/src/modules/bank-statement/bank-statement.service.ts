@@ -244,6 +244,38 @@ export class BankStatementService implements OnModuleInit {
     }));
   }
 
+  // Repairs a Sheet that got manually deleted/corrupted — the normal sync only re-pushes
+  // when a fresh HSBC download inserts a new DB row, so a since-broken sheet is never
+  // retried on its own. Runs as its own queue job (not a full bank_sync_jobs record —
+  // there's no download step, just SheetsService.sync() re-sending every stored row).
+  // Scoped to this specific job's rows for the account, not its whole history — matches
+  // what the job's own account panel shows.
+  async forceResyncSheets(jobPublicId: string, bankAccountId: number, triggeredBy: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+    const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    if (!account) throw new NotFoundException('BANK_ACCOUNT_NOT_FOUND');
+
+    await this.queue.add('resync-sheets', { bankAccountId, jobId: job.id, triggeredBy });
+    return { ok: true };
+  }
+
+  // Bulk variant — force-resyncs every account that appears in a given job (e.g. after
+  // the whole target spreadsheet got deleted/corrupted, not just one account's sheet).
+  async forceResyncSheetsForJob(publicId: string, triggeredBy: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId: job.id },
+      select: { bankAccountId: true },
+    });
+    await Promise.all(
+      accounts.map(a => this.queue.add('resync-sheets', { bankAccountId: a.bankAccountId, jobId: job.id, triggeredBy })),
+    );
+    return { ok: true, count: accounts.length };
+  }
+
   async getMetrics(from: Date, to: Date, accountCode?: string, accountId?: number) {
     const accountWhere: Record<string, unknown> = {};
     if (accountCode) accountWhere.accountCode = accountCode;

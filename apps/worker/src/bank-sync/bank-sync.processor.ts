@@ -9,6 +9,12 @@ export type BankSyncJobData = {
   triggeredBy: string; // user_id or 'cron'
 };
 
+export type ResyncSheetsJobData = {
+  bankAccountId: number;
+  jobId: number;        // bank_sync_jobs.id — scope to this job's own rows only
+  triggeredBy: string;  // user_id
+};
+
 @Processor(BANK_SYNC_QUEUE)
 export class BankSyncProcessor extends WorkerHost {
   private readonly logger = new Logger(BankSyncProcessor.name);
@@ -17,12 +23,20 @@ export class BankSyncProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<BankSyncJobData>): Promise<void> {
-    this.logger.log(`Processing job ${job.data.jobId}`);
+  async process(job: Job<BankSyncJobData | ResyncSheetsJobData>): Promise<void> {
+    if (job.name === 'resync-sheets') {
+      const { bankAccountId, jobId: syncJobId } = job.data as ResyncSheetsJobData;
+      this.logger.log(`Processing resync-sheets for account ${bankAccountId} (job ${syncJobId})`);
+      await this.bankSyncService.forceResyncSheets(bankAccountId, syncJobId);
+      return;
+    }
+
+    const { jobId } = job.data as BankSyncJobData;
+    this.logger.log(`Processing job ${jobId}`);
     try {
-      await this.bankSyncService.run(job.data.jobId);
+      await this.bankSyncService.run(jobId);
     } catch (err) {
-      this.logger.error(`Job ${job.data.jobId} failed: ${(err as Error).message}`);
+      this.logger.error(`Job ${jobId} failed: ${(err as Error).message}`);
       throw err;
     }
   }

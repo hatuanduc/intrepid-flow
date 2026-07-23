@@ -95,6 +95,13 @@ export class BankStatementController {
     return this.service.listAccounts();
   }
 
+  @Post('jobs/:jobId/accounts/:accountId/resync-sheets')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Force resync — đồng bộ lại giao dịch của tài khoản này trong job lên Google Sheets, bỏ qua check đã sync' })
+  resyncSheets(@Param('jobId') jobId: string, @Param('accountId') accountId: string, @Req() req: any) {
+    return this.service.forceResyncSheets(jobId, Number(accountId), String(req.authUser.id));
+  }
+
   @Get('metrics')
   @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Metrics giao dịch theo ngày (group by date × account)' })
@@ -167,6 +174,13 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Retry một job — reset từ stepKey (hoặc step đầu tiên chưa done) rồi re-queue' })
   retryJob(@Param('id') id: string, @Body() body: RetryJobDto, @Req() req: any): Promise<BankSyncJobDto> {
     return this.service.retryJob(id, String(req.authUser.id), body.stepKey);
+  }
+
+  @Post('jobs/:id/resync-sheets')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Force resync — đồng bộ lại toàn bộ giao dịch của mọi tài khoản trong job này lên Google Sheets' })
+  resyncJobSheets(@Param('id') id: string, @Req() req: any) {
+    return this.service.forceResyncSheetsForJob(id, String(req.authUser.id));
   }
 
   @Post('jobs/:id/cancel')
