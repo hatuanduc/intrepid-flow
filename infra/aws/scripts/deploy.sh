@@ -45,3 +45,14 @@ $COMPOSE up --build -d --wait --wait-timeout 300
 
 echo "[deploy] Done: $(date)"
 $COMPOSE ps
+
+# Every deploy rebuilds all 3 app images; the old layers become dangling once the new
+# ones are up but are never removed on their own, so the root EBS volume fills up over
+# successive deploys until `docker compose up --build` fails with "no space left on
+# device". Placed after --wait confirms the new containers are healthy — if `up` itself
+# had failed, `set -euo pipefail` would already have stopped the script before reaching
+# here, leaving the previous (still-running) images untouched for troubleshooting.
+# Doesn't touch named volumes (postgres_data/redis_data) — image/builder prune never does.
+echo "[deploy] Pruning unused Docker images and build cache..."
+docker image prune -af
+docker builder prune -af
