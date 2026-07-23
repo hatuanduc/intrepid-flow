@@ -47,6 +47,16 @@ export type TxRow = {
 // Mock data is relative to "today" (not a fixed calendar date) so a bank-sync job
 // run any day still finds transactions inside its date range — a hardcoded date
 // would silently go stale a few weeks after being written.
+//
+// getAccountTransactions() below recomputes these offsets from `new Date()` on every
+// call (not once at module load) — otherwise the dates get baked in as literal strings
+// the moment this module is first imported, and stay frozen at whatever "now" was at
+// that instant until the process restarts. That made every restart re-anchor "today"
+// to the restart's own timestamp, shifting the whole fixture set forward or back
+// instead of each day's data staying put once that day arrives. Computing fresh per
+// call keeps each offset (e.g. "0 days ago") tied to the real current calendar day,
+// so a given fixture's date only ever advances by exactly one day per real day —
+// restarting the server mid-day changes nothing.
 export function daysAgoDMY(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
@@ -56,7 +66,8 @@ export function daysAgoDMY(n: number): string {
   return `${dd}/${mm}/${yyyy}`;
 }
 
-export const ACCOUNT_TRANSACTIONS: Record<string, TxRow[]> = {
+export function getAccountTransactions(): Record<string, TxRow[]> {
+  return {
   '001-123456-001': [
     { bankRef: 'VND20260630001', narrative: 'SHOPEE VN PAYOUT SETTLEMENT',        customerRef: 'CUST-VN-630', trnType: 'RT PYMT', credit: 850000000, debit: null,        balance: 4850320000, postDate: daysAgoDMY(0) },
     { bankRef: 'VND20260629001', narrative: 'SUPPLIER PAYMENT MOCK JSC',          customerRef: null,          trnType: 'Transfer', credit: null,       debit: -320000000,   balance: 4000320000, postDate: daysAgoDMY(2) },
@@ -126,8 +137,9 @@ export const ACCOUNT_TRANSACTIONS: Record<string, TxRow[]> = {
     { bankRef: 'PHP20260630010', narrative: 'SHOPEE PH SUBSIDIARY PAYOUT',       customerRef: 'CUST-PH2-630', trnType: 'RT PYMT', credit: 25000.00, debit: null,     balance: 43812.29, postDate: daysAgoDMY(0) },
     { bankRef: 'PHP20260629010', narrative: 'PHP INCOMING TRANSFER PH2',         customerRef: 'CUST-PH2-629', trnType: 'RT PYMT', credit: 15000.00, debit: null,     balance: 18812.29, postDate: daysAgoDMY(3) },
     { bankRef: 'PHP20260628010', narrative: 'PHP INITIAL DEPOSIT SUBSIDIARY',    customerRef: 'CUST-PH2-628', trnType: 'RT PYMT', credit:  3812.29, debit: null,     balance:  3812.29, postDate: daysAgoDMY(6) },
-  ],
-};
+    ],
+  };
+}
 
 // Parse dd/mm/yyyy → Date (so we can compare)
 export function parseDMY(s: string): Date {

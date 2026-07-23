@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { MOCK_ACCOUNTS, ACCOUNT_TRANSACTIONS, parseDMY, type TxRow } from '../_data';
+import { MOCK_ACCOUNTS, getAccountTransactions, parseDMY, type TxRow } from '../_data';
 
 export default function MockAccountDetailPage() {
   const [selectedId, setSelectedId] = useState(MOCK_ACCOUNTS[0].id);
@@ -30,7 +30,7 @@ export default function MockAccountDetailPage() {
 
   // Derived from selectedId + applied filter — no fetch involved, so no effect needed.
   const shownTxns: TxRow[] = (() => {
-    const all = ACCOUNT_TRANSACTIONS[selected.number] ?? [];
+    const all = getAccountTransactions()[selected.number] ?? [];
     if (!appliedFrom || !appliedTo) return all;
     const from = parseDMY(appliedFrom);
     const to   = parseDMY(appliedTo);

@@ -1,5 +1,5 @@
 import ExcelJS from 'exceljs';
-import { ACCOUNT_TRANSACTIONS, parseDMY, daysAgoDMY } from '../../../mock-hsbc/_data';
+import { getAccountTransactions, parseDMY, daysAgoDMY } from '../../../mock-hsbc/_data';
 
 // Column order matches real HSBC export exactly
 const HEADERS = [
@@ -35,7 +35,8 @@ export async function GET(request: Request) {
   const toParam      = url.searchParams.get('to')   ?? '';
   const location     = COUNTRY_LOCATIONS[countryCode] ?? countryCode;
 
-  let transactions = ACCOUNT_TRANSACTIONS[accountNumber] ?? ACCOUNT_TRANSACTIONS['001-123456-001'];
+  const accountTransactions = getAccountTransactions();
+  let transactions = accountTransactions[accountNumber] ?? accountTransactions['001-123456-001'];
 
   if (fromParam && toParam) {
     const from = parseDMY(fromParam);

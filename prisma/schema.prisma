@@ -223,6 +223,11 @@ model BankTransaction {
   dataHash          String   @map("data_hash")
   rawData           Json     @map("raw_data")
   createdAt         DateTime @default(now()) @map("created_at")
+  // Every job that has ever fetched this row — the original inserting job (jobId) plus
+  // every later job that re-fetched an overlapping range and matched it as a duplicate.
+  // Force Resync uses this (not jobId alone) so a job can still manage/re-push data it
+  // has seen even if the original inserting job was since deleted.
+  jobIds            Int[]    @default([]) @map("job_ids")
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
   job         BankSyncJob @relation(fields: [jobId], references: [id])

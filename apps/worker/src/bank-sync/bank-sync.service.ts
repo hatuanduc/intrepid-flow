@@ -371,8 +371,24 @@ export class BankSyncService {
           dateFrom.getTime() >= account.lastSyncedFrom.getTime() &&
           dateTo.getTime() <= account.lastSyncedTo.getTime();
         if (dateRangeSettled && rangeAlreadyCovered) {
-          await this.log(jobId, `  → ${account.accountNumber}: already synced ${formatDateLabel(account.lastSyncedFrom!)} → ${formatDateLabel(account.lastSyncedTo!)}, skipping.`, 'bank_sync');
-          await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
+          // Count what's already on file for this range so the log/summary can show it —
+          // otherwise a skip looks identical whether the account has 0 or 200 transactions.
+          const existingCount = await this.prisma.bankTransaction.count({
+            where: { bankAccountId: account.id, postDate: { gte: dateFrom, lte: dateTo } },
+          });
+          await this.log(jobId, `  → ${account.accountNumber}: already synced ${formatDateLabel(account.lastSyncedFrom!)} → ${formatDateLabel(account.lastSyncedTo!)} (${pl(existingCount, 'transaction')} on file), skipping.`, 'bank_sync');
+          await this.upsertJobAccount(jobId, account.id, {
+            status: 'completed',
+            sheetsSyncStatus: 'no_data',
+            rowsDownloaded: existingCount,
+            rowsInserted: 0,
+            rowsDuplicate: existingCount,
+          });
+          // This job never fetches/compares anything on the skip path, so it would
+          // otherwise never register itself in jobIds (see storeTransactions) — leaving
+          // it unable to Force Resync this range's rows later if the job that originally
+          // fetched them ever gets deleted. Claim co-ownership of them now instead.
+          await this.registerJobOwnership(jobId, account.id, dateFrom, dateTo);
           continue;
         }
 
@@ -641,6 +657,21 @@ export class BankSyncService {
     });
   }
 
+  // Claims co-ownership (jobIds) of every already-stored row in [dateFrom, dateTo] for this
+  // account, without re-fetching/comparing anything — used on the "already synced, skipping"
+  // path (see rangeAlreadyCovered above), which otherwise never touches bank_transactions at
+  // all and so would never let this job Force Resync that range later.
+  private async registerJobOwnership(jobId: number, bankAccountId: number, dateFrom: Date, dateTo: Date): Promise<void> {
+    await this.prisma.$executeRaw`
+      UPDATE bank_transactions
+      SET job_ids = array_append(job_ids, ${jobId})
+      WHERE bank_account_id = ${bankAccountId}
+        AND post_date >= ${dateFrom}
+        AND post_date <= ${dateTo}
+        AND NOT (${jobId} = ANY(job_ids))
+    `;
+  }
+
   private async storeTransactions(
     jobId: number,
     bankAccountId: number,
@@ -655,11 +686,19 @@ export class BankSyncService {
 
       const existing = await this.prisma.bankTransaction.findUnique({
         where: { bankAccountId_dataHash: { bankAccountId, dataHash } },
-        select: { id: true },
+        select: { id: true, jobIds: true },
       });
 
       if (existing) {
         duplicates++;
+        // Register this job as another owner of the row so it can still be force-resynced
+        // from here later, even if the row's original inserting job gets deleted.
+        if (!existing.jobIds.includes(jobId)) {
+          await this.prisma.bankTransaction.update({
+            where: { id: existing.id },
+            data: { jobIds: { push: jobId } },
+          });
+        }
         continue;
       }
 
@@ -668,6 +707,7 @@ export class BankSyncService {
           data: {
             bankAccountId,
             jobId,
+            jobIds: [jobId],
             postDate: row.postDate,
             narrative: row.narrative,
             bankReference: row.bankReference,
@@ -775,9 +815,9 @@ export class BankSyncService {
   // once gets permanently skipped after that unless new transactions show up (see
   // `withNew`/`everSynced` above). If a user deletes rows/the whole sheet, there's no
   // "new" DB row to trigger a re-push, so it silently never gets repaired. This bypasses
-  // that gate entirely and re-sends this job's stored transactions for the account —
-  // scoped to jobId (not the account's whole history) to match what the job's own
-  // panel shows and avoid dumping unrelated older syncs into the sheet.
+  // that gate entirely and re-sends this job's rows for the account — scoped to rows this
+  // job has ever seen (jobIds, not just the original inserting jobId) so a job can still
+  // manage/re-push data it matched as a duplicate even after the original job is deleted.
   async forceResyncSheets(bankAccountId: number, jobId: number): Promise<{ accountNumber: string; rowsSynced: number; skipped: boolean; reason?: string }> {
     const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
     if (!account) throw new Error('BANK_ACCOUNT_NOT_FOUND');
@@ -785,7 +825,7 @@ export class BankSyncService {
 
     try {
       const dbRows = await this.prisma.bankTransaction.findMany({
-        where: { bankAccountId, jobId },
+        where: { bankAccountId, jobIds: { has: jobId } },
         orderBy: { postDate: 'asc' },
       });
 

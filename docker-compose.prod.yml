@@ -48,7 +48,9 @@ services:
     # No migration history exists yet in this project (local dev has always used
     # `db push`) — mirror that here instead of `migrate deploy`, which is a no-op
     # without migration files and left prod/dev with an empty schema.
-    command: ["pnpm", "db:push"]
+    # The backfill after db:push is a one-time-effect, idempotent data fix (see the
+    # .sql file) folded into the normal deploy so it never needs a manual DB step.
+    command: ["sh", "-c", "pnpm db:push && npx prisma db execute --schema=prisma/schema.prisma --file=prisma/backfill-job-ids.sql"]
     environment:
       DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
       # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)

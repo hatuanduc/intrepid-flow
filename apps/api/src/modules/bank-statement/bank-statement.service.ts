@@ -248,8 +248,9 @@ export class BankStatementService implements OnModuleInit {
   // when a fresh HSBC download inserts a new DB row, so a since-broken sheet is never
   // retried on its own. Runs as its own queue job (not a full bank_sync_jobs record —
   // there's no download step, just SheetsService.sync() re-sending every stored row).
-  // Scoped to this specific job's rows for the account, not its whole history — matches
-  // what the job's own account panel shows.
+  // Scoped to rows this job has ever seen (see BankTransaction.jobIds) — covers rows
+  // it inserted itself as well as ones it later matched as duplicates of another job's
+  // fetch, so it still works even if that other job gets deleted.
   async forceResyncSheets(jobPublicId: string, bankAccountId: number, triggeredBy: string) {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
@@ -435,6 +436,7 @@ export class BankStatementService implements OnModuleInit {
         txCount: tx?._count.id ?? 0,
         totalCredit: Number(tx?._sum.creditAmount ?? 0),
         totalDebit: Number(tx?._sum.debitAmount ?? 0),
+        rowsDuplicate: ja.rowsDuplicate ?? 0,
         downloadStatus: ja.status,
         downloadError: ja.errorMessage,
         sheetsSyncStatus: ja.sheetsSyncStatus,

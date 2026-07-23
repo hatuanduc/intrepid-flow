@@ -669,7 +669,12 @@ export default function BankJobDetailPage() {
                       </div>
                     </div>
                     <span className={s.summaryCurrency}>{acc.currency}</span>
-                    <span className={s.summaryTxCount}>{acc.txCount} {t('bankJob.transactions')}</span>
+                    <span className={s.summaryTxCountCell}>
+                      <span className={s.summaryTxCount}>{acc.txCount} {t('bankJob.transactions')}</span>
+                      {acc.rowsDuplicate > 0 && (
+                        <span className={s.summaryDupHint}>{t('bankJob.duplicateHint', { count: acc.rowsDuplicate })}</span>
+                      )}
+                    </span>
                     <span className={s.summaryCredit}>+{acc.totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
                     <span className={s.summaryDebit}>{acc.totalDebit !== 0 ? acc.totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}</span>
                     {acc.downloadStatus === 'failed' ? (
