@@ -17,6 +17,16 @@
 .section { display: flex; flex-direction: column; gap: 20px; }
 .sectionTitle { font-size: 15px; font-weight: 600; color: var(--color-ink); margin: 0 0 4px; }
 .sectionDesc { font-size: 13px; color: var(--color-muted); margin: 0; }
+.sectionHeadRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+
+.form { display: flex; flex-direction: column; gap: 16px; }
+
+.modalOverlay { composes: modalOverlay from '../../../styles/ui.module.css'; }
+.modal        { composes: modal        from '../../../styles/ui.module.css'; }
+.modalTitle   { composes: modalTitle   from '../../../styles/ui.module.css'; }
+.modalDesc    { composes: modalDesc    from '../../../styles/ui.module.css'; }
+.modalActions { composes: modalActions from '../../../styles/ui.module.css'; }
+.modalError   { composes: modalError   from '../../../styles/ui.module.css'; }
 
 /* Card */
 .card { background: var(--bg-surface); border: 1px solid var(--color-border); border-radius: 10px; padding: 20px 22px; }
@@ -161,6 +171,7 @@
 .infoValue { flex: 1; font-size: 13px; font-weight: 500; color: var(--color-ink); }
 .infoEmpty { color: var(--color-subtle); font-weight: 400; font-style: italic; }
 .infoInput { flex: 1; display: flex; flex-direction: column; gap: 4px; max-width: 320px; }
+.infoInputWide { flex: 1; display: flex; flex-direction: column; gap: 4px; max-width: 480px; }
 
 /* Table */
 .tableWrap { background: var(--bg-surface); overflow: visible; }
@@ -234,7 +245,6 @@
 .input:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 
 /* GSheets — global config */
-.globalRow { display: flex; gap: 16px; align-items: flex-start; margin-bottom: 12px; }
 .inputFull { width: 100%; box-sizing: border-box; }
 .textareaInput {
   padding: 8px 10px; border: 1.5px solid var(--color-border); border-radius: 6px;
@@ -354,6 +364,5 @@
   .page { padding: 16px; }
   .addRow { flex-direction: column; align-items: stretch; }
   .input { width: 100%; }
-  .globalRow { flex-direction: column; }
   .spreadsheetRow { flex-direction: column; align-items: stretch; }
 }

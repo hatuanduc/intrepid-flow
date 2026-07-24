@@ -14,7 +14,8 @@ import { UpdateTemplateDto } from './dto/template.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 import { RetryJobDto } from './dto/retry-job.dto';
 import { TriggerJobDto } from './dto/trigger-job.dto';
-import { UpdateAccountNameStatusDto } from './dto/update-account-name-status.dto';
+import { CreateAccountNameDto } from './dto/create-account-name.dto';
+import { UpdateAccountNameDto } from './dto/update-account-name.dto';
 import { UpdateAccountSyncDto } from './dto/update-account-sync.dto';
 
 @ApiTags('Bank Statement')
@@ -91,11 +92,25 @@ export class BankStatementController {
     return this.service.listAccountNames(all === 'true');
   }
 
+  @Post('account-names')
+  @HasPermission('bank_statement:config')
+  @ApiOperation({ summary: 'Thêm account name (master data) mới' })
+  createAccountName(@Body() body: CreateAccountNameDto) {
+    return this.service.createAccountName(body.name, body.accountCode);
+  }
+
   @Put('account-names/:id')
   @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Bật/tắt đồng bộ cho toàn bộ account number thuộc account name này' })
-  updateAccountNameStatus(@Param('id') id: string, @Body() body: UpdateAccountNameStatusDto) {
-    return this.service.updateAccountNameStatus(Number(id), body.isActive);
+  @ApiOperation({ summary: 'Sửa tên/account code, hoặc bật/tắt đồng bộ cho toàn bộ account number thuộc account name này' })
+  updateAccountName(@Param('id') id: string, @Body() body: UpdateAccountNameDto) {
+    return this.service.updateAccountName(Number(id), body);
+  }
+
+  @Delete('account-names/:id')
+  @HasPermission('bank_statement:config')
+  @ApiOperation({ summary: 'Xóa account name — chỉ khi chưa có account number nào thuộc về nó' })
+  deleteAccountName(@Param('id') id: string) {
+    return this.service.deleteAccountName(Number(id));
   }
 
   @Get('accounts')

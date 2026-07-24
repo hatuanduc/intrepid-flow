@@ -247,12 +247,64 @@ export class BankStatementService implements OnModuleInit {
     }));
   }
 
-  // name-level toggle — disables every account number under this name (see
-  // [[project-bank-sync-design]]: HSBC decides existence, the user decides sync intent).
-  async updateAccountNameStatus(id: number, isActive: boolean) {
-    const name = await this.prisma.bankAccountName.findUnique({ where: { id } });
-    if (!name) throw new NotFoundException('ACCOUNT_NAME_NOT_FOUND');
-    return this.prisma.bankAccountName.update({ where: { id }, data: { isActive } });
+  async createAccountName(name: string, accountCode: string) {
+    const trimmedName = name.trim();
+    const existing = await this.prisma.bankAccountName.findUnique({ where: { name: trimmedName } });
+    if (existing) throw new ConflictException('ACCOUNT_NAME_EXISTS');
+    return this.prisma.bankAccountName.create({ data: { name: trimmedName, accountCode: accountCode.trim() } });
+  }
+
+  // Handles rename/re-code, the isActive toggle (see [[project-bank-sync-design]]: HSBC
+  // decides existence, the user decides sync intent), or both in one call. Renaming also
+  // cascades to every existing BankAccount row under this name — the Accounts tab groups
+  // accounts by matching the denormalized `accountName`/`accountCode` string columns, not
+  // by accountNameId, so leaving those stale would desync counts/grouping until the next
+  // HSBC discovery run happens to overwrite them.
+  async updateAccountName(id: number, dto: { name?: string; accountCode?: string; isActive?: boolean }) {
+    const existing = await this.prisma.bankAccountName.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('ACCOUNT_NAME_NOT_FOUND');
+
+    const name = dto.name?.trim();
+    const accountCode = dto.accountCode?.trim();
+    if (name && name !== existing.name) {
+      const dup = await this.prisma.bankAccountName.findUnique({ where: { name } });
+      if (dup) throw new ConflictException('ACCOUNT_NAME_EXISTS');
+    }
+
+    const updated = await this.prisma.bankAccountName.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(accountCode !== undefined ? { accountCode } : {}),
+        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
+      },
+    });
+
+    if (name !== undefined || accountCode !== undefined) {
+      await this.prisma.bankAccount.updateMany({
+        where: { accountNameId: id },
+        data: {
+          ...(name !== undefined ? { accountName: name } : {}),
+          ...(accountCode !== undefined ? { accountCode } : {}),
+        },
+      });
+    }
+
+    return updated;
+  }
+
+  // Blocked when accounts already exist under this name — deleting would violate the
+  // required BankAccount.accountNameId FK and orphan real transaction history. Disable
+  // (isActive: false) instead if the intent is just to stop syncing it.
+  async deleteAccountName(id: number) {
+    const existing = await this.prisma.bankAccountName.findUnique({
+      where: { id },
+      include: { _count: { select: { accounts: true } } },
+    });
+    if (!existing) throw new NotFoundException('ACCOUNT_NAME_NOT_FOUND');
+    if (existing._count.accounts > 0) throw new ConflictException('ACCOUNT_NAME_HAS_ACCOUNTS');
+    await this.prisma.bankAccountName.delete({ where: { id } });
+    return { ok: true };
   }
 
   // account-number-level toggle — separate from `isActive`, which HSBC discovery

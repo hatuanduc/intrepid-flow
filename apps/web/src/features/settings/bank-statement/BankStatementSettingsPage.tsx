@@ -6,7 +6,7 @@ import {
   getBankSettings, updateBankSettings, triggerBankSync,
   listBankGsheets, upsertBankGsheet,
   listBankAccounts, listBankAccountNames,
-  updateBankAccountNameStatus, updateBankAccountSync,
+  createBankAccountName, updateBankAccountName, deleteBankAccountName, updateBankAccountSync,
   type BankJobSettings, type SyncDateMode,
   type BankGsheetConfig, type BankAccount, type BankAccountNameItem,
 } from '../../../lib/api';
@@ -61,6 +61,19 @@ export default function BankStatementSettingsPage() {
     if (canView) Promise.resolve().then(() => load());
   }, [canView]);
 
+  // Re-fetch just the accounts data after a create/rename/delete — a rename cascades to
+  // bankAccounts server-side (see updateAccountName), so a plain re-fetch keeps both in
+  // sync without hand-rolling the same cascade logic client-side. Doesn't touch `loading`
+  // so the page doesn't flash back to <PageLoader /> like a full load() would.
+  async function refreshAccounts() {
+    const [ba, an] = await Promise.all([
+      listBankAccounts().catch(() => [] as BankAccount[]),
+      listBankAccountNames({ all: true }).catch(() => [] as BankAccountNameItem[]),
+    ]);
+    setBankAccounts(ba);
+    setAccountNames(an);
+  }
+
   if (!canView) return <AccessDenied />;
 
   if (loading) return <PageLoader />;
@@ -104,6 +117,7 @@ export default function BankStatementSettingsPage() {
           canConfig={canConfig}
           onNameToggled={(id, isActive) => setAccountNames(prev => prev.map(n => (n.id === id ? { ...n, isActive } : n)))}
           onAccountToggled={(id, syncEnabled) => setBankAccounts(prev => prev.map(a => (a.id === id ? { ...a, syncEnabled } : a)))}
+          onDataChanged={refreshAccounts}
         />
       )}
       {tab === 'gsheets' && settings && (
@@ -469,19 +483,170 @@ function fmtSyncDate(iso: string) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
+function AccountNameMoreMenu({ onEdit, onDelete }: { onEdit: () => void; onDelete: () => void }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div className={s.moreWrap} ref={ref} onClick={e => e.stopPropagation()}>
+      <button
+        type="button"
+        className={`${s.moreBtn} ${open ? s.moreBtnOpen : ''}`}
+        onClick={() => setOpen(v => !v)}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="2" cy="7" r="1.2" fill="currentColor"/>
+          <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="7" r="1.2" fill="currentColor"/>
+        </svg>
+      </button>
+      {open && (
+        <div className={s.moreDropdown}>
+          <button className={s.moreItem} onClick={() => { setOpen(false); onEdit(); }}>{t('common.edit')}</button>
+          <button className={`${s.moreItem} ${s.moreItemDanger}`} onClick={() => { setOpen(false); onDelete(); }}>{t('common.delete')}</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AccountNamePanel({
+  target, open, onClose, onSaved,
+}: {
+  target: BankAccountNameItem | 'new' | null;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useT();
+  const toast = useToast();
+  const isEdit = target !== null && target !== 'new';
+
+  const [name, setName] = useState('');
+  const [accountCode, setAccountCode] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (!open) return;
+    Promise.resolve().then(() => {
+      if (isEdit && target) {
+        setName(target.name);
+        setAccountCode(target.accountCode);
+      } else {
+        setName(''); setAccountCode('');
+      }
+      setError(null);
+      setFieldErrors({});
+    });
+  }, [open, target, isEdit]);
+
+  function clearField(field: string) {
+    setFieldErrors(prev => { const next = { ...prev }; delete next[field]; return next; });
+  }
+
+  function validate() {
+    const errs: Record<string, string> = {};
+    if (!name.trim()) errs.name = t('bankSettings.accountNameRequired');
+    if (!accountCode.trim()) errs.accountCode = t('bankSettings.accountCodeRequired');
+    return errs;
+  }
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const errs = validate();
+    if (Object.keys(errs).length > 0) { setFieldErrors(errs); return; }
+    setFieldErrors({});
+    setError(null);
+    setSaving(true);
+    try {
+      const body = { name: name.trim(), accountCode: accountCode.trim().toUpperCase() };
+      if (isEdit && target) await updateBankAccountName(target.id, body);
+      else await createBankAccountName(body);
+      toast.success(isEdit ? t('bankSettings.updateSuccess') : t('bankSettings.addSuccess'));
+      onSaved();
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      if (code === 'ACCOUNT_NAME_EXISTS') setError(t('bankSettings.accountNameExists'));
+      else setError(isEdit ? t('bankSettings.updateFailed') : t('bankSettings.addFailed'));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const footer = (
+    <>
+      <button type="button" className={s.btnSecondary} onClick={onClose}>{t('common.cancel')}</button>
+      <button type="submit" form="account-name-form" className={s.btnPrimary} disabled={saving}>
+        {saving ? t('bankSettings.saving') : t('common.save')}
+      </button>
+    </>
+  );
+
+  return (
+    <RightPanel
+      title={isEdit ? t('bankSettings.editAccountName') : t('bankSettings.addAccountName')}
+      open={open}
+      onClose={onClose}
+      footer={footer}
+    >
+      <form id="account-name-form" onSubmit={submit} className={s.form}>
+        <div className={s.field}>
+          <label className={s.label}>{t('bankSettings.colAccountName')}</label>
+          <input
+            className={`${s.input} ${s.inputFull} ${fieldErrors.name ? s.inputError : ''}`}
+            value={name}
+            onChange={e => { setName(e.target.value); clearField('name'); }}
+            placeholder="INTREPID ECOMMERCE SERVICES"
+            autoFocus
+          />
+          {fieldErrors.name && <span className={s.fieldError}>{fieldErrors.name}</span>}
+        </div>
+        <div className={s.field}>
+          <label className={s.label}>{t('bankSettings.colAccountCode')}</label>
+          <input
+            className={`${s.input} ${s.inputFull} ${fieldErrors.accountCode ? s.inputError : ''}`}
+            value={accountCode}
+            onChange={e => { setAccountCode(e.target.value); clearField('accountCode'); }}
+            placeholder="TH"
+          />
+          {fieldErrors.accountCode && <span className={s.fieldError}>{fieldErrors.accountCode}</span>}
+        </div>
+        {error && <div className={s.error}>{error}</div>}
+      </form>
+    </RightPanel>
+  );
+}
+
 function AccountsTab({
-  accountNames, bankAccounts, canConfig, onNameToggled, onAccountToggled,
+  accountNames, bankAccounts, canConfig, onNameToggled, onAccountToggled, onDataChanged,
 }: {
   accountNames: BankAccountNameItem[];
   bankAccounts: BankAccount[];
   canConfig: boolean;
   onNameToggled: (id: number, isActive: boolean) => void;
   onAccountToggled: (id: number, syncEnabled: boolean) => void;
+  onDataChanged: () => void;
 }) {
   const { t } = useT();
   const toast = useToast();
   const [detailName, setDetailName] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [panelTarget, setPanelTarget] = useState<BankAccountNameItem | 'new' | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<BankAccountNameItem | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const detailAccounts = detailName ? bankAccounts.filter(a => a.accountName === detailName) : [];
 
@@ -491,12 +656,29 @@ function AccountsTab({
     setSavingId(c.id);
     const next = !c.isActive;
     try {
-      await updateBankAccountNameStatus(c.id, next);
+      await updateBankAccountName(c.id, { isActive: next });
       onNameToggled(c.id, next);
     } catch {
       toast.error(t('bankSettings.updateFailed'));
     } finally {
       setSavingId(null);
+    }
+  }
+
+  async function handleDeleteConfirmed() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteBankAccountName(deleteTarget.id);
+      toast.success(t('bankSettings.deleteSuccess'));
+      setDeleteTarget(null);
+      onDataChanged();
+    } catch (err) {
+      const code = err instanceof Error ? err.message : '';
+      setDeleteError(code === 'ACCOUNT_NAME_HAS_ACCOUNTS' ? t('bankSettings.deleteHasAccounts') : t('bankSettings.deleteFailed'));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -516,9 +698,14 @@ function AccountsTab({
 
   return (
     <div className={s.section}>
-      <div>
-        <p className={s.sectionTitle}>Account names</p>
-        <p className={s.sectionDesc}>{t('bankSettings.accountNamesDesc')}</p>
+      <div className={s.sectionHeadRow}>
+        <div>
+          <p className={s.sectionTitle}>Account names</p>
+          <p className={s.sectionDesc}>{t('bankSettings.accountNamesDesc')}</p>
+        </div>
+        {canConfig && (
+          <button className={s.btnPrimary} onClick={() => setPanelTarget('new')}>{t('bankSettings.addAccount')}</button>
+        )}
       </div>
 
       <div className={s.tableWrap}>
@@ -529,16 +716,17 @@ function AccountsTab({
               <th className={s.th} style={{ width: 130 }}>{t('bankSettings.colAccountCode')}</th>
               <th className={s.th} style={{ width: 110 }}>{t('bankSettings.colAccounts')}</th>
               <th className={s.th} style={{ width: 80 }}>{t('bankSettings.colSync')}</th>
+              {canConfig && <th className={s.th} style={{ width: 40 }} />}
             </tr>
           </thead>
           <tbody>
             {accountNames.length === 0 && (
-              <tr><td className={s.td} colSpan={4}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
+              <tr><td className={s.td} colSpan={canConfig ? 5 : 4}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
             )}
             {accountNames.map(c => {
               const count = bankAccounts.filter(a => a.accountName === c.name).length;
               return (
-                <tr key={c.name} style={{ cursor: 'pointer' }} onClick={() => setDetailName(c.name)}>
+                <tr key={c.id} style={{ cursor: 'pointer' }} onClick={() => setDetailName(c.name)}>
                   <td className={s.td}>{c.name}</td>
                   <td className={s.td}><CountryBadge code={c.accountCode} /></td>
                   <td className={s.td}>
@@ -559,6 +747,14 @@ function AccountsTab({
                       </span>
                     )}
                   </td>
+                  {canConfig && (
+                    <td className={s.td}>
+                      <AccountNameMoreMenu
+                        onEdit={() => setPanelTarget(c)}
+                        onDelete={() => setDeleteTarget(c)}
+                      />
+                    </td>
+                  )}
                 </tr>
               );
             })}
@@ -626,6 +822,31 @@ function AccountsTab({
           </div>
         )}
       </RightPanel>
+
+      <AccountNamePanel
+        target={panelTarget}
+        open={panelTarget !== null}
+        onClose={() => setPanelTarget(null)}
+        onSaved={() => { setPanelTarget(null); onDataChanged(); }}
+      />
+
+      {deleteTarget && (
+        <div className={s.modalOverlay} onClick={() => setDeleteTarget(null)}>
+          <div className={s.modal} onClick={e => e.stopPropagation()}>
+            <p className={s.modalTitle}>{t('bankSettings.confirmDeleteAccountNameTitle')}</p>
+            <p className={s.modalDesc}>{t('bankSettings.confirmDeleteAccountNameDesc', { name: deleteTarget.name })}</p>
+            {deleteError && <div className={s.modalError}>{deleteError}</div>}
+            <div className={s.modalActions}>
+              <button className={s.btnSecondary} onClick={() => { setDeleteTarget(null); setDeleteError(null); }} disabled={deleting}>
+                {t('common.cancel')}
+              </button>
+              <button className={s.btnDanger} onClick={handleDeleteConfirmed} disabled={deleting}>
+                {deleting ? t('common.deleting') : t('common.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -741,7 +962,7 @@ function GlobalGsheetConfig({
   const savedSheet = settings.googleTemplateSheet ?? '';
 
   return (
-    <div className={s.card}>
+    <div className={s.card} style={{ padding: 0 }}>
       <div className={s.cardHead}>
         <span className={s.cardTitle}>{t('bankSettings.globalConfig')}</span>
         {!editing ? (
@@ -760,17 +981,17 @@ function GlobalGsheetConfig({
         )}
       </div>
 
-      {editing ? (
-        <div className={s.globalRow}>
-          <div className={s.field} style={{ flex: 3 }}>
-            <label className={s.label}>
-              {t('bankSettings.templateIdLabel')}
-              <Tooltip wide>
-                {t('bankSettings.templateIdTooltip')}{'\n\n'}
-                {t('bankSettings.templateIdTooltipUrl')}{'\n'}
-                docs.google.com/spreadsheets/d/<strong>ID</strong>/edit
-              </Tooltip>
-            </label>
+      <div className={s.infoRow}>
+        <span className={s.infoLabel}>
+          {t('bankSettings.templateIdLabel')}
+          <Tooltip wide>
+            {t('bankSettings.templateIdTooltip')}{'\n\n'}
+            {t('bankSettings.templateIdTooltipUrl')}{'\n'}
+            docs.google.com/spreadsheets/d/<strong>ID</strong>/edit
+          </Tooltip>
+        </span>
+        {editing ? (
+          <div className={s.infoInputWide}>
             <input
               className={`${s.input} ${s.inputFull} ${idError ? s.inputError : ''}`}
               value={templateSpreadsheetId}
@@ -781,11 +1002,22 @@ function GlobalGsheetConfig({
             />
             {idError && <span className={s.fieldError}>{idError}</span>}
           </div>
-          <div className={s.field} style={{ flex: 1 }}>
-            <label className={s.label}>
-              Sheet name
-              <Tooltip>{t('bankSettings.sheetNameTooltip')} <code>template</code></Tooltip>
-            </label>
+        ) : (
+          <span className={s.infoValue}>
+            {savedId
+              ? <a href={`https://docs.google.com/spreadsheets/d/${savedId}/edit`} target="_blank" rel="noopener noreferrer">{savedId}</a>
+              : <span className={s.infoEmpty}>{t('bankSettings.spreadsheetNotConfigured')}</span>}
+          </span>
+        )}
+      </div>
+
+      <div className={`${s.infoRow} ${s.infoRowLast}`}>
+        <span className={s.infoLabel}>
+          {t('bankSettings.templateSheetLabel')}
+          <Tooltip>{t('bankSettings.sheetNameTooltip')} <code>template</code></Tooltip>
+        </span>
+        {editing ? (
+          <div className={s.infoInput}>
             <input
               className={`${s.input} ${s.inputFull}`}
               value={templateSheet}
@@ -793,27 +1025,14 @@ function GlobalGsheetConfig({
               placeholder="template"
             />
           </div>
-        </div>
-      ) : (
-        <div className={s.globalRow}>
-          <div className={s.field} style={{ flex: 3 }}>
-            <span className={s.label}>{t('bankSettings.templateIdLabel')}</span>
-            <span className={s.infoValue}>
-              {savedId
-                ? <a href={`https://docs.google.com/spreadsheets/d/${savedId}/edit`} target="_blank" rel="noopener noreferrer">{savedId}</a>
-                : <span className={s.infoEmpty}>{t('bankSettings.spreadsheetNotConfigured')}</span>}
-            </span>
-          </div>
-          <div className={s.field} style={{ flex: 1 }}>
-            <span className={s.label}>Sheet name</span>
-            <span className={s.infoValue}>
-              {savedSheet || <span className={s.infoEmpty}>—</span>}
-            </span>
-          </div>
-        </div>
-      )}
+        ) : (
+          <span className={s.infoValue}>
+            {savedSheet || <span className={s.infoEmpty}>—</span>}
+          </span>
+        )}
+      </div>
 
-      <div style={{ marginTop: 14 }}>
+      <div style={{ padding: '14px 20px' }}>
         <ServiceAccountShareInfo accessLevel="editor" />
       </div>
     </div>

@@ -395,11 +395,29 @@ export async function listBankAccountNames(opts?: { all?: boolean }) {
   return request<BankAccountNameItem[]>(`/management/bank-statement/account-names${query}`, { auth: true });
 }
 
-export async function updateBankAccountNameStatus(id: number, isActive: boolean) {
+export async function createBankAccountName(body: { name: string; accountCode: string }) {
+  return request<BankAccountNameItem>('/management/bank-statement/account-names', {
+    method: 'POST',
+    auth: true,
+    body: JSON.stringify(body),
+  });
+}
+
+export async function updateBankAccountName(
+  id: number,
+  body: Partial<{ name: string; accountCode: string; isActive: boolean }>,
+) {
   return request<BankAccountNameItem>(`/management/bank-statement/account-names/${id}`, {
     method: 'PUT',
     auth: true,
-    body: JSON.stringify({ isActive }),
+    body: JSON.stringify(body),
+  });
+}
+
+export async function deleteBankAccountName(id: number) {
+  return request<{ ok: boolean }>(`/management/bank-statement/account-names/${id}`, {
+    method: 'DELETE',
+    auth: true,
   });
 }
 

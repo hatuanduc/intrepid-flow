@@ -444,6 +444,14 @@ export const en = {
     addFailed: 'Add failed.',
     deleteSuccess: 'Deleted.',
     deleteFailed: 'Delete failed.',
+    addAccountName: 'Add account name',
+    editAccountName: 'Edit account name',
+    accountNameRequired: 'Please enter an account name.',
+    accountCodeRequired: 'Please enter an account code.',
+    accountNameExists: 'This account name already exists.',
+    deleteHasAccounts: 'Cannot delete — accounts already exist under this name. Disable it instead.',
+    confirmDeleteAccountNameTitle: 'Delete account name',
+    confirmDeleteAccountNameDesc: 'Delete "{name}"? This cannot be undone.',
 
     // GSheets tab
     spreadsheetByAccount: 'Spreadsheet by account',
@@ -465,6 +473,7 @@ export const en = {
     templateIdLabel: 'Template spreadsheet ID or link',
     templateIdTooltip: 'Template sheet used to copy when creating new tabs for bank accounts. Paste either the ID or the full URL.',
     templateIdTooltipUrl: 'Get ID from the Google Sheet URL:',
+    templateSheetLabel: 'Sheet name',
     sheetNameTooltip: 'Tab name in the above spreadsheet to use as template, e.g.:',
     saveGlobalConfig: 'Save global config',
     saveFailed: 'Save failed. Please try again.',
