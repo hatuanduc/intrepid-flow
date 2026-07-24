@@ -405,7 +405,7 @@ export async function createBankAccountName(body: { name: string; accountCode: s
 
 export async function updateBankAccountName(
   id: number,
-  body: Partial<{ name: string; accountCode: string; isActive: boolean }>,
+  body: Partial<{ name: string; isActive: boolean }>,
 ) {
   return request<BankAccountNameItem>(`/management/bank-statement/account-names/${id}`, {
     method: 'PUT',

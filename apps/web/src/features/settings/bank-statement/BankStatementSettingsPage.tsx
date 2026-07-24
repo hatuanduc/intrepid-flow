@@ -559,7 +559,7 @@ function AccountNamePanel({
   function validate() {
     const errs: Record<string, string> = {};
     if (!name.trim()) errs.name = t('bankSettings.accountNameRequired');
-    if (!accountCode.trim()) errs.accountCode = t('bankSettings.accountCodeRequired');
+    if (!isEdit && !accountCode.trim()) errs.accountCode = t('bankSettings.accountCodeRequired');
     return errs;
   }
 
@@ -571,9 +571,8 @@ function AccountNamePanel({
     setError(null);
     setSaving(true);
     try {
-      const body = { name: name.trim(), accountCode: accountCode.trim().toUpperCase() };
-      if (isEdit && target) await updateBankAccountName(target.id, body);
-      else await createBankAccountName(body);
+      if (isEdit && target) await updateBankAccountName(target.id, { name: name.trim() });
+      else await createBankAccountName({ name: name.trim(), accountCode: accountCode.trim().toUpperCase() });
       toast.success(isEdit ? t('bankSettings.updateSuccess') : t('bankSettings.addSuccess'));
       onSaved();
     } catch (err) {
@@ -620,7 +619,9 @@ function AccountNamePanel({
             value={accountCode}
             onChange={e => { setAccountCode(e.target.value); clearField('accountCode'); }}
             placeholder="TH"
+            disabled={isEdit}
           />
+          {isEdit && <span className={s.fieldHint}>{t('bankSettings.accountCodeLocked')}</span>}
           {fieldErrors.accountCode && <span className={s.fieldError}>{fieldErrors.accountCode}</span>}
         </div>
         {error && <div className={s.error}>{error}</div>}

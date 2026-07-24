@@ -447,6 +447,7 @@ export const vi: Translations = {
     editAccountName: 'Sửa account name',
     accountNameRequired: 'Vui lòng nhập tên account.',
     accountCodeRequired: 'Vui lòng nhập account code.',
+    accountCodeLocked: 'Không thể đổi account code sau khi đã tạo.',
     accountNameExists: 'Tên account này đã tồn tại.',
     deleteHasAccounts: 'Không thể xóa — đã có account number thuộc tên này. Hãy tắt (disable) thay vì xóa.',
     confirmDeleteAccountNameTitle: 'Xóa account name',

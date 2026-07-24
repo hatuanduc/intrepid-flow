@@ -8,12 +8,6 @@ export class UpdateAccountNameDto {
   @MinLength(1)
   name?: string;
 
-  @ApiPropertyOptional({ example: 'TH' })
-  @IsOptional()
-  @IsString()
-  @MinLength(1)
-  accountCode?: string;
-
   @ApiPropertyOptional({ description: 'Có tiếp tục đồng bộ mọi account number thuộc account name này hay không' })
   @IsOptional()
   @IsBoolean()

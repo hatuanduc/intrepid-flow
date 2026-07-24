@@ -448,6 +448,7 @@ export const en = {
     editAccountName: 'Edit account name',
     accountNameRequired: 'Please enter an account name.',
     accountCodeRequired: 'Please enter an account code.',
+    accountCodeLocked: 'Account code can’t be changed after creation.',
     accountNameExists: 'This account name already exists.',
     deleteHasAccounts: 'Cannot delete — accounts already exist under this name. Disable it instead.',
     confirmDeleteAccountNameTitle: 'Delete account name',

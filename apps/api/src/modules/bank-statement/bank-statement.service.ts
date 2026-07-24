@@ -254,41 +254,38 @@ export class BankStatementService implements OnModuleInit {
     return this.prisma.bankAccountName.create({ data: { name: trimmedName, accountCode: accountCode.trim() } });
   }
 
-  // Handles rename/re-code, the isActive toggle (see [[project-bank-sync-design]]: HSBC
-  // decides existence, the user decides sync intent), or both in one call. Renaming also
-  // cascades to every existing BankAccount row under this name — the Accounts tab groups
-  // accounts by matching the denormalized `accountName`/`accountCode` string columns, not
-  // by accountNameId, so leaving those stale would desync counts/grouping until the next
-  // HSBC discovery run happens to overwrite them.
-  async updateAccountName(id: number, dto: { name?: string; accountCode?: string; isActive?: boolean }) {
+  // Handles rename and/or the isActive toggle (see [[project-bank-sync-design]]: HSBC
+  // decides existence, the user decides sync intent). accountCode is intentionally NOT
+  // editable here — it's only set at creation. BankGsheetConfig is joined to an account
+  // by the `accountCode` string (not a real FK, see bank_gsheet_configs), so re-coding an
+  // existing name would silently orphan an already-configured Google Sheet; simplest safe
+  // answer is to never allow it to change post-creation rather than cascade-rename it.
+  // Renaming the name does cascade to every existing BankAccount row under it — the
+  // Accounts tab groups accounts by matching the denormalized `accountName` string column,
+  // not by accountNameId, so leaving those stale would desync counts/grouping until the
+  // next HSBC discovery run happens to overwrite them.
+  async updateAccountName(id: number, dto: { name?: string; isActive?: boolean }) {
     const existing = await this.prisma.bankAccountName.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('ACCOUNT_NAME_NOT_FOUND');
 
     const name = dto.name?.trim();
-    const accountCode = dto.accountCode?.trim();
     if (name && name !== existing.name) {
       const dup = await this.prisma.bankAccountName.findUnique({ where: { name } });
       if (dup) throw new ConflictException('ACCOUNT_NAME_EXISTS');
     }
 
-    const updated = await this.prisma.bankAccountName.update({
-      where: { id },
-      data: {
-        ...(name !== undefined ? { name } : {}),
-        ...(accountCode !== undefined ? { accountCode } : {}),
-        ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
-      },
-    });
-
-    if (name !== undefined || accountCode !== undefined) {
-      await this.prisma.bankAccount.updateMany({
-        where: { accountNameId: id },
+    const [updated] = await this.prisma.$transaction([
+      this.prisma.bankAccountName.update({
+        where: { id },
         data: {
-          ...(name !== undefined ? { accountName: name } : {}),
-          ...(accountCode !== undefined ? { accountCode } : {}),
+          ...(name !== undefined ? { name } : {}),
+          ...(dto.isActive !== undefined ? { isActive: dto.isActive } : {}),
         },
-      });
-    }
+      }),
+      ...(name !== undefined
+        ? [this.prisma.bankAccount.updateMany({ where: { accountNameId: id }, data: { accountName: name } })]
+        : []),
+    ]);
 
     return updated;
   }

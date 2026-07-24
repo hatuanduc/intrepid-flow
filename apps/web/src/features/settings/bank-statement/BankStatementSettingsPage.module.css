@@ -243,6 +243,7 @@
   outline: none; width: 220px;
 }
 .input:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
+.input:disabled { background: var(--bg-subtle); color: var(--color-muted); cursor: not-allowed; }
 
 /* GSheets — global config */
 .inputFull { width: 100%; box-sizing: border-box; }
