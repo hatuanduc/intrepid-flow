@@ -378,6 +378,7 @@ export type BankAccount = {
   currency: string;
   accountCode: string;
   isActive: boolean;
+  syncEnabled: boolean;
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
 };
@@ -389,8 +390,25 @@ export type BankAccountNameItem = {
   isActive: boolean;
 };
 
-export async function listBankAccountNames() {
-  return request<BankAccountNameItem[]>('/management/bank-statement/account-names', { auth: true });
+export async function listBankAccountNames(opts?: { all?: boolean }) {
+  const query = opts?.all ? '?all=true' : '';
+  return request<BankAccountNameItem[]>(`/management/bank-statement/account-names${query}`, { auth: true });
+}
+
+export async function updateBankAccountNameStatus(id: number, isActive: boolean) {
+  return request<BankAccountNameItem>(`/management/bank-statement/account-names/${id}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify({ isActive }),
+  });
+}
+
+export async function updateBankAccountSync(id: number, syncEnabled: boolean) {
+  return request<BankAccount>(`/management/bank-statement/accounts/${id}`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify({ syncEnabled }),
+  });
 }
 
 

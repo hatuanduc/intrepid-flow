@@ -293,10 +293,20 @@ export class BankSyncService {
     // ── 1b. Bail out before ever opening a browser if every known account already
     // covers this range — avoids a pointless login/2FA round-trip for a job that's
     // going to skip every account anyway. Uses whatever accounts are already in DB
-    // (no live HSBCnet discovery) — if that misses a brand-new account, the next
-    // scheduled run still discovers it normally once a real login happens (see 1d).
-    const knownAccounts = await this.prisma.bankAccount.findMany({ where: { isActive: true } });
-    const allAlreadyCovered = dateRangeSettled && knownAccounts.length > 0 && knownAccounts.every(a =>
+    // (no live HSBCnet discovery). But a master account name with zero BankAccount
+    // rows yet (e.g. just added to the seed, never actually discovered on HSBCnet)
+    // is invisible to that check — so also bail-in whenever one exists, forcing a
+    // real login+discovery pass instead of silently never picking the new name up.
+    // syncEnabled=false / accountNameRef.isActive=false accounts are user-disabled
+    // (e.g. testing with only a subset) — excluded from both the coverage check and
+    // the actual fetch loop below, same filter in both places.
+    const knownAccounts = await this.prisma.bankAccount.findMany({
+      where: { isActive: true, syncEnabled: true, accountNameRef: { isActive: true } },
+    });
+    const undiscoveredNameCount = await this.prisma.bankAccountName.count({
+      where: { isActive: true, accounts: { none: {} } },
+    });
+    const allAlreadyCovered = dateRangeSettled && knownAccounts.length > 0 && undiscoveredNameCount === 0 && knownAccounts.every(a =>
       a.lastSyncedFrom && a.lastSyncedTo &&
       dateFrom.getTime() >= a.lastSyncedFrom.getTime() &&
       dateTo.getTime() <= a.lastSyncedTo.getTime(),
@@ -354,9 +364,9 @@ export class BankSyncService {
     await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
     await this.discoverAndSyncAccounts(jobId);
 
-    // ── 1e. Download per active account (grouped by accountName) ─────────────
+    // ── 1e. Download per active + sync-enabled account (grouped by accountName) ──
     const accounts = await this.prisma.bankAccount.findMany({
-      where: { isActive: true },
+      where: { isActive: true, syncEnabled: true, accountNameRef: { isActive: true } },
       orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
     });
 

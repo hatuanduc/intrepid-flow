@@ -430,6 +430,7 @@ export const en = {
     colAccountName: 'Account name (HSBCnet)',
     colAccountCode: 'Account code',
     colAccounts: 'Accounts',
+    colSync: 'Sync',
     colAccountNumber: 'Account number',
     lastSync: 'Last sync',
     noData: 'No data yet.',

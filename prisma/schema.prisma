@@ -137,6 +137,11 @@ model BankAccount {
   currency       String
   accountCode    String   @map("account_code")
   isActive       Boolean   @default(true) @map("is_active")
+  // User intent — separate from isActive, which HSBC discovery owns and silently
+  // resets to true whenever it still sees this account number. This is the actual
+  // "should the sync job fetch this account" toggle a user controls (e.g. to test
+  // with only a subset of accounts) without discovery undoing it on the next run.
+  syncEnabled    Boolean   @default(true) @map("sync_enabled")
   createdAt      DateTime  @default(now()) @map("created_at")
   // Bounds of the most recent successful fetch — a future run whose [from,to] request
   // falls entirely within [lastSyncedFrom, lastSyncedTo] can skip re-downloading, since

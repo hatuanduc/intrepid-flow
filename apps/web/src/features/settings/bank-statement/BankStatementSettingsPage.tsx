@@ -6,6 +6,7 @@ import {
   getBankSettings, updateBankSettings, triggerBankSync,
   listBankGsheets, upsertBankGsheet,
   listBankAccounts, listBankAccountNames,
+  updateBankAccountNameStatus, updateBankAccountSync,
   type BankJobSettings, type SyncDateMode,
   type BankGsheetConfig, type BankAccount, type BankAccountNameItem,
 } from '../../../lib/api';
@@ -43,7 +44,7 @@ export default function BankStatementSettingsPage() {
         getBankSettings(),
         listBankGsheets(),
         listBankAccounts().catch(() => [] as BankAccount[]),
-        listBankAccountNames().catch(() => [] as BankAccountNameItem[]),
+        listBankAccountNames({ all: true }).catch(() => [] as BankAccountNameItem[]),
       ]);
       setSettings(s);
       setGsheets(g);
@@ -96,7 +97,13 @@ export default function BankStatementSettingsPage() {
         <ConnectTab settings={settings} canConfig={canConfig} onSaved={(s) => { setSettings(s); toast.success(t('bankSettings.connectSaved')); }} />
       )}
       {tab === 'accounts' && (
-        <AccountsTab accountNames={accountNames} bankAccounts={bankAccounts} />
+        <AccountsTab
+          accountNames={accountNames}
+          bankAccounts={bankAccounts}
+          canConfig={canConfig}
+          onNameToggled={(id, isActive) => setAccountNames(prev => prev.map(n => (n.id === id ? { ...n, isActive } : n)))}
+          onAccountToggled={(id, syncEnabled) => setBankAccounts(prev => prev.map(a => (a.id === id ? { ...a, syncEnabled } : a)))}
+        />
       )}
       {tab === 'gsheets' && settings && (
         <GsheetsTab
@@ -460,11 +467,50 @@ function fmtSyncDate(iso: string) {
   return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 
-function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccountNameItem[]; bankAccounts: BankAccount[] }) {
+function AccountsTab({
+  accountNames, bankAccounts, canConfig, onNameToggled, onAccountToggled,
+}: {
+  accountNames: BankAccountNameItem[];
+  bankAccounts: BankAccount[];
+  canConfig: boolean;
+  onNameToggled: (id: number, isActive: boolean) => void;
+  onAccountToggled: (id: number, syncEnabled: boolean) => void;
+}) {
   const { t } = useT();
+  const toast = useToast();
   const [detailName, setDetailName] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<number | null>(null);
 
   const detailAccounts = detailName ? bankAccounts.filter(a => a.accountName === detailName) : [];
+
+  async function toggleNameStatus(e: React.MouseEvent, c: BankAccountNameItem) {
+    e.stopPropagation();
+    if (!canConfig || savingId === c.id) return;
+    setSavingId(c.id);
+    const next = !c.isActive;
+    try {
+      await updateBankAccountNameStatus(c.id, next);
+      onNameToggled(c.id, next);
+    } catch {
+      toast.error(t('bankSettings.updateFailed'));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function toggleAccountSync(a: BankAccount) {
+    if (!canConfig || savingId === a.id) return;
+    setSavingId(a.id);
+    const next = !a.syncEnabled;
+    try {
+      await updateBankAccountSync(a.id, next);
+      onAccountToggled(a.id, next);
+    } catch {
+      toast.error(t('bankSettings.updateFailed'));
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   return (
     <div className={s.section}>
@@ -480,11 +526,12 @@ function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccount
               <th className={s.th}>{t('bankSettings.colAccountName')}</th>
               <th className={s.th} style={{ width: 130 }}>{t('bankSettings.colAccountCode')}</th>
               <th className={s.th} style={{ width: 110 }}>{t('bankSettings.colAccounts')}</th>
+              <th className={s.th} style={{ width: 80 }}>{t('bankSettings.colSync')}</th>
             </tr>
           </thead>
           <tbody>
             {accountNames.length === 0 && (
-              <tr><td className={s.td} colSpan={3}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
+              <tr><td className={s.td} colSpan={4}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
             )}
             {accountNames.map(c => {
               const count = bankAccounts.filter(a => a.accountName === c.name).length;
@@ -494,6 +541,21 @@ function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccount
                   <td className={s.td}><CountryBadge code={c.accountCode} /></td>
                   <td className={s.td}>
                     <span className={s.accountCountBadge}>{t('bankSettings.accountsCount', { n: count })}</span>
+                  </td>
+                  <td className={s.td}>
+                    {canConfig ? (
+                      <button
+                        type="button"
+                        className={`${s.toggle} ${c.isActive ? s.toggleOn : ''}`}
+                        onClick={e => toggleNameStatus(e, c)}
+                        disabled={savingId === c.id}
+                        title={c.isActive ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
+                      />
+                    ) : (
+                      <span className={c.isActive ? s.syncDate : s.syncNever}>
+                        {c.isActive ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
+                      </span>
+                    )}
                   </td>
                 </tr>
               );
@@ -520,12 +582,13 @@ function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccount
                   <th className={s.th}>{t('bankSettings.colAccountNumber')}</th>
                   <th className={s.th} style={{ width: 80 }}>Currency</th>
                   <th className={s.th}>{t('bankSettings.lastSync')}</th>
+                  <th className={s.th} style={{ width: 70 }}>{t('bankSettings.colSync')}</th>
                 </tr>
               </thead>
               <tbody>
                 {detailAccounts.length === 0 && (
                   <tr>
-                    <td className={s.td} colSpan={3} style={{ textAlign: 'center' }}>
+                    <td className={s.td} colSpan={4} style={{ textAlign: 'center' }}>
                       <span className={s.syncNever}>{t('bankSettings.noAccountsSynced')}</span>
                     </td>
                   </tr>
@@ -538,6 +601,21 @@ function AccountsTab({ accountNames, bankAccounts }: { accountNames: BankAccount
                       {a.lastSyncAt
                         ? <span className={s.syncDate}>{fmtSyncDate(a.lastSyncAt)}</span>
                         : <span className={s.syncNever}>{t('bankSettings.neverSynced')}</span>}
+                    </td>
+                    <td className={s.td}>
+                      {canConfig ? (
+                        <button
+                          type="button"
+                          className={`${s.toggle} ${a.syncEnabled ? s.toggleOn : ''}`}
+                          onClick={() => toggleAccountSync(a)}
+                          disabled={savingId === a.id}
+                          title={a.syncEnabled ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
+                        />
+                      ) : (
+                        <span className={a.syncEnabled ? s.syncDate : s.syncNever}>
+                          {a.syncEnabled ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}

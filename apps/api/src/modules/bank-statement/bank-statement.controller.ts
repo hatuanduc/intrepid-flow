@@ -14,6 +14,8 @@ import { UpdateTemplateDto } from './dto/template.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
 import { RetryJobDto } from './dto/retry-job.dto';
 import { TriggerJobDto } from './dto/trigger-job.dto';
+import { UpdateAccountNameStatusDto } from './dto/update-account-name-status.dto';
+import { UpdateAccountSyncDto } from './dto/update-account-sync.dto';
 
 @ApiTags('Bank Statement')
 @ApiBearerAuth()
@@ -84,8 +86,16 @@ export class BankStatementController {
   @Get('account-names')
   @HasPermission('bank_statement:view')
   @ApiOperation({ summary: 'Danh sách account name (master data) declared cho sync' })
-  listAccountNames() {
-    return this.service.listAccountNames();
+  @ApiQuery({ name: 'all', required: false, description: 'true để lấy cả account name đã disable (dùng cho trang Settings)' })
+  listAccountNames(@Query('all') all?: string) {
+    return this.service.listAccountNames(all === 'true');
+  }
+
+  @Put('account-names/:id')
+  @HasPermission('bank_statement:config')
+  @ApiOperation({ summary: 'Bật/tắt đồng bộ cho toàn bộ account number thuộc account name này' })
+  updateAccountNameStatus(@Param('id') id: string, @Body() body: UpdateAccountNameStatusDto) {
+    return this.service.updateAccountNameStatus(Number(id), body.isActive);
   }
 
   @Get('accounts')
@@ -93,6 +103,13 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Danh sách tài khoản ngân hàng' })
   listAccounts() {
     return this.service.listAccounts();
+  }
+
+  @Put('accounts/:id')
+  @HasPermission('bank_statement:config')
+  @ApiOperation({ summary: 'Bật/tắt đồng bộ cho 1 account number cụ thể' })
+  updateAccountSync(@Param('id') id: string, @Body() body: UpdateAccountSyncDto) {
+    return this.service.updateAccountSyncEnabled(Number(id), body.syncEnabled);
   }
 
   @Post('jobs/:jobId/accounts/:accountId/resync-sheets')

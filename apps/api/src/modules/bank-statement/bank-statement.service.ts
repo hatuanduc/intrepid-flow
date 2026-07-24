@@ -213,9 +213,11 @@ export class BankStatementService implements OnModuleInit {
 
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
 
-  async listAccountNames() {
+  // includeDisabled: the Settings page needs to see + re-toggle disabled names, while
+  // other consumers (e.g. Metrics filter dropdown) only want the enabled ones.
+  async listAccountNames(includeDisabled = false) {
     return this.prisma.bankAccountName.findMany({
-      where: { isActive: true },
+      where: includeDisabled ? {} : { isActive: true },
       orderBy: { name: 'asc' },
     });
   }
@@ -239,9 +241,26 @@ export class BankStatementService implements OnModuleInit {
       currency: a.currency,
       accountCode: a.accountCode,
       isActive: a.isActive,
+      syncEnabled: a.syncEnabled,
       lastSyncAt: a.syncJobAccounts[0]?.job?.completedAt ?? null,
       lastSyncStatus: a.syncJobAccounts[0]?.status ?? null,
     }));
+  }
+
+  // name-level toggle — disables every account number under this name (see
+  // [[project-bank-sync-design]]: HSBC decides existence, the user decides sync intent).
+  async updateAccountNameStatus(id: number, isActive: boolean) {
+    const name = await this.prisma.bankAccountName.findUnique({ where: { id } });
+    if (!name) throw new NotFoundException('ACCOUNT_NAME_NOT_FOUND');
+    return this.prisma.bankAccountName.update({ where: { id }, data: { isActive } });
+  }
+
+  // account-number-level toggle — separate from `isActive`, which HSBC discovery
+  // owns and would otherwise silently re-enable on the next successful login.
+  async updateAccountSyncEnabled(id: number, syncEnabled: boolean) {
+    const account = await this.prisma.bankAccount.findUnique({ where: { id } });
+    if (!account) throw new NotFoundException('BANK_ACCOUNT_NOT_FOUND');
+    return this.prisma.bankAccount.update({ where: { id }, data: { syncEnabled } });
   }
 
   // Repairs a Sheet that got manually deleted/corrupted — the normal sync only re-pushes

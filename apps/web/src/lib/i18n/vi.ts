@@ -429,6 +429,7 @@ export const vi: Translations = {
     colAccountName: 'Account name (HSBCnet)',
     colAccountCode: 'Account code',
     colAccounts: 'Tài khoản',
+    colSync: 'Đồng bộ',
     colAccountNumber: 'Account number',
     lastSync: 'Sync cuối',
     noData: 'Chưa có dữ liệu.',
