@@ -166,6 +166,7 @@ async function main() {
     { name: 'INTREPID PHILIPPINES INC.',    accountCode: 'PH' },
     { name: 'DATAMART VIET NAM CO., LTD',   accountCode: 'DMX_VN' },
     { name: 'INTREPID DIGITAL COMMERCE PL', accountCode: 'SG' },
+    { name: 'INTREPID ECOMMERCE SERVICES',  accountCode: 'TH' },
   ];
 
   for (const a of BANK_ACCOUNT_NAMES) {
