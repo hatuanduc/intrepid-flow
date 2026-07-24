@@ -581,6 +581,8 @@ export const en = {
     tableRate: 'Rate',
     tableUpdatedAt: 'Updated at',
     delete: 'Delete',
+    confirmDeleteTitle: 'Delete exchange rate',
+    confirmDeleteDesc: 'Are you sure you want to delete the {code} exchange rate? This cannot be undone.',
     refreshSuccess: 'Exchange rates updated.',
     refreshFailed: 'Update failed. Please try again.',
     addSuccess: 'Added {code} exchange rate.',
@@ -829,6 +831,39 @@ export const en = {
     reconcile: 'Reconcile',
     gas_links: 'GAS Links',
     system: 'System',
+  },
+
+  permissionLabels: {
+    dashboard: { view: 'View dashboard' },
+    users: {
+      view: 'View users list',
+      create: 'Create user',
+      update: 'Update user',
+      impersonate: 'Impersonate as another user',
+    },
+    roles: { view: 'View roles' },
+    permissions: { view: 'View permissions list' },
+    bank_statement: {
+      view: 'View bank statement',
+      run: 'Run statement sync',
+      config: 'Configure bank statement',
+    },
+    report_ar: {
+      view: 'View AR report',
+      config: 'Configure AR report',
+    },
+    reconcile: {
+      view: 'View reconcile tool',
+      run: 'Run invoice reconciliation',
+      config: 'Configure reconcile tool',
+    },
+    gas_links: {
+      view: 'View GAS Links',
+      create: 'Add GAS Link',
+      edit: 'Edit GAS Link',
+      delete: 'Delete GAS Link',
+    },
+    system: { config: 'Configure system (connections, secret keys)' },
   },
 
   systemRoles: {

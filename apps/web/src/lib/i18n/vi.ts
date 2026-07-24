@@ -578,6 +578,8 @@ export const vi: Translations = {
     tableRate: 'Tỉ giá',
     tableUpdatedAt: 'Cập nhật lúc',
     delete: 'Xóa',
+    confirmDeleteTitle: 'Xóa tỉ giá',
+    confirmDeleteDesc: 'Bạn có chắc muốn xóa tỉ giá {code}? Hành động này không thể hoàn tác.',
     refreshSuccess: 'Tỉ giá đã được cập nhật.',
     refreshFailed: 'Cập nhật thất bại. Vui lòng thử lại.',
     addSuccess: 'Đã thêm tỉ giá {code}.',
@@ -826,6 +828,39 @@ export const vi: Translations = {
     reconcile: 'Reconcile',
     gas_links: 'GAS Links',
     system: 'Hệ thống',
+  },
+
+  permissionLabels: {
+    dashboard: { view: 'Xem tổng quan' },
+    users: {
+      view: 'Xem danh sách người dùng',
+      create: 'Tạo người dùng',
+      update: 'Cập nhật người dùng',
+      impersonate: 'Đăng nhập với tư cách người dùng khác',
+    },
+    roles: { view: 'Xem vai trò' },
+    permissions: { view: 'Xem danh sách quyền hạn' },
+    bank_statement: {
+      view: 'Xem sao kê ngân hàng',
+      run: 'Chạy đồng bộ sao kê',
+      config: 'Cấu hình sao kê ngân hàng',
+    },
+    report_ar: {
+      view: 'Xem báo cáo AR',
+      config: 'Cấu hình báo cáo AR',
+    },
+    reconcile: {
+      view: 'Xem công cụ Reconcile',
+      run: 'Chạy gộp hóa đơn',
+      config: 'Cấu hình công cụ Reconcile',
+    },
+    gas_links: {
+      view: 'Xem GAS Links',
+      create: 'Thêm GAS Link',
+      edit: 'Sửa GAS Link',
+      delete: 'Xóa GAS Link',
+    },
+    system: { config: 'Cấu hình hệ thống (kết nối, secret keys)' },
   },
 
   systemRoles: {

@@ -185,14 +185,17 @@ export class BankSyncService {
     );
 
     const unmatchedNames = new Set<string>();
+    const matchedNameKeys = new Set<string>();
     let synced = 0;
 
     for (const acc of discovered) {
-      const accountNameEntry = accountNameByName.get(acc.companyName.trim().toLowerCase());
+      const nameKey = acc.companyName.trim().toLowerCase();
+      const accountNameEntry = accountNameByName.get(nameKey);
       if (!accountNameEntry) {
         unmatchedNames.add(acc.companyName);
         continue;
       }
+      matchedNameKeys.add(nameKey);
 
       await this.prisma.bankAccount.upsert({
         where: { accountNumber: acc.accountNumber },
@@ -242,6 +245,21 @@ export class BankSyncService {
       await this.log(
         jobId,
         `Skipped ${unmatchedNames.size} unrecognized account name(s) — not in BankAccountName master list: ${Array.from(unmatchedNames).join(', ')}`,
+        'bank_sync',
+        'warn',
+      );
+    }
+
+    // The reverse direction — an enabled master name that this HSBC scan never showed
+    // at all. Previously only the HSBC→local direction was logged (unmatchedNames
+    // above), so a typo/renamed company on either side was silent from this side —
+    // you'd only ever see "HSBC has some unrecognized name", never "your enabled
+    // local name X wasn't seen in HSBC this run", making the two hard to correlate.
+    const notFoundInHsbc = accountNames.filter(a => !matchedNameKeys.has(a.name.trim().toLowerCase()));
+    if (notFoundInHsbc.length > 0) {
+      await this.log(
+        jobId,
+        `${pl(notFoundInHsbc.length, 'enabled account name')} not found in this HSBC discovery: ${notFoundInHsbc.map(a => a.name).join(', ')}`,
         'bank_sync',
         'warn',
       );

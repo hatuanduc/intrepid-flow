@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   getCurrencyData, refreshCurrencyRates, updateCurrencySettings, type CurrencyData,
   addCurrencyRate, deleteCurrencyRate,
@@ -11,6 +11,7 @@ import { useT } from '../../../lib/i18n';
 import AccessDenied from '../../../components/common/AccessDenied';
 import BackButton from '../../../components/common/BackButton';
 import PageLoader from '../../../components/common/PageLoader';
+import Select from '../../../components/common/Select';
 import s from './CurrencyPage.module.css';
 
 const CURRENCY_CODES = [
@@ -20,6 +21,45 @@ const CURRENCY_CODES = [
   'VND', 'ZAR',
 ];
 const CURRENCY_CODE_SET = new Set(CURRENCY_CODES);
+
+function MoreMenu({ onDelete }: { onDelete?: () => void }) {
+  const { t } = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+  if (!onDelete) return null;
+  return (
+    <div className={s.moreWrap} ref={ref} onClick={e => e.stopPropagation()}>
+      <button
+        className={`${s.moreBtn} ${open ? s.moreBtnOpen : ''}`}
+        onClick={() => setOpen(v => !v)}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="2" cy="7" r="1.2" fill="currentColor"/>
+          <circle cx="7" cy="7" r="1.2" fill="currentColor"/>
+          <circle cx="12" cy="7" r="1.2" fill="currentColor"/>
+        </svg>
+      </button>
+      {open && (
+        <div className={s.moreDropdown}>
+          <button
+            className={`${s.moreItem} ${s.moreItemDanger}`}
+            onClick={() => { setOpen(false); onDelete(); }}
+          >
+            {t('currencySettings.delete')}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function CurrencyPage() {
   const canConfig = useHasPermission('system:config');
@@ -34,6 +74,7 @@ export default function CurrencyPage() {
   const [dayEditing, setDayEditing] = useState(false);
   const [addingCurrency, setAddingCurrency] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [deletingRate, setDeletingRate] = useState<string | null>(null);
 
   useEffect(() => {
@@ -88,11 +129,14 @@ export default function CurrencyPage() {
     } catch { toast.error(t('currencySettings.addFailed', { code })); }
   }
 
-  async function handleDeleteRate(currency: string) {
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    const currency = deleteTarget;
     setDeletingRate(currency);
     try {
       setCurrencyData(await deleteCurrencyRate(currency));
       toast.success(t('currencySettings.deleteSuccess', { code: currency }));
+      setDeleteTarget(null);
     } catch { toast.error(t('currencySettings.deleteFailed', { code: currency })); }
     finally { setDeletingRate(null); }
   }
@@ -175,15 +219,12 @@ export default function CurrencyPage() {
             <span className={s.autoUpdateLabel}>{t('currencySettings.autoUpdateLabel')}</span>
             {dayEditing ? (
               <>
-                <select
-                  className={s.daySelect}
+                <Select
+                  width={64}
                   value={autoUpdateDay}
-                  onChange={e => setAutoUpdateDay(Number(e.target.value))}
-                >
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map(d => (
-                    <option key={d} value={d}>{d}</option>
-                  ))}
-                </select>
+                  onChange={setAutoUpdateDay}
+                  options={Array.from({ length: 28 }, (_, i) => i + 1).map(d => ({ value: d, label: String(d) }))}
+                />
                 <span className={s.autoUpdateLabel}>{t('currencySettings.perMonth')}</span>
                 <button className={s.btnTiny} onClick={handleSaveDay}>{t('currencySettings.save')}</button>
                 <button className={s.btnTinyGhost} onClick={() => {
@@ -235,13 +276,7 @@ export default function CurrencyPage() {
                       </td>
                       <td className={s.td}><span className={s.metaText}>{fmtDateTime(r.updatedAt)}</span></td>
                       <td className={s.td}>
-                        <button
-                          className={s.btnDangerSm}
-                          onClick={() => handleDeleteRate(r.currency)}
-                          disabled={deletingRate === r.currency}
-                        >
-                          {deletingRate === r.currency ? '...' : t('currencySettings.delete')}
-                        </button>
+                        <MoreMenu onDelete={() => setDeleteTarget(r.currency)} />
                       </td>
                     </tr>
                   );})}
@@ -249,6 +284,23 @@ export default function CurrencyPage() {
               </table>
             </div>
           )}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className={s.overlay} onClick={() => setDeleteTarget(null)}>
+          <div className={s.confirmModal} onClick={e => e.stopPropagation()}>
+            <p className={s.confirmTitle}>{t('currencySettings.confirmDeleteTitle')}</p>
+            <p className={s.confirmDesc}>{t('currencySettings.confirmDeleteDesc', { code: deleteTarget })}</p>
+            <div className={s.confirmActions}>
+              <button className={s.btnSecondary} onClick={() => setDeleteTarget(null)} disabled={deletingRate === deleteTarget}>
+                {t('currencySettings.cancel')}
+              </button>
+              <button className={s.btnDanger} onClick={handleConfirmDelete} disabled={deletingRate === deleteTarget}>
+                {deletingRate === deleteTarget ? t('common.deleting') : t('currencySettings.delete')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

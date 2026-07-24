@@ -35,6 +35,15 @@
 .tr:hover .td { background: var(--bg-hover); }
 .trStatic:hover .td { background: var(--bg-hover); }
 
+/* ── More menu ── */
+.moreWrap       { composes: moreWrap       from '../../../styles/ui.module.css'; }
+.moreBtn        { composes: moreBtn        from '../../../styles/ui.module.css'; opacity: 0; transition: opacity 0.1s; }
+.moreBtnOpen    { composes: moreBtnOpen    from '../../../styles/ui.module.css'; opacity: 1 !important; }
+.moreDropdown   { composes: moreDropdown   from '../../../styles/ui.module.css'; }
+.moreItem       { composes: moreItem       from '../../../styles/ui.module.css'; }
+.moreItemDanger { composes: moreItemDanger from '../../../styles/ui.module.css'; }
+.trStatic:hover .moreBtn { opacity: 1; }
+
 /* Tags */
 .codeTag {
   display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px;
@@ -66,11 +75,6 @@
 }
 .autoUpdateLabel { color: var(--color-muted); font-size: 13px; }
 .dayValue { font-size: 13px; font-weight: 600; color: var(--color-ink); }
-.daySelect {
-  padding: 4px 8px; font-size: 13px; border: 1.5px solid var(--color-border);
-  border-radius: 6px; background: var(--bg-surface); color: var(--color-ink); outline: none;
-}
-.daySelect:focus { border-color: var(--color-accent-active); }
 .nextUpdate { font-size: 12px; color: var(--color-accent-active); }
 
 /* ── Buttons ── */
@@ -101,12 +105,6 @@
   color: var(--color-secondary); cursor: pointer;
 }
 .btnTinyGhost:hover { background: var(--bg-page); }
-
-.btnDangerSm {
-  padding: 4px 10px; font-size: 12px; font-weight: 500; border-radius: 5px;
-  border: 1px solid #fecaca; background: #fff0f3; color: #df1b41; cursor: pointer;
-}
-.btnDangerSm:hover { background: #ffe4e6; }
 
 .btnDanger {
   padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;

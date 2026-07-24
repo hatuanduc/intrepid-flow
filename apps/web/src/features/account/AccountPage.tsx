@@ -3,13 +3,14 @@ import { useState } from 'react';
 import { useUser } from '../../app/(dashboard)/user-context';
 import { useToast } from '../../components/common/Toast';
 import { updateMyProfile, changeMyPassword } from '../../lib/api';
-import { useT } from '../../lib/i18n';
+import { useT, type Lang } from '../../lib/i18n';
 import RightPanel from '../../components/common/RightPanel';
+import Select from '../../components/common/Select';
 import s from './AccountPage.module.css';
 
 const AVATAR_COLORS = ['#635bff', '#09825d', '#1a56db', '#7c3aed', '#c44c0a', '#0e7490', '#92400e', '#be185d'];
 
-const LANGUAGES = [
+const LANGUAGES: { value: Lang; label: string }[] = [
   { value: 'en', label: 'English' },
   { value: 'vi', label: 'Tiếng Việt' },
 ];
@@ -194,15 +195,7 @@ export default function AccountPage() {
         </div>
         <div className={`${s.infoRow} ${s.infoRowLast}`}>
           <span className={s.infoLabel}>{t('account.language')}</span>
-          <select
-            className={s.langSelect}
-            value={lang}
-            onChange={e => setLang(e.target.value as 'en' | 'vi')}
-          >
-            {LANGUAGES.map(l => (
-              <option key={l.value} value={l.value}>{l.label}</option>
-            ))}
-          </select>
+          <Select width={140} align="right" value={lang} onChange={setLang} options={LANGUAGES} />
         </div>
       </div>
 

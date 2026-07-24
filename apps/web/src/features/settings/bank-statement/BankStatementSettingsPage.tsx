@@ -17,6 +17,7 @@ import PageLoader from '../../../components/common/PageLoader';
 import { useToast } from '../../../components/common/Toast';
 import { useT } from '../../../lib/i18n';
 import RightPanel from '../../../components/common/RightPanel';
+import Select from '../../../components/common/Select';
 import ServiceAccountShareInfo from '../../../components/common/ServiceAccountShareInfo';
 import Tooltip from '../../../components/common/Tooltip';
 import { extractSpreadsheetId, isValidSpreadsheetId } from '../../../lib/googleSheets';
@@ -260,17 +261,21 @@ function ScheduleTab({ settings, canConfig, onSaved }: { settings: BankJobSettin
             <div className={s.timePicker}>
               <span className={s.timeLabel}>{t('bankSettings.runAt')}</span>
               <div className={s.timeSelects}>
-                <select className={s.timeSelect} value={hour} onChange={e => setHour(parseInt(e.target.value))} disabled={!canConfig}>
-                  {Array.from({ length: 24 }, (_, i) => (
-                    <option key={i} value={i}>{String(i).padStart(2, '0')}</option>
-                  ))}
-                </select>
+                <Select
+                  width={64}
+                  value={hour}
+                  onChange={setHour}
+                  disabled={!canConfig}
+                  options={Array.from({ length: 24 }, (_, i) => ({ value: i, label: String(i).padStart(2, '0') }))}
+                />
                 <span className={s.timeSep}>:</span>
-                <select className={s.timeSelect} value={minute} onChange={e => setMinute(parseInt(e.target.value))} disabled={!canConfig}>
-                  {MINUTE_OPTIONS.map(m => (
-                    <option key={m} value={m}>{String(m).padStart(2, '0')}</option>
-                  ))}
-                </select>
+                <Select
+                  width={64}
+                  value={minute}
+                  onChange={setMinute}
+                  disabled={!canConfig}
+                  options={MINUTE_OPTIONS.map(m => ({ value: m, label: String(m).padStart(2, '0') }))}
+                />
                 <span className={s.tzBadge}>ICT (UTC+7)</span>
               </div>
               <div className={s.cronPreview}>{cron}</div>
@@ -308,16 +313,13 @@ function ScheduleTab({ settings, canConfig, onSaved }: { settings: BankJobSettin
         </div>
         <div className={s.scheduleDivider} />
         <div className={s.dateRangeRow}>
-          <select
-            className={s.timeSelect}
+          <Select
+            width={180}
             value={syncDateMode}
-            onChange={e => setSyncDateMode(e.target.value as SyncDateMode)}
+            onChange={setSyncDateMode}
             disabled={!canConfig}
-          >
-            {(Object.entries(syncDateModeLabels) as [SyncDateMode, string][]).map(([v, label]) => (
-              <option key={v} value={v}>{label}</option>
-            ))}
-          </select>
+            options={(Object.entries(syncDateModeLabels) as [SyncDateMode, string][]).map(([v, label]) => ({ value: v, label }))}
+          />
           {syncDateMode === 'custom' && (
             <>
               <span className={s.timeSep}>N =</span>
@@ -684,10 +686,25 @@ function GlobalGsheetConfig({
   toast: ReturnType<typeof useToast>;
 }) {
   const { t } = useT();
+  const [editing, setEditing] = useState(false);
   const [templateSpreadsheetId, setTemplateSpreadsheetId] = useState(settings.googleTemplateSpreadsheetId ?? '');
   const [templateSheet, setTemplateSheet] = useState(settings.googleTemplateSheet ?? '');
   const [idError, setIdError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function startEdit() {
+    setTemplateSpreadsheetId(settings.googleTemplateSpreadsheetId ?? '');
+    setTemplateSheet(settings.googleTemplateSheet ?? '');
+    setIdError(null);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setTemplateSpreadsheetId(settings.googleTemplateSpreadsheetId ?? '');
+    setTemplateSheet(settings.googleTemplateSheet ?? '');
+    setIdError(null);
+    setEditing(false);
+  }
 
   async function save() {
     const rawId = templateSpreadsheetId.trim();
@@ -712,6 +729,7 @@ function GlobalGsheetConfig({
       });
       onSaved(result);
       toast.success(t('bankSettings.gsheetsSaved'));
+      setEditing(false);
     } catch {
       toast.error(t('bankSettings.saveFailed'));
     } finally {
@@ -719,56 +737,85 @@ function GlobalGsheetConfig({
     }
   }
 
+  const savedId = settings.googleTemplateSpreadsheetId ?? '';
+  const savedSheet = settings.googleTemplateSheet ?? '';
+
   return (
     <div className={s.card}>
-      <p className={s.sectionTitle} style={{ marginBottom: 16 }}>{t('bankSettings.globalConfig')}</p>
-
-      <div className={s.globalRow}>
-        <div className={s.field} style={{ flex: 3 }}>
-          <label className={s.label}>
-            {t('bankSettings.templateIdLabel')}
-            <Tooltip wide>
-              {t('bankSettings.templateIdTooltip')}{'\n\n'}
-              {t('bankSettings.templateIdTooltipUrl')}{'\n'}
-              docs.google.com/spreadsheets/d/<strong>ID</strong>/edit
-            </Tooltip>
-          </label>
-          <input
-            className={`${s.input} ${s.inputFull} ${idError ? s.inputError : ''}`}
-            value={templateSpreadsheetId}
-            onChange={e => { setTemplateSpreadsheetId(e.target.value); setIdError(null); }}
-            onBlur={e => setTemplateSpreadsheetId(extractSpreadsheetId(e.target.value))}
-            placeholder={t('bankSettings.spreadsheetIdPlaceholder')}
-            disabled={!canConfig}
-          />
-          {idError && <span className={s.fieldError}>{idError}</span>}
-        </div>
-        <div className={s.field} style={{ flex: 1 }}>
-          <label className={s.label}>
-            Sheet name
-            <Tooltip>{t('bankSettings.sheetNameTooltip')} <code>template</code></Tooltip>
-          </label>
-          <input
-            className={`${s.input} ${s.inputFull}`}
-            value={templateSheet}
-            onChange={e => setTemplateSheet(e.target.value)}
-            placeholder="template"
-            disabled={!canConfig}
-          />
-        </div>
+      <div className={s.cardHead}>
+        <span className={s.cardTitle}>{t('bankSettings.globalConfig')}</span>
+        {!editing ? (
+          canConfig && (
+            <button className={s.btnEdit} onClick={startEdit}>
+              <EditIcon /> {t('common.edit')}
+            </button>
+          )
+        ) : (
+          <div className={s.editActions}>
+            <button className={s.btnCancel} type="button" onClick={cancelEdit} disabled={saving}>{t('common.cancel')}</button>
+            <button className={s.btnSave} type="button" onClick={save} disabled={saving}>
+              {saving ? t('bankSettings.saving') : t('common.save')}
+            </button>
+          </div>
+        )}
       </div>
+
+      {editing ? (
+        <div className={s.globalRow}>
+          <div className={s.field} style={{ flex: 3 }}>
+            <label className={s.label}>
+              {t('bankSettings.templateIdLabel')}
+              <Tooltip wide>
+                {t('bankSettings.templateIdTooltip')}{'\n\n'}
+                {t('bankSettings.templateIdTooltipUrl')}{'\n'}
+                docs.google.com/spreadsheets/d/<strong>ID</strong>/edit
+              </Tooltip>
+            </label>
+            <input
+              className={`${s.input} ${s.inputFull} ${idError ? s.inputError : ''}`}
+              value={templateSpreadsheetId}
+              onChange={e => { setTemplateSpreadsheetId(e.target.value); setIdError(null); }}
+              onBlur={e => setTemplateSpreadsheetId(extractSpreadsheetId(e.target.value))}
+              placeholder={t('bankSettings.spreadsheetIdPlaceholder')}
+              autoFocus
+            />
+            {idError && <span className={s.fieldError}>{idError}</span>}
+          </div>
+          <div className={s.field} style={{ flex: 1 }}>
+            <label className={s.label}>
+              Sheet name
+              <Tooltip>{t('bankSettings.sheetNameTooltip')} <code>template</code></Tooltip>
+            </label>
+            <input
+              className={`${s.input} ${s.inputFull}`}
+              value={templateSheet}
+              onChange={e => setTemplateSheet(e.target.value)}
+              placeholder="template"
+            />
+          </div>
+        </div>
+      ) : (
+        <div className={s.globalRow}>
+          <div className={s.field} style={{ flex: 3 }}>
+            <span className={s.label}>{t('bankSettings.templateIdLabel')}</span>
+            <span className={s.infoValue}>
+              {savedId
+                ? <a href={`https://docs.google.com/spreadsheets/d/${savedId}/edit`} target="_blank" rel="noopener noreferrer">{savedId}</a>
+                : <span className={s.infoEmpty}>{t('bankSettings.spreadsheetNotConfigured')}</span>}
+            </span>
+          </div>
+          <div className={s.field} style={{ flex: 1 }}>
+            <span className={s.label}>Sheet name</span>
+            <span className={s.infoValue}>
+              {savedSheet || <span className={s.infoEmpty}>—</span>}
+            </span>
+          </div>
+        </div>
+      )}
 
       <div style={{ marginTop: 14 }}>
         <ServiceAccountShareInfo accessLevel="editor" />
       </div>
-
-      {canConfig && (
-        <div className={s.actionRow} style={{ marginTop: 12 }}>
-          <button className={s.btnPrimary} onClick={save} disabled={saving}>
-            {saving ? t('bankSettings.saving') : t('bankSettings.saveGlobalConfig')}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

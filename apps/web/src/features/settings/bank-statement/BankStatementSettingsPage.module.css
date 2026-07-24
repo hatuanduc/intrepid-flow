@@ -45,12 +45,6 @@
 .timePicker { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
 .timeLabel { font-size: 13px; font-weight: 500; color: var(--color-secondary); flex-shrink: 0; }
 .timeSelects { display: flex; align-items: center; gap: 6px; }
-.timeSelect {
-  padding: 6px 8px; border: 1.5px solid var(--color-border); border-radius: 6px;
-  font-size: 15px; font-weight: 500; color: var(--color-ink); background: var(--bg-surface);
-  outline: none; cursor: pointer; appearance: none; text-align: center; width: 56px;
-}
-.timeSelect:focus { border-color: var(--color-accent-active); box-shadow: 0 0 0 3px rgba(98,90,250,.10); }
 .timeSep { font-size: 16px; font-weight: 600; color: var(--color-ink); }
 .tzBadge {
   font-size: 11px; font-weight: 600; color: var(--color-muted);
@@ -60,7 +54,6 @@
 
 /* Date range mode */
 .dateRangeRow { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
-.dateRangeRow .timeSelect { width: auto; min-width: 180px; text-align: left; }
 .syncRangePreview { font-size: 12px; color: var(--color-muted); margin-top: 8px; font-variant-numeric: tabular-nums; }
 .customDaysInput {
   width: 64px; padding: 6px 8px; border: 1.5px solid var(--color-border); border-radius: 6px;

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { type PermissionItem } from '../../../lib/api';
-import { moduleLabel } from '../../../lib/permissionModules';
+import { moduleLabel, permissionLabel } from '../../../lib/permissionModules';
 import { useT } from '../../../lib/i18n';
 import s from './AddUserPanel.module.css';
 
@@ -45,6 +45,7 @@ function PermissionModuleGroup({
   onToggle: (id: number) => void;
   onToggleModule: (ids: number[]) => void;
 }) {
+  const { t } = useT();
   const [open, setOpen] = useState(false);
   const ids = perms.map(p => p.id);
   const checkedCount = ids.filter(id => selectedIds.includes(id)).length;
@@ -79,7 +80,7 @@ function PermissionModuleGroup({
                 onChange={() => onToggle(p.id)}
                 className={s.permRowCheckbox}
               />
-              <span className={s.permRowLabel}>{p.label}</span>
+              <span className={s.permRowLabel}>{permissionLabel(p, t)}</span>
             </label>
           ))}
         </div>

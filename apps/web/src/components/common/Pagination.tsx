@@ -1,4 +1,5 @@
 'use client';
+import Select from './Select';
 import s from './Pagination.module.css';
 
 type Props = {
@@ -52,15 +53,13 @@ export default function Pagination({
 
       <div className={s.right}>
         <span className={s.label}>Rows per page</span>
-        <select
-          className={s.select}
+        <Select
+          width={72}
+          align="right"
           value={pageSize}
-          onChange={e => { onPageSizeChange(Number(e.target.value)); onPageChange(1); }}
-        >
-          {pageSizeOptions.map(n => (
-            <option key={n} value={n}>{n}</option>
-          ))}
-        </select>
+          onChange={n => { onPageSizeChange(n); onPageChange(1); }}
+          options={pageSizeOptions.map(n => ({ value: n, label: String(n) }))}
+        />
       </div>
     </div>
   );

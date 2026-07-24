@@ -1,7 +1,7 @@
 'use client';
 
 import { type RoleItem, type PermissionItem } from '../../../lib/api';
-import { moduleLabel } from '../../../lib/permissionModules';
+import { moduleLabel, permissionLabel } from '../../../lib/permissionModules';
 import { useT } from '../../../lib/i18n';
 import { roleName, roleDescription } from '../../../lib/roleDisplay';
 import RightPanel from '../../../components/common/RightPanel';
@@ -56,7 +56,7 @@ export default function RolePanel({ role, open, onClose }: Props) {
                   {perms.map(p => (
                     <div key={p.id} className={s.permRow}>
                       <span className={s.permDot} />
-                      <span className={s.permLabel}>{p.label}</span>
+                      <span className={s.permLabel}>{permissionLabel(p, t)}</span>
                     </div>
                   ))}
                 </div>
