@@ -221,22 +221,18 @@ export class BankSyncService {
       synced++;
     }
 
-    // HSBC is the source of truth: any account still marked active in our DB but absent
-    // from this discovery run is presumably closed/removed on HSBC's side. Deactivate it
-    // so the download loop below (which only fetches isActive accounts) stops trying to
-    // look it up every run — a stale account number there just fails loudly with "not
-    // found in HSBC's account list" instead of being skipped cleanly.
-    const discoveredNumbers = discovered.map(a => a.accountNumber);
-    const deactivated = await this.prisma.bankAccount.updateMany({
-      where: { isActive: true, accountNumber: { notIn: discoveredNumbers } },
-      data: { isActive: false },
-    });
-
+    // Discovery only ever creates/reactivates accounts (upsert above) — it never
+    // deactivates. HSBC's switcher not showing an account on a given day's scrape
+    // doesn't mean the account is closed (banks routinely omit accounts from a day's
+    // listing), so an account absent here just isn't touched — it stays exactly as
+    // it was. Whether it actually gets fetched is entirely down to its own
+    // syncEnabled toggle; if HSBC genuinely doesn't have it when the fetch loop tries
+    // it, that surfaces as a clear per-account failure there instead of a silent,
+    // permanent drop from every future run.
     const newCount = discovered.filter(a => !existingNumbers.has(a.accountNumber)).length;
     await this.log(
       jobId,
-      `Account discovery: ${discovered.length} found, ${synced} synced (${newCount} new, ${synced - newCount} updated)`
-        + (deactivated.count > 0 ? `, ${deactivated.count} deactivated (no longer on HSBC).` : '.'),
+      `Account discovery: ${discovered.length} found, ${synced} synced (${newCount} new, ${synced - newCount} updated).`,
       'bank_sync',
       'success',
     );
@@ -317,10 +313,31 @@ export class BankSyncService {
     // real login+discovery pass instead of silently never picking the new name up.
     // syncEnabled=false / accountNameRef.isActive=false accounts are user-disabled
     // (e.g. testing with only a subset) — excluded from both the coverage check and
-    // the actual fetch loop below, same filter in both places.
+    // the actual fetch loop below, same filter in both places. isActive is deliberately
+    // NOT part of this filter — it's discovery-owned metadata, not a fetch gate; the
+    // only thing that stops an account from being fetched is its own syncEnabled toggle.
     const knownAccounts = await this.prisma.bankAccount.findMany({
-      where: { isActive: true, syncEnabled: true, accountNameRef: { isActive: true } },
+      where: { syncEnabled: true, accountNameRef: { isActive: true } },
     });
+
+    // Log disabled accounts explicitly — otherwise a syncEnabled=false account just
+    // vanishes from every query above with no trace, indistinguishable from having
+    // never existed. Logged once up front (before either the bail-out or the full
+    // login+fetch path below) so it's visible no matter which path this run takes.
+    const disabledAccounts = await this.prisma.bankAccount.findMany({
+      where: { syncEnabled: false, accountNameRef: { isActive: true } },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
+    });
+    if (disabledAccounts.length > 0) {
+      await this.log(
+        jobId,
+        `${pl(disabledAccounts.length, 'account number')} excluded — sync disabled: `
+          + disabledAccounts.map(a => `${a.accountNumber} (${a.accountName})`).join(', ') + '.',
+        'bank_sync',
+        'warn',
+      );
+    }
+
     const undiscoveredNameCount = await this.prisma.bankAccountName.count({
       where: { isActive: true, accounts: { none: {} } },
     });
@@ -382,9 +399,12 @@ export class BankSyncService {
     await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
     await this.discoverAndSyncAccounts(jobId);
 
-    // ── 1e. Download per active + sync-enabled account (grouped by accountName) ──
+    // ── 1e. Download per sync-enabled account (grouped by accountName) — every account
+    // declared in the DB with syncEnabled=true is attempted every run, regardless of
+    // isActive; an account HSBC doesn't have today just fails per-account below instead
+    // of being silently excluded from this list.
     const accounts = await this.prisma.bankAccount.findMany({
-      where: { isActive: true, syncEnabled: true, accountNameRef: { isActive: true } },
+      where: { syncEnabled: true, accountNameRef: { isActive: true } },
       orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
     });
 
@@ -472,6 +492,16 @@ export class BankSyncService {
           if (msg === 'JOB_CANCELLED') {
             await this.log(jobId, 'Job cancelled by user.', 'bank_sync', 'warn');
             throw err; // propagate — this must stop the whole job, not just this account
+          }
+          // HSBC genuinely not listing this account today isn't a fetch failure — it's
+          // an expected, unremarkable outcome now that discovery no longer deactivates
+          // accounts on our side (an account can be enabled here but absent from HSBC's
+          // switcher on any given day). Report it as "no data" like any other empty
+          // range, not as an error, so it doesn't read as something needing action.
+          if (/not found in HSBC's account list/.test(msg)) {
+            await this.log(jobId, `  → ${account.accountNumber}: not listed on HSBC today — no data.`, 'bank_sync', 'warn');
+            await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
+            continue;
           }
           await this.log(jobId, `  → ${account.accountNumber}: fetch failed — ${msg} [${FAIL_REASON.DOWNLOAD_ERROR}]`, 'bank_sync', 'error');
           await this.upsertJobAccount(jobId, account.id, { status: 'failed', errorMessage: msg });
