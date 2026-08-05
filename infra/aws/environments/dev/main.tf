@@ -43,11 +43,11 @@ module "app" {
   vpc_id    = data.terraform_remote_state.shared.outputs.vpc_id
   subnet_id = data.terraform_remote_state.shared.outputs.public_subnet_id
 
-  # Dev: không auto-start (start thủ công khi cần), nhưng luôn auto-stop 18:00 ICT
-  # để phòng quên tắt máy
-  start_schedule_enabled = false
+  # Dev: auto-start 09:00 ICT, auto-stop 18:00 ICT (weekdays only, giống prod)
+  start_schedule_enabled = true
+  start_schedule         = "cron(0 2 ? * MON-FRI *)" # 09:00 ICT (UTC+7)
   stop_schedule_enabled  = true
-  stop_schedule          = "cron(0 11 * * ? *)" # 18:00 ICT (UTC+7) hàng ngày
+  stop_schedule          = "cron(0 11 ? * MON-FRI *)" # 18:00 ICT (UTC+7)
 
   github_repo   = "hatuanduc/intrepid-flow"
   deploy_bucket = "intrepid-terraform-state"
