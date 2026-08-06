@@ -12,6 +12,7 @@ import AccessDenied from '../../components/common/AccessDenied';
 import PageLoader from '../../components/common/PageLoader';
 import { useToast } from '../../components/common/Toast';
 import { useT } from '../../lib/i18n';
+import SyncCoverageCalendar from './SyncCoverageCalendar';
 import s from './BankStatementPage.module.css';
 
 // ─── Status helpers ───────────────────────────────────────────────────────────
@@ -55,13 +56,19 @@ function formatDuration(ms: number | null): string {
 // multi-status stacked bar used on the job detail page).
 function SyncMeter({ stats }: { stats: JobStats | null }) {
   if (!stats || stats.totalAccounts === 0) return <span className={s.meterEmpty}>—</span>;
-  const pct = Math.round((stats.synced / stats.totalAccounts) * 100);
+  // "Done" means no longer needs attention — an account with nothing new to push
+  // (syncNoData) is just as finished as one that actually synced new rows; only
+  // stats.synced here would make an all-success job with a few no-new-data accounts
+  // look permanently stuck partway (e.g. "3/4" forever), even though nothing failed
+  // or is still pending.
+  const done = stats.synced + stats.syncNoData;
+  const pct = Math.round((done / stats.totalAccounts) * 100);
   return (
-    <div className={s.meterWrap} title={`${stats.synced}/${stats.totalAccounts} synced to Sheets`}>
+    <div className={s.meterWrap} title={`${done}/${stats.totalAccounts} up to date (${stats.synced} synced, ${stats.syncNoData} no new data)`}>
       <div className={s.meterTrack}>
         <div className={s.meterFill} style={{ width: `${pct}%` }} />
       </div>
-      <span className={s.meterLabel}>{stats.synced}/{stats.totalAccounts}</span>
+      <span className={s.meterLabel}>{done}/{stats.totalAccounts}</span>
     </div>
   );
 }
@@ -244,6 +251,8 @@ export default function BankStatementPage() {
               <Link href="/settings/job/bank-statement" className={s.setupBannerLink}>{t('bankStatement.goToSettings')}</Link>
             </div>
           )}
+
+          <SyncCoverageCalendar />
 
           {jobs.length === 0 ? (
             <div className={s.empty}>{t('bankStatement.noJobs')}</div>

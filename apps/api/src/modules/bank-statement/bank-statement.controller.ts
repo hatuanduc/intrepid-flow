@@ -146,6 +146,13 @@ export class BankStatementController {
     return this.service.getMetrics(new Date(from), new Date(to), accountCode, accountId ? Number(accountId) : undefined);
   }
 
+  @Get('coverage')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Trạng thái fetch/sync theo từng ngày (dùng cho lịch đồng bộ)' })
+  getCoverage(@Query('from') from: string, @Query('to') to: string) {
+    return this.service.getCoverage(new Date(from), new Date(to));
+  }
+
   // ─── Job Management ──────────────────────────────────────────────────────────
 
   @Post('jobs')

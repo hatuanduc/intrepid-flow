@@ -399,6 +399,99 @@ export class BankStatementService implements OnModuleInit {
     };
   }
 
+  // ─── Sync Coverage Calendar ──────────────────────────────────────────────────
+  // There's no per-day table — this derives "was day D fetched / synced" from every
+  // BankSyncJob whose actual dateRangeFrom/dateRangeTo overlaps the requested window,
+  // cross-referenced with each job's per-account BankSyncJobAccount outcome. Only
+  // syncEnabled accounts count (matches the worker's own fetch-loop filter — an
+  // account the user disabled shouldn't show the calendar as "missing" forever).
+  async getCoverage(from: Date, to: Date) {
+    const accounts = await this.prisma.bankAccount.findMany({
+      where: { syncEnabled: true, accountNameRef: { isActive: true } },
+      select: { id: true, accountNumber: true, accountName: true },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
+    });
+
+    const jobs = await this.prisma.bankSyncJob.findMany({
+      where: {
+        isDeleted: false,
+        dateRangeFrom: { not: null, lte: to },
+        dateRangeTo: { not: null, gte: from },
+      },
+      select: {
+        dateRangeFrom: true,
+        dateRangeTo: true,
+        accountJobs: { select: { bankAccountId: true, status: true, sheetsSyncStatus: true } },
+      },
+    });
+
+    const now = new Date();
+    const todayUtc = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+
+    type DayStatus = 'future' | 'not_fetched' | 'partial' | 'fetched_not_synced' | 'synced' | 'in_progress';
+    const days: Array<{
+      date: string;
+      status: DayStatus;
+      accounts: Array<{ id: number; accountNumber: string; accountName: string; downloaded: boolean; synced: boolean }>;
+    }> = [];
+
+    for (const cursor = new Date(from); cursor.getTime() <= to.getTime(); cursor.setUTCDate(cursor.getUTCDate() + 1)) {
+      const dayDate = new Date(Date.UTC(cursor.getUTCFullYear(), cursor.getUTCMonth(), cursor.getUTCDate()));
+      const dateStr = dayDate.toISOString().split('T')[0];
+
+      if (dayDate.getTime() > todayUtc.getTime()) {
+        days.push({ date: dateStr, status: 'future', accounts: [] });
+        continue;
+      }
+      // Only today can reach this point unsettled — every earlier day is always
+      // settled (HSBC data for it is final), same "settled" concept the worker uses
+      // (dateRangeSettled) to decide whether a fetch counts as done for good.
+      const settled = dayDate.getTime() < todayUtc.getTime();
+
+      const downloaded = new Set<number>();
+      const synced = new Set<number>();
+      for (const job of jobs) {
+        if (job.dateRangeFrom! <= dayDate && dayDate <= job.dateRangeTo!) {
+          for (const ja of job.accountJobs) {
+            if (ja.status === 'completed') downloaded.add(ja.bankAccountId);
+            if (ja.sheetsSyncStatus === 'completed' || ja.sheetsSyncStatus === 'no_data') synced.add(ja.bankAccountId);
+          }
+        }
+      }
+
+      const accountDetails = accounts.map(a => ({
+        id: a.id,
+        accountNumber: a.accountNumber,
+        accountName: a.accountName,
+        downloaded: downloaded.has(a.id),
+        synced: synced.has(a.id),
+      }));
+
+      let status: DayStatus;
+      if (accounts.length === 0 || downloaded.size === 0) {
+        status = 'not_fetched';
+      } else if (!settled) {
+        // Today — whatever's been fetched so far is just a mid-day snapshot; more
+        // transactions can still post before midnight, so this can never be called
+        // "synced"/complete the way a genuinely past day can, even if every enabled
+        // account already shows completed this run. Reported separately from
+        // 'partial' (which means "some accounts never got attempted at all") —
+        // here every account may well be fully attempted, just not fully settled.
+        status = 'in_progress';
+      } else if (synced.size === accounts.length) {
+        status = 'synced';
+      } else if (downloaded.size === accounts.length) {
+        status = 'fetched_not_synced';
+      } else {
+        status = 'partial';
+      }
+
+      days.push({ date: dateStr, status, accounts: accountDetails });
+    }
+
+    return { days };
+  }
+
   async getAccountTransactions(accountId: number, from: Date, to: Date) {
     const txns = await this.prisma.bankTransaction.findMany({
       where: {

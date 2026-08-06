@@ -1,0 +1,96 @@
+.wrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 16px 20px 20px;
+  margin-bottom: 24px;
+}
+
+.header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+.headerLeft { display: flex; flex-direction: column; gap: 8px; }
+.title { font-size: 13px; font-weight: 600; color: var(--color-ink); }
+
+.legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.legendItem { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--color-muted); }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+
+.nav { display: flex; align-items: center; gap: 10px; }
+.navBtn {
+  width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--color-border);
+  background: var(--bg-surface); color: var(--color-secondary); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; font-size: 14px;
+}
+.navBtn:hover { background: var(--bg-page); }
+.monthLabel { font-size: 13px; font-weight: 500; color: var(--color-ink); min-width: 120px; text-align: center; }
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.weekday {
+  font-size: 11px; font-weight: 600; color: var(--color-muted);
+  text-align: center; padding: 2px 0 6px;
+}
+.cellBlank { visibility: hidden; height: 32px; }
+
+/* Neutral cell + a small colored dot for status — a full-tile color fill (previous
+   version) turned any month with lots of gaps into a solid wall of red/orange with
+   no white space to rest the eye on, and adjacent warm hues (red vs orange) blurred
+   together at a glance. A dot is the same idiom as a calendar's event marker: the
+   grid stays calm by default, only the dot needs interpreting (aided by the legend). */
+.cell {
+  height: 34px;
+  border: 1px solid var(--color-border-light); border-radius: 6px; cursor: pointer;
+  background: var(--bg-surface);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  transition: background 0.1s, border-color 0.1s;
+}
+.cell:hover:not(:disabled) { background: var(--bg-page); border-color: var(--color-border-strong); }
+.cell:disabled { cursor: default; }
+
+.cellNum { font-size: 12px; font-weight: 500; color: var(--color-ink); }
+
+/* Future — clearly "not applicable yet", not "missing": muted, dashed, no dot at all,
+   so it never reads as the same kind of gap as a past not_fetched day. */
+.cellFutureCell { border-style: dashed; opacity: 0.55; }
+.cellFutureCell .cellNum { color: var(--color-subtle); }
+
+.cellToday { border-color: var(--color-accent-active); border-width: 1.5px; }
+
+.dotSynced           { background: #10b981; }
+.dotFetchedNotSynced { background: #eab308; }
+.dotPartial          { background: #f97316; }
+.dotNotFetched       { background: #ef4444; }
+.dotInProgress       { background: #3b82f6; }
+
+/* Detail panel */
+.detail { display: flex; flex-direction: column; gap: 16px; }
+.detailStatus { font-size: 13px; font-weight: 500; color: var(--color-ink); }
+.detailEmpty { font-size: 13px; color: var(--color-subtle); }
+
+.accountList { display: flex; flex-direction: column; gap: 10px; }
+.accountRow {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border: 1px solid var(--color-border); border-radius: 8px;
+}
+.accountInfo { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.accountNumber { font-size: 13px; font-weight: 500; color: var(--color-ink); }
+.accountName { font-size: 12px; color: var(--color-muted); }
+.accountFlags { display: flex; gap: 10px; flex-shrink: 0; }
+.flagOk { font-size: 12px; color: #0e6245; white-space: nowrap; }
+.flagMissing { font-size: 12px; color: var(--color-subtle); white-space: nowrap; }
+
+.btnPrimary {
+  padding: 8px 16px; font-size: 13px; font-weight: 500; border-radius: 6px;
+  border: none; background: var(--color-accent); color: #fff; cursor: pointer; width: 100%;
+}
+.btnPrimary:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btnPrimary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+@media (max-width: 768px) {
+  .wrap { padding: 12px 14px 16px; }
+  .header { flex-direction: column; align-items: stretch; }
+  .cell, .cellBlank { height: 30px; }
+  .cellNum { font-size: 11px; }
+}

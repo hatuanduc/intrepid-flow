@@ -488,6 +488,29 @@ export async function getBankMetrics(from: string, to: string, accountCode?: str
   return request<MetricsResponse>(`/management/bank-statement/metrics?${params}`, { auth: true });
 }
 
+export type BankSyncCoverageStatus = 'future' | 'not_fetched' | 'partial' | 'fetched_not_synced' | 'synced' | 'in_progress';
+
+export type BankSyncCoverageAccount = {
+  id: number;
+  accountNumber: string;
+  accountName: string;
+  downloaded: boolean;
+  synced: boolean;
+};
+
+export type BankSyncCoverageDay = {
+  date: string; // YYYY-MM-DD
+  status: BankSyncCoverageStatus;
+  accounts: BankSyncCoverageAccount[];
+};
+
+export async function getBankCoverage(from: string, to: string) {
+  return request<{ days: BankSyncCoverageDay[] }>(
+    `/management/bank-statement/coverage?from=${from}&to=${to}`,
+    { auth: true },
+  );
+}
+
 export async function getBankJobSummary(jobId: string) {
   return request<JobAccountSummary[]>(`/management/bank-statement/jobs/${jobId}/summary`, { auth: true });
 }
