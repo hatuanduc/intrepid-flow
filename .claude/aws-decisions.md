@@ -37,8 +37,19 @@ Không dùng ECS vì thêm phức tạp không cần thiết ở scale hiện t�
 
 **Không dùng NAT Gateway** (~$32/tháng)
 
-- EC2 nằm trong public subnet, có Elastic IP → ra internet qua IGW trực tiếp
+- EC2 nằm trong public subnet, ra internet qua IGW trực tiếp
 - NAT chỉ cần nếu EC2 ở private subnet
+
+**Không dùng Elastic IP (cập nhật 2026-08-10)**
+
+- Subnet có `map_public_ip_on_launch = true` → EC2 tự nhận public IP mỗi lần start,
+  không cần EIP tĩnh. Tiết kiệm ~$3.6/tháng/instance.
+- Đánh đổi: public IP đổi mỗi lần start/stop → cần tự cập nhật Cloudflare DNS.
+  Giải quyết bằng `infra/aws/scripts/update-dns.sh` — systemd service chạy mỗi lần
+  boot (cài trong `bootstrap.sh`), gọi Cloudflare API PATCH A record bằng token lưu ở
+  SSM `/intrepid/shared/CLOUDFLARE_API_TOKEN`.
+- Instance đã tồn tại từ trước (bootstrap.sh không tự chạy lại) cần cài service này
+  thủ công 1 lần — xem README.md Bước 5e.
 
 **Nginx thay vì ALB** (~$16/tháng)
 
@@ -94,7 +105,7 @@ Khi cần VPC peering giữa các project: tạo repo `infra-account` riêng ch�
 
 ## Chi phí ước tính
 
-- EC2 t4g.medium, schedule 08:00–20:00 GMT+7 weekdays (~12h/ngày, 22 ngày): ~$10/tháng
+- EC2 t4g.medium, schedule 09:00–11:00 GMT+7 weekdays (~2h/ngày, 22 ngày): ~$2/tháng
 - EBS gp3 30GB: ~$2.40/tháng
-- Elastic IP: ~$3.6/tháng (miễn phí khi EC2 đang chạy)
-- **Tổng: ~$12–13/tháng**
+- Không còn Elastic IP (xem mục Networking) — tiết kiệm ~$3.6/tháng
+- **Tổng: ~$4–5/tháng** (prod); dev tương tự với t4g.small

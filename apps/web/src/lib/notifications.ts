@@ -2,7 +2,11 @@ const PREF_KEY = 'notif-hsbc-v1';
 
 export function isHsbcNotifEnabled(): boolean {
   if (typeof window === 'undefined') return false;
-  return localStorage.getItem(PREF_KEY) === 'true';
+  const stored = localStorage.getItem(PREF_KEY);
+  // No explicit choice saved yet → default to on. Once the user (or setHsbcNotifEnabled)
+  // has written an explicit 'true'/'false', that always wins.
+  if (stored === null) return true;
+  return stored === 'true';
 }
 
 export function setHsbcNotifEnabled(value: boolean) {

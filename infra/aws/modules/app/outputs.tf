@@ -1,6 +1,6 @@
-output "elastic_ip" {
-  description = "Static public IP (for manual SSH and Nginx reference)"
-  value       = aws_eip.app.public_ip
+output "public_ip" {
+  description = "Current public IP — thay đổi mỗi lần start/stop (không còn Elastic IP). Nginx/Cloudflare DNS được tự cập nhật bởi update-dns.sh (chạy mỗi lần boot), không cần đọc output này cho mục đích đó."
+  value       = aws_instance.app.public_ip
 }
 
 output "instance_id" {

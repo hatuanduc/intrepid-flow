@@ -43,17 +43,17 @@ module "app" {
   vpc_id    = data.terraform_remote_state.shared.outputs.vpc_id
   subnet_id = data.terraform_remote_state.shared.outputs.public_subnet_id
 
-  # Dev: auto-start 09:00 ICT, auto-stop 18:00 ICT (weekdays only, giống prod)
+  # Dev: auto-start 09:00 ICT, auto-stop 11:00 ICT (weekdays only, giống prod)
   start_schedule_enabled = true
   start_schedule         = "cron(0 2 ? * MON-FRI *)" # 09:00 ICT (UTC+7)
   stop_schedule_enabled  = true
-  stop_schedule          = "cron(0 11 ? * MON-FRI *)" # 18:00 ICT (UTC+7)
+  stop_schedule          = "cron(0 4 ? * MON-FRI *)" # 11:00 ICT (UTC+7)
 
   github_repo   = "hatuanduc/intrepid-flow"
   deploy_bucket = "intrepid-terraform-state"
 }
 
-output "elastic_ip" { value = module.app.elastic_ip }
+output "public_ip" { value = module.app.public_ip }
 output "instance_id" { value = module.app.instance_id }
 output "ssm_command" { value = module.app.ssm_command }
 output "github_actions_role_arn" { value = module.app.github_actions_role_arn }

@@ -23,11 +23,16 @@
              │  │  postgres  │ │    │  │  postgres  │      │
              │  │  redis     │ │    │  │  redis     │      │
              │  └────────────┘ │    │  └────────────┘      │
-             └─────────────────┘    └──────────┬──────────┘
-              Manual start/stop                │
-                                   EventBridge → Lambda
-                                   08:00–20:00 GMT+7 (weekday)
+             └────────┬────────┘    └──────────┬──────────┘
+                       │                        │
+              EventBridge Scheduler   EventBridge Scheduler
+              09:00–11:00 GMT+7       09:00–11:00 GMT+7
+              (weekday)               (weekday)
 ```
+
+Không có Elastic IP — public IP đổi mỗi lần start/stop. Mỗi lần boot, một systemd
+service (`intrepid-dns-update.service`, cài trong `bootstrap.sh`) tự gọi Cloudflare
+API cập nhật lại A record trỏ IP mới — xem `scripts/update-dns.sh` và mục 5e.
 
 **Build strategy:** Docker images are built ON the EC2 instance (not on GitHub runners). CI only rsyncs source code and triggers `docker compose up --build -d` via SSH.
 
@@ -45,17 +50,18 @@ infra/aws/
 │       └── outputs.tf
 ├── environments/
 │   ├── dev/                  ← develop branch → dev EC2
-│   │   ├── main.tf           (t4g.small, no schedule)
+│   │   ├── main.tf           (t4g.small, weekday schedule 09:00–11:00 ICT)
 │   │   ├── variables.tf
 │   │   └── terraform.tfvars.example
 │   └── prod/                 ← main branch → prod EC2
-│       ├── main.tf           (t4g.medium, weekday schedule)
+│       ├── main.tf           (t4g.medium, weekday schedule 09:00–11:00 ICT)
 │       ├── variables.tf
 │       └── terraform.tfvars.example
 └── scripts/
-    ├── bootstrap.sh          ← one-time EC2 setup (Docker + Nginx)
-    ├── deploy.sh             ← called by CI via SSH
-    ├── ec2_scheduler.py      ← Lambda handler (start/stop)
+    ├── bootstrap.sh          ← one-time EC2 setup (Docker + Nginx + DNS updater)
+    ├── deploy.sh             ← called by CI via SSM Run Command
+    ├── update-dns.sh         ← chạy mỗi lần boot, cập nhật A record Cloudflare (public IP đổi mỗi start)
+    ├── setup-nginx.sh        ← one-time Nginx + Cloudflare Origin CA setup
     └── nginx.conf            ← Nginx template
 
 docker-compose.prod.yml       ← Docker Compose (5 services: web/api/worker/db/redis)
@@ -70,17 +76,20 @@ apps/worker/Dockerfile        (includes Playwright + Chromium)
 |---|---|---|
 | Instance | t4g.small | t4g.medium |
 | RAM | 2GB | 4GB |
-| Schedule | Manual stop/start | Weekdays 08:00–20:00 |
-| EC2 compute | ~$3–5/tháng | ~$10/tháng |
+| Schedule | Weekdays 09:00–11:00 ICT | Weekdays 09:00–11:00 ICT |
+| EC2 compute | ~$1/tháng (2h/ngày) | ~$2/tháng (2h/ngày) |
 | EBS 30GB | $2.40 | $2.40 |
-| **Tổng** | **~$5–8/tháng** | **~$12–13/tháng** |
+| **Tổng** | **~$3–4/tháng** | **~$4–5/tháng** |
+
+Không còn Elastic IP (~$3.6/tháng đã bỏ) — public IP đổi mỗi lần start, tự cập nhật
+DNS qua `update-dns.sh`.
 
 ## Branch → Environment mapping
 
 | Branch | GitHub Environment | EC2 |
 |---|---|---|
-| `develop` | `development` | Dev EC2 (Elastic IP dev) |
-| `main` | `production` | Prod EC2 (Elastic IP prod) |
+| `develop` | `development` | Dev EC2 (public IP đổi mỗi lần start) |
+| `main` | `production` | Prod EC2 (public IP đổi mỗi lần start) |
 
 ## Manual setup (chạy 1 lần cho mỗi môi trường)
 
@@ -120,18 +129,21 @@ Không cần SSH key — manual access qua SSM Session Manager.
 # DEV
 cd infra/aws/environments/dev
 cp terraform.tfvars.example terraform.tfvars
-# Điền ssh_public_key (nội dung ~/.ssh/intrepid_rsa.pub)
 terraform init
 terraform apply
-terraform output elastic_ip   # → lưu lại là DEV_EC2_HOST
+terraform output instance_id   # → lưu lại là EC2_INSTANCE_ID (dev)
 
 # PROD
 cd infra/aws/environments/prod
 cp terraform.tfvars.example terraform.tfvars
 terraform init
 terraform apply
-terraform output elastic_ip   # → lưu lại là PROD_EC2_HOST
+terraform output instance_id   # → lưu lại là EC2_INSTANCE_ID (prod)
 ```
+
+Không còn output `elastic_ip` — public IP đổi mỗi lần start/stop (`terraform output public_ip`
+chỉ để tham khảo tức thời, không dùng để lưu cố định). Truy cập EC2 luôn qua SSM Session
+Manager bằng `instance_id`, không qua IP.
 
 Bootstrap chạy tự động trong EC2 User Data (~3 phút). Theo dõi progress:
 ```bash
@@ -144,7 +156,8 @@ aws ssm start-session --target $INSTANCE_ID --region ap-southeast-1
 ### Bước 3 — Tạo .env trên từng EC2
 
 ```bash
-ssh -i ~/.ssh/intrepid_rsa ubuntu@<ELASTIC_IP>
+INSTANCE_ID=$(cd infra/aws/environments/dev && terraform output -raw instance_id)  # hoặc prod
+aws ssm start-session --target $INSTANCE_ID --region ap-southeast-1
 
 # Tạo /app/.env (docker-compose đọc file này tự động)
 cat > /app/.env <<'EOF'
@@ -198,9 +211,8 @@ docker compose -f docker-compose.prod.yml run --rm migrate pnpm db:seed
 
 Chỉ cần chạy **1 lần duy nhất** cho mỗi môi trường (dev/prod). Sau đó admin đăng nhập bằng mật khẩu vừa set — **không** re-run seed sau khi admin đã đổi mật khẩu qua app, vì seed sẽ ghi đè lại password về giá trị trong SSM.
 
-Hoặc chạy thủ công lần đầu:
+Hoặc chạy thủ công lần đầu (qua SSM session ở Bước 3):
 ```bash
-ssh -i ~/.ssh/intrepid_rsa ubuntu@<ELASTIC_IP>
 cd /app && bash infra/aws/scripts/deploy.sh
 ```
 
@@ -247,7 +259,10 @@ sudo bash /app/infra/aws/scripts/setup-nginx.sh dev    # hoặc: prod
 ```
 
 **5c. Cloudflare DNS + SSL mode:**
-- DNS: thêm 2 record `A` (web + api domain) trỏ về Elastic IP, **Proxy status: Proxied** (mây cam)
+- DNS: thêm 2 record `A` (web + api domain) trỏ tạm về `terraform output public_ip` hiện tại,
+  **Proxy status: Proxied** (mây cam). Không còn Elastic IP nên IP này chỉ đúng cho tới lần
+  start kế tiếp — record chỉ cần **tồn tại** (đúng tên), giá trị sẽ tự sửa bởi `update-dns.sh`
+  (xem 5e) mỗi lần EC2 start.
 - SSL/TLS → Overview → mode: **Full (strict)**
 
 **5d. Cập nhật SSM params** (deploy.sh generate `/app/.env` từ đây mỗi lần deploy):
@@ -267,6 +282,47 @@ aws ssm put-parameter --name "/intrepid/prod/NEXT_PUBLIC_API_BASE_URL" \
 ```
 
 Sau đó **deploy lại** để web build lại với `NEXT_PUBLIC_API_BASE_URL` mới (build arg, bake vào bundle).
+
+**5e. Cloudflare DNS auto-update (bắt buộc — không có Elastic IP nữa):**
+
+Tạo API token trên Cloudflare (1 lần, dùng chung dev + prod):
+`My Profile → API Tokens → Create Token` → quyền `Zone.DNS:Edit` cho zone `naronx.asia`.
+Lấy Zone ID ở `Overview` của zone đó (cột phải). Đẩy 2 giá trị lên SSM:
+
+```bash
+aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_API_TOKEN" \
+  --value "<token>" --type SecureString --overwrite --region ap-southeast-1
+aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_ZONE_ID" \
+  --value "<zone_id>" --type String --overwrite --region ap-southeast-1
+```
+
+`bootstrap.sh` tự cài + enable service `intrepid-dns-update.service` cho **EC2 tạo mới**
+(chạy `update-dns.sh` mỗi lần boot). Với EC2 **đã tồn tại từ trước** (user_data không tự
+chạy lại), cài thủ công 1 lần qua SSM session:
+
+```bash
+INSTANCE_ID=$(cd infra/aws/environments/dev && terraform output -raw instance_id)  # hoặc prod
+aws ssm start-session --target $INSTANCE_ID --region ap-southeast-1
+
+sudo apt-get install -y jq
+sudo tee /etc/systemd/system/intrepid-dns-update.service > /dev/null <<'UNIT'
+[Unit]
+Description=Update Cloudflare DNS A record with this instance's current public IP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /app/infra/aws/scripts/update-dns.sh
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload
+sudo systemctl enable --now intrepid-dns-update.service
+```
+
+Log: `/var/log/update-dns.log`. Kiểm tra nhanh: `sudo systemctl status intrepid-dns-update.service`.
 
 ### Bước 5b — Google OAuth (Sign in with Google)
 
@@ -346,12 +402,17 @@ docker compose -f docker-compose.prod.yml down
 docker compose -f docker-compose.prod.yml down -v
 ```
 
-## Start/stop EC2 thủ công (dev)
+## Start/stop EC2 thủ công
+
+Dev + prod đều đã có schedule tự động (weekdays 09:00–11:00 ICT — xem `scheduler.tf`).
+Ngoài giờ đó cần dùng thủ công:
 
 ```bash
-# Dev không có schedule, start khi cần:
-aws ec2 start-instances --instance-ids <DEV_INSTANCE_ID> --region ap-southeast-1
-aws ec2 stop-instances  --instance-ids <DEV_INSTANCE_ID> --region ap-southeast-1
+aws ec2 start-instances --instance-ids <INSTANCE_ID> --region ap-southeast-1
+aws ec2 stop-instances  --instance-ids <INSTANCE_ID> --region ap-southeast-1
 
 # Hoặc qua AWS Console → EC2 → Instances
 ```
+
+Start thủ công cũng trigger `intrepid-dns-update.service` bình thường (systemd, không
+phụ thuộc EventBridge) — DNS vẫn tự cập nhật đúng IP mới.

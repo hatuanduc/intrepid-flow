@@ -11,7 +11,7 @@ import BackButton from '../../../components/common/BackButton';
 import s from './NotificationsSettingsPage.module.css';
 
 export default function NotificationsSettingsPage() {
-  const [enabled, setEnabled]       = useState(false);
+  const [enabled, setEnabled]       = useState(true); // matches isHsbcNotifEnabled()'s default-on
   const [permission, setPermission] = useState<ReturnType<typeof getPermission>>('default');
 
   useEffect(() => {

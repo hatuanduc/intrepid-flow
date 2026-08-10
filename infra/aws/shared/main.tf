@@ -40,7 +40,7 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
-  tags = { Name = "intrepid-flow-vpc" }
+  tags                 = { Name = "intrepid-flow-vpc" }
 }
 
 # ── Internet Gateway ─────────────────────────────────────────────────
@@ -55,7 +55,7 @@ resource "aws_subnet" "public" {
   cidr_block              = "10.0.1.0/24"
   availability_zone       = "ap-southeast-1a"
   map_public_ip_on_launch = true
-  tags = { Name = "intrepid-flow-public", Tier = "public" }
+  tags                    = { Name = "intrepid-flow-public", Tier = "public" }
 }
 
 # ── Private Subnet 10.0.10.0/24 (future: RDS, ElastiCache) ──────────
@@ -63,7 +63,7 @@ resource "aws_subnet" "private" {
   vpc_id            = aws_vpc.main.id
   cidr_block        = "10.0.10.0/24"
   availability_zone = "ap-southeast-1a"
-  tags = { Name = "intrepid-flow-private", Tier = "private" }
+  tags              = { Name = "intrepid-flow-private", Tier = "private" }
 }
 
 # ── Route Table: public → IGW ────────────────────────────────────────
@@ -105,6 +105,35 @@ resource "aws_ssm_parameter" "cloudflare_origin_key" {
   name        = "/intrepid/shared/CLOUDFLARE_ORIGIN_KEY"
   description = "Private key của Cloudflare Origin CA certificate"
   type        = "SecureString"
+  value       = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+# ── SSM: Cloudflare API token (dùng chung dev + prod) ────────────────
+# EC2 không còn Elastic IP → public IP đổi mỗi lần start. update-dns.sh
+# (chạy qua systemd mỗi lần boot — xem scripts/bootstrap.sh) dùng token này
+# để PATCH lại A record trỏ về IP mới. Nằm ở /intrepid/shared/ vì zone
+# naronx.asia dùng chung cho cả 2 env, giống Origin CA cert ở trên.
+#
+# Set giá trị thật sau khi tạo token trên Cloudflare dashboard:
+#   My Profile → API Tokens → Create Token → quyền "Zone.DNS:Edit" cho zone naronx.asia
+#   aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_API_TOKEN" \
+#     --value "<token>" --type SecureString --overwrite --region ap-southeast-1
+#   aws ssm put-parameter --name "/intrepid/shared/CLOUDFLARE_ZONE_ID" \
+#     --value "<zone_id>" --type String --overwrite --region ap-southeast-1
+
+resource "aws_ssm_parameter" "cloudflare_api_token" {
+  name        = "/intrepid/shared/CLOUDFLARE_API_TOKEN"
+  description = "Cloudflare API token (Zone.DNS:Edit) — dùng để tự cập nhật A record khi public IP đổi"
+  type        = "SecureString"
+  value       = "PLACEHOLDER"
+  lifecycle { ignore_changes = [value] }
+}
+
+resource "aws_ssm_parameter" "cloudflare_zone_id" {
+  name        = "/intrepid/shared/CLOUDFLARE_ZONE_ID"
+  description = "Zone ID của naronx.asia trên Cloudflare"
+  type        = "String"
   value       = "PLACEHOLDER"
   lifecycle { ignore_changes = [value] }
 }

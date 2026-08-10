@@ -25,8 +25,8 @@ resource "aws_iam_role_policy" "app_s3_deploy" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Effect   = "Allow"
-      Action   = ["s3:GetObject", "s3:ListBucket"]
+      Effect = "Allow"
+      Action = ["s3:GetObject", "s3:ListBucket"]
       Resource = [
         "arn:aws:s3:::${var.deploy_bucket}",
         "arn:aws:s3:::${var.deploy_bucket}/deploy/*"

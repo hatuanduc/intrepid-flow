@@ -10,7 +10,7 @@ echo "=== [bootstrap] Start: $(date) ==="
 # ── 1. System packages ────────────────────────────────────────────────────
 apt-get update -y
 apt-get install -y \
-  curl git openssl unzip \
+  curl git openssl unzip jq \
   nginx certbot python3-certbot-nginx \
   ca-certificates gnupg lsb-release
 
@@ -64,6 +64,30 @@ chown ubuntu:ubuntu /app
 rm -f /etc/nginx/sites-enabled/default
 systemctl enable nginx
 systemctl start nginx
+
+# ── 6. Cloudflare DNS auto-update ──────────────────────────────────────────
+# EC2 không có Elastic IP → public IP đổi mỗi lần start. Service này chạy
+# update-dns.sh (từ repo, /app/infra/...) mỗi lần boot để PATCH lại A record.
+# Chỉ cần cài + enable 1 lần ở đây — systemd tự chạy lại ở mọi lần boot sau,
+# kể cả khi EventBridge Scheduler start instance (không liên quan user_data).
+# Lần boot đầu tiên này /app chưa có code (chưa deploy) nên service sẽ fail —
+# vô hại, chạy đúng từ lần start kế tiếp (sau lần deploy đầu tiên).
+cat > /etc/systemd/system/intrepid-dns-update.service <<'UNIT'
+[Unit]
+Description=Update Cloudflare DNS A record with this instance's current public IP
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /app/infra/aws/scripts/update-dns.sh
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+
+systemctl daemon-reload
+systemctl enable intrepid-dns-update.service
 
 # ── Done ─────────────────────────────────────────────────────────────────
 echo "=== [bootstrap] Done: $(date) ==="

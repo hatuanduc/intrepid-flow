@@ -47,12 +47,7 @@ resource "aws_instance" "app" {
   }
 }
 
-resource "aws_eip" "app" {
-  domain = "vpc"
-  tags   = { Name = "${local.name_prefix}-eip", Env = var.env }
-}
-
-resource "aws_eip_association" "app" {
-  instance_id   = aws_instance.app.id
-  allocation_id = aws_eip.app.id
-}
+# Không dùng Elastic IP — subnet có map_public_ip_on_launch = true (xem shared/main.tf)
+# nên EC2 tự nhận public IP mỗi lần start, đổi mỗi lần start/stop.
+# Tiết kiệm ~$3.6/tháng/instance so với EIP. Đổi lại: DNS phải tự cập nhật —
+# xem scripts/update-dns.sh (systemd service chạy mỗi lần boot, cài trong bootstrap.sh).
