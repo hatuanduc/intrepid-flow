@@ -12,7 +12,7 @@
 
 .legend { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .legendItem { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--color-muted); }
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
 
 .nav { display: flex; align-items: center; gap: 10px; }
 .navBtn {
@@ -58,11 +58,15 @@
 
 .cellToday { border-color: var(--color-accent-active); border-width: 1.5px; }
 
-.dotSynced           { background: #10b981; }
-.dotFetchedNotSynced { background: #eab308; }
-.dotPartial          { background: #f97316; }
-.dotNotFetched       { background: #ef4444; }
-.dotInProgress       { background: #3b82f6; }
+/* Categorical, not a warm gradient — red/orange/yellow sit next to each other on
+   the wheel and blurred together at dot size (per feedback). Spreading statuses
+   across clearly separated hues (red / purple / amber / blue / green) instead of a
+   red→orange→yellow severity ramp reads apart correctly even at a glance. */
+.dotSynced           { background: #10b981; } /* green  */
+.dotFetchedNotSynced { background: #eab308; } /* amber  */
+.dotPartial          { background: #a855f7; } /* purple */
+.dotNotFetched       { background: #ef4444; } /* red    */
+.dotInProgress       { background: #3b82f6; } /* blue   */
 
 /* Detail panel */
 .detail { display: flex; flex-direction: column; gap: 16px; }

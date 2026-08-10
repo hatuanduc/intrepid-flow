@@ -448,13 +448,21 @@ export class BankStatementService implements OnModuleInit {
       // (dateRangeSettled) to decide whether a fetch counts as done for good.
       const settled = dayDate.getTime() < todayUtc.getTime();
 
-      const downloaded = new Set<number>();
-      const synced = new Set<number>();
+      // Jobs overlapping this day can carry account rows for numbers that are no
+      // longer in `accounts` (disabled since, or renamed) — a historical multi-day
+      // catch-up job may have touched a dozen accounts that used to be enabled.
+      // These Sets track EVERY account id seen, not just currently-enabled ones, so
+      // downloadedIds.size can run well past accounts.length — comparing that raw
+      // size against accounts.length below would then never equal it even when
+      // every currently-enabled account is fully done. Count from accountDetails
+      // (already scoped to `accounts`) instead of these Sets' raw size.
+      const downloadedIds = new Set<number>();
+      const syncedIds = new Set<number>();
       for (const job of jobs) {
         if (job.dateRangeFrom! <= dayDate && dayDate <= job.dateRangeTo!) {
           for (const ja of job.accountJobs) {
-            if (ja.status === 'completed') downloaded.add(ja.bankAccountId);
-            if (ja.sheetsSyncStatus === 'completed' || ja.sheetsSyncStatus === 'no_data') synced.add(ja.bankAccountId);
+            if (ja.status === 'completed') downloadedIds.add(ja.bankAccountId);
+            if (ja.sheetsSyncStatus === 'completed' || ja.sheetsSyncStatus === 'no_data') syncedIds.add(ja.bankAccountId);
           }
         }
       }
@@ -463,12 +471,14 @@ export class BankStatementService implements OnModuleInit {
         id: a.id,
         accountNumber: a.accountNumber,
         accountName: a.accountName,
-        downloaded: downloaded.has(a.id),
-        synced: synced.has(a.id),
+        downloaded: downloadedIds.has(a.id),
+        synced: syncedIds.has(a.id),
       }));
+      const downloadedCount = accountDetails.filter(a => a.downloaded).length;
+      const syncedCount = accountDetails.filter(a => a.synced).length;
 
       let status: DayStatus;
-      if (accounts.length === 0 || downloaded.size === 0) {
+      if (accounts.length === 0 || downloadedCount === 0) {
         status = 'not_fetched';
       } else if (!settled) {
         // Today — whatever's been fetched so far is just a mid-day snapshot; more
@@ -478,9 +488,9 @@ export class BankStatementService implements OnModuleInit {
         // 'partial' (which means "some accounts never got attempted at all") —
         // here every account may well be fully attempted, just not fully settled.
         status = 'in_progress';
-      } else if (synced.size === accounts.length) {
+      } else if (syncedCount === accounts.length) {
         status = 'synced';
-      } else if (downloaded.size === accounts.length) {
+      } else if (downloadedCount === accounts.length) {
         status = 'fetched_not_synced';
       } else {
         status = 'partial';
