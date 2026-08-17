@@ -373,10 +373,14 @@ export class BankStatementService implements OnModuleInit {
     // Ending balance per account for the selected range — the last transaction's
     // balance snapshot (not a sum, balance is a running bank-reported value, not
     // additive across rows). `distinct` + orderBy desc keeps only the latest row
-    // per account.
+    // per account. postDate desc picks the most recent day; WITHIN that day the
+    // tiebreak must be id ASC, not DESC — same-day rows have a SMALLER id for the
+    // chronologically LATER transaction (HSBC exports newest-first, rows are
+    // inserted in that same file order — see getAccountTransactions()/sheets.service.ts
+    // for the full reasoning), so id ascending surfaces that day's true last row.
     const latestBalanceRows = await this.prisma.bankTransaction.findMany({
       where: { bankAccountId: { in: accountIds }, postDate: { gte: from, lte: to } },
-      orderBy: [{ postDate: 'desc' }, { id: 'desc' }],
+      orderBy: [{ postDate: 'desc' }, { id: 'asc' }],
       distinct: ['bankAccountId'],
       select: { bankAccountId: true, balance: true },
     });
