@@ -4,6 +4,11 @@ import * as ExcelJS from 'exceljs';
 import { REQUIRED_COLUMNS, ALL_KNOWN_COLUMNS, COLUMN_FIELD_MAP } from '../constants';
 
 export type TransactionRow = {
+  // DB row id (insertion order). Only set when a row is reloaded from the DB
+  // (retry/force-resync paths) — undefined for a fresh excel.parse() result, since
+  // those rows haven't been inserted yet. sheets.service.ts uses this to break
+  // same-day ties by discovery order; see the comment there for why.
+  id?: number;
   postDate: Date;
   narrative: string | null;
   bankReference: string | null;

@@ -508,7 +508,9 @@ export class BankStatementService implements OnModuleInit {
         bankAccountId: accountId,
         postDate: { gte: from, lte: to },
       },
-      orderBy: { postDate: 'asc' },
+      // id asc breaks same-day ties by insertion/discovery order — see
+      // sheets.service.ts (worker) for why postDate alone isn't enough.
+      orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
         postDate: true,
@@ -536,7 +538,7 @@ export class BankStatementService implements OnModuleInit {
 
     const txns = await this.prisma.bankTransaction.findMany({
       where: { jobId: job.id, bankAccountId: accountId },
-      orderBy: { postDate: 'asc' },
+      orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
       select: {
         id: true,
         postDate: true,

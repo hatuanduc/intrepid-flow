@@ -170,8 +170,24 @@ export class SheetsService {
 
     // HSBC's export lists rows newest-first; Sheets only ever appends at the bottom,
     // so writing them as-is would zigzag the date column after each sync. Sort
-    // oldest-first to keep the sheet reading chronologically top-to-bottom.
-    const sortedRows = [...rows].sort((a, b) => a.postDate.getTime() - b.postDate.getTime());
+    // oldest-first (postDate ascending) to read chronologically top-to-bottom.
+    //
+    // Same-day ties are broken by `id` (DB insertion order) ascending, NOT a plain
+    // reverse of the input array — a full reverse only works if `rows` is one
+    // contiguous, chronologically-ordered fetch. It isn't always: a later job can
+    // backfill an earlier date range out of order (day 4 synced before day 3), or the
+    // same day can be re-fetched more than once as new same-day transactions post.
+    // Sorting on the real `postDate` field handles the first case regardless of fetch
+    // order; `id` ascending handles the second, since a same-day row discovered by a
+    // later job run gets a later id and correctly sorts after the ones already there.
+    // `id` is undefined for a fresh excel.parse() result (not inserted yet) — those
+    // rows fall back to their original HSBC file order via the sort's stability.
+    const sortedRows = [...rows].sort((a, b) => {
+      const dateDiff = a.postDate.getTime() - b.postDate.getTime();
+      if (dateDiff !== 0) return dateDiff;
+      if (a.id != null && b.id != null) return a.id - b.id;
+      return 0;
+    });
 
     const appendValues = sortedRows.map(r => [
       '',                                         // A — empty
