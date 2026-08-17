@@ -307,6 +307,13 @@
   font-variant-numeric: tabular-nums;
   overflow: hidden; text-overflow: ellipsis;
 }
+.txTdBalance {
+  font-size: 12px; font-weight: 600; color: var(--color-ink);
+  padding: 8px 12px; border-bottom: 1px solid var(--color-border-light);
+  text-align: right; white-space: nowrap; vertical-align: top;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis;
+}
 .txTdFetched {
   font-size: 11px; color: var(--color-muted);
   padding: 8px 12px; border-bottom: 1px solid var(--color-border-light);
@@ -318,12 +325,14 @@
 .txTable tr:last-child .txTdMono,
 .txTable tr:last-child .txTdCredit,
 .txTable tr:last-child .txTdDebit,
+.txTable tr:last-child .txTdBalance,
 .txTable tr:last-child .txTdFetched { border-bottom: none; }
 .txTable tbody tr:hover .txTd,
 .txTable tbody tr:hover .txTdNarrative,
 .txTable tbody tr:hover .txTdMono,
 .txTable tbody tr:hover .txTdCredit,
 .txTable tbody tr:hover .txTdDebit,
+.txTable tbody tr:hover .txTdBalance,
 .txTable tbody tr:hover .txTdFetched { background: var(--bg-hover); }
 
 /* Sync progress bar — part-to-whole summary above the stat cards */

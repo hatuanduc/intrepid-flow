@@ -356,7 +356,7 @@ export class BankStatementService implements OnModuleInit {
     });
 
     if (accounts.length === 0) {
-      return { summary: { totalCredit: 0, totalDebit: 0, netFlow: 0, txCount: 0, accountCount: 0 }, daily: [] };
+      return { summary: { totalCredit: 0, totalDebit: 0, netFlow: 0, txCount: 0, accountCount: 0 }, daily: [], balances: [] };
     }
 
     const accountIds = accounts.map(a => a.id);
@@ -369,6 +369,20 @@ export class BankStatementService implements OnModuleInit {
       _count: { id: true },
       orderBy: { postDate: 'asc' },
     });
+
+    // Ending balance per account for the selected range — the last transaction's
+    // balance snapshot (not a sum, balance is a running bank-reported value, not
+    // additive across rows). `distinct` + orderBy desc keeps only the latest row
+    // per account.
+    const latestBalanceRows = await this.prisma.bankTransaction.findMany({
+      where: { bankAccountId: { in: accountIds }, postDate: { gte: from, lte: to } },
+      orderBy: [{ postDate: 'desc' }, { id: 'desc' }],
+      distinct: ['bankAccountId'],
+      select: { bankAccountId: true, balance: true },
+    });
+    const balanceByAccount = Object.fromEntries(
+      latestBalanceRows.map(r => [r.bankAccountId, r.balance != null ? Number(r.balance) : null]),
+    );
 
     const daily = grouped.map(row => {
       const acc = accountMap[row.bankAccountId];
@@ -396,6 +410,7 @@ export class BankStatementService implements OnModuleInit {
         accountCount: new Set(daily.map(r => r.accountId)).size,
       },
       daily,
+      balances: accountIds.map(id => ({ accountId: id, balance: balanceByAccount[id] ?? null })),
     };
   }
 
@@ -518,6 +533,7 @@ export class BankStatementService implements OnModuleInit {
         bankReference: true,
         creditAmount: true,
         debitAmount: true,
+        balance: true,
         createdAt: true,
       },
     });
@@ -528,6 +544,7 @@ export class BankStatementService implements OnModuleInit {
       bankReference: t.bankReference,
       creditAmount: t.creditAmount != null ? Number(t.creditAmount) : null,
       debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
+      balance: t.balance != null ? Number(t.balance) : null,
       fetchedAt: t.createdAt,
     }));
   }
@@ -546,6 +563,7 @@ export class BankStatementService implements OnModuleInit {
         bankReference: true,
         creditAmount: true,
         debitAmount: true,
+        balance: true,
         createdAt: true,
       },
     });
@@ -557,6 +575,7 @@ export class BankStatementService implements OnModuleInit {
       bankReference: t.bankReference,
       creditAmount: t.creditAmount != null ? Number(t.creditAmount) : null,
       debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
+      balance: t.balance != null ? Number(t.balance) : null,
       fetchedAt: t.createdAt,
     }));
   }

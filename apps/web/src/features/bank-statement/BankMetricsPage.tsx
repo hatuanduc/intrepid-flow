@@ -50,6 +50,7 @@ type AccountRow = {
   accountCode: string; currency: string;
   totalCredit: number; totalDebit: number; txCount: number;
   creditUsd: number | null; debitUsd: number | null;
+  balance: number | null; balanceUsd: number | null;
 };
 
 type CountryGroup = {
@@ -57,7 +58,7 @@ type CountryGroup = {
   totalCreditUsd: number; totalDebitUsd: number; hasRates: boolean;
 };
 
-function buildCountryGroups(daily: DailyMetricsRow[], rateMap: Record<string, number>): CountryGroup[] {
+function buildCountryGroups(daily: DailyMetricsRow[], rateMap: Record<string, number>, balanceMap: Record<number, number | null>): CountryGroup[] {
   const accountMap: Record<string, AccountRow> = {};
   for (const row of daily) {
     const key = `${row.accountId}__${row.currency}`;
@@ -67,6 +68,7 @@ function buildCountryGroups(daily: DailyMetricsRow[], rateMap: Record<string, nu
         accountName: row.accountName, accountCode: row.accountCode,
         currency: row.currency, totalCredit: 0, totalDebit: 0, txCount: 0,
         creditUsd: null, debitUsd: null,
+        balance: balanceMap[row.accountId] ?? null, balanceUsd: null,
       };
     }
     accountMap[key].totalCredit += row.totalCredit;
@@ -79,6 +81,7 @@ function buildCountryGroups(daily: DailyMetricsRow[], rateMap: Record<string, nu
     if (rate !== null) {
       row.creditUsd = row.totalCredit * rate;
       row.debitUsd  = row.totalDebit  * rate;
+      if (row.balance !== null) row.balanceUsd = row.balance * rate;
     }
   }
 
@@ -310,7 +313,8 @@ export default function BankMetricsPage() {
   );
 
   const rateMap        = useMemo(() => Object.fromEntries(currencyRates.map(r => [r.currency, Number(r.rateToUsd)])), [currencyRates]);
-  const accountGroups  = useMemo(() => metrics ? buildCountryGroups(metrics.daily, rateMap) : [], [metrics, rateMap]);
+  const balanceMap     = useMemo(() => metrics ? Object.fromEntries(metrics.balances.map(b => [b.accountId, b.balance])) : {}, [metrics]);
+  const accountGroups  = useMemo(() => metrics ? buildCountryGroups(metrics.daily, rateMap, balanceMap) : [], [metrics, rateMap, balanceMap]);
   const ratesUpdatedAt = useMemo(() => currencyRates.length > 0 ? currencyRates.reduce((m, r) => r.updatedAt > m ? r.updatedAt : m, currencyRates[0].updatedAt) : null, [currencyRates]);
   const hasRates = currencyRates.length > 0;
 
@@ -503,13 +507,11 @@ export default function BankMetricsPage() {
                   <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableTransactions')}</th>
                   <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableCredit')}</th>
                   <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableDebit')}</th>
-                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableNet')}</th>
+                  <th className={`${s.th} ${s.thRight}`}>{t('bankMetrics.tableBalance')}</th>
                 </tr>
               </thead>
               <tbody>
                 {paginated.map(row => {
-                  const net    = row.totalCredit + row.totalDebit;
-                  const netUsd = row.creditUsd !== null ? row.creditUsd + (row.debitUsd ?? 0) : null;
                   const showUsd = row.creditUsd !== null && row.currency !== 'USD';
                   return (
                     <tr key={`${row.accountId}__${row.currency}`} className={s.tr} onClick={() => openTxPanel(row)} style={{ cursor: 'pointer' }}>
@@ -542,14 +544,18 @@ export default function BankMetricsPage() {
                         {showUsd && row.totalDebit !== 0 && <div className={s.usdHint}>≈ ${fmtAmount(row.debitUsd!)}</div>}
                       </td>
                       <td className={`${s.td} ${s.tdRight}`}>
-                        <span style={{ color: net >= 0 ? '#059669' : '#df1b41' }}>
-                          {net >= 0 ? '+' : ''}{fmtAmount(net)}
-                        </span>
-                        {showUsd && netUsd !== null && (
-                          <div className={s.usdHint} style={{ color: netUsd >= 0 ? '#059669' : '#df1b41' }}>
-                            {netUsd >= 0 ? '+' : ''}${fmtAmount(Math.abs(netUsd))}
-                          </div>
-                        )}
+                        {row.balance !== null ? (
+                          <>
+                            <span style={{ color: row.balance >= 0 ? '#059669' : '#df1b41' }}>
+                              {fmtAmount(row.balance)}
+                            </span>
+                            {showUsd && row.balanceUsd !== null && (
+                              <div className={s.usdHint} style={{ color: row.balanceUsd >= 0 ? '#059669' : '#df1b41' }}>
+                                ≈ ${fmtAmount(row.balanceUsd)}
+                              </div>
+                            )}
+                          </>
+                        ) : '—'}
                       </td>
                     </tr>
                   );
@@ -624,6 +630,7 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
               <col style={{ width: '150px' }} />
               <col style={{ width: '130px' }} />
               <col style={{ width: '130px' }} />
+              <col style={{ width: '130px' }} />
             </colgroup>
             <thead>
               <tr>
@@ -632,6 +639,7 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
                 <th className={s.txTh}>Bank reference</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txCredit')}</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txDebit')}</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txBalance')}</th>
               </tr>
             </thead>
             <tbody>
@@ -645,6 +653,9 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
                   </td>
                   <td className={s.txTdDebit}>
                     {tx.debitAmount ? fmtAmount(tx.debitAmount) : '—'}
+                  </td>
+                  <td className={s.txTdBalance}>
+                    {tx.balance != null ? fmtAmount(tx.balance) : '—'}
                   </td>
                 </tr>
               ))}

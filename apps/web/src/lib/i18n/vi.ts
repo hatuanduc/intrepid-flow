@@ -330,6 +330,7 @@ export const vi: Translations = {
     bankReference: 'Bank reference',
     creditAmount: 'Tiền vào',
     debitAmount: 'Tiền ra',
+    balance: 'Số dư',
     fetchedAt: 'Ngày lấy về',
 
     err_invalidUsername: 'Tên đăng nhập HSBCnet không đúng. Vui lòng kiểm tra lại trong Cài đặt → Kết nối.',
@@ -372,6 +373,7 @@ export const vi: Translations = {
     tableCredit: 'Tiền vào',
     tableDebit: 'Tiền ra',
     tableNet: 'Net',
+    tableBalance: 'Số dư',
     noData: 'Không có dữ liệu trong khoảng thời gian này.',
     loadFailed: 'Không tải được dữ liệu. Vui lòng thử lại.',
     txNoData: 'Không có giao dịch trong khoảng này.',
@@ -381,6 +383,7 @@ export const vi: Translations = {
     chartByCode: 'Theo account code (USD)',
     txCredit: 'Tiền vào',
     txDebit: 'Tiền ra',
+    txBalance: 'Số dư',
   },
 
   connections: {

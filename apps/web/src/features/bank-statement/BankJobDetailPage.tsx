@@ -835,6 +835,7 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
               <col style={{ width: '150px' }} />
               <col style={{ width: '120px' }} />
               <col style={{ width: '120px' }} />
+              <col style={{ width: '120px' }} />
               <col style={{ width: '140px' }} />
             </colgroup>
             <thead>
@@ -844,6 +845,7 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
                 <th className={s.txTh}>{t('bankJob.bankReference')}</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.creditAmount')}</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.debitAmount')}</th>
+                <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.balance')}</th>
                 <th className={s.txTh}>{t('bankJob.fetchedAt')}</th>
               </tr>
             </thead>
@@ -858,6 +860,9 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
                   </td>
                   <td className={s.txTdDebit}>
                     {tx.debitAmount ? tx.debitAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                  </td>
+                  <td className={s.txTdBalance}>
+                    {tx.balance != null ? tx.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
                   </td>
                   <td className={s.txTdFetched}>{formatDateTime(tx.fetchedAt)}</td>
                 </tr>

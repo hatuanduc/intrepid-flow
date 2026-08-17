@@ -147,13 +147,16 @@
 .txTdMono { font-size: 11px; font-family: monospace; color: var(--color-muted); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); white-space: nowrap; vertical-align: top; overflow: hidden; text-overflow: ellipsis; }
 .txTdCredit { font-size: 12px; font-weight: 600; color: #059669; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 .txTdDebit  { font-size: 12px; font-weight: 600; color: #df1b41; padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.txTdBalance { font-size: 12px; font-weight: 600; color: var(--color-ink); padding: 8px 12px; border-bottom: 1px solid var(--color-border-light); text-align: right; white-space: nowrap; vertical-align: top; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
 .txRow:last-child .txTd,
 .txRow:last-child .txTdNarrative,
 .txRow:last-child .txTdMono,
 .txRow:last-child .txTdCredit,
-.txRow:last-child .txTdDebit { border-bottom: none; }
+.txRow:last-child .txTdDebit,
+.txRow:last-child .txTdBalance { border-bottom: none; }
 .txRow:hover .txTd,
 .txRow:hover .txTdNarrative,
 .txRow:hover .txTdMono,
 .txRow:hover .txTdCredit,
-.txRow:hover .txTdDebit { background: var(--bg-hover); }
+.txRow:hover .txTdDebit,
+.txRow:hover .txTdBalance { background: var(--bg-hover); }

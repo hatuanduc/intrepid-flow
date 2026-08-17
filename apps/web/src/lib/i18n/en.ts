@@ -328,6 +328,7 @@ export const en = {
     bankReference: 'Bank reference',
     creditAmount: 'Credit',
     debitAmount: 'Debit',
+    balance: 'Balance',
     fetchedAt: 'Fetched at',
 
     err_invalidUsername: 'HSBCnet username is incorrect. Please check in Settings → Connections.',
@@ -370,6 +371,7 @@ export const en = {
     tableCredit: 'Credit',
     tableDebit: 'Debit',
     tableNet: 'Net',
+    tableBalance: 'Balance',
     noData: 'No data for this period.',
     loadFailed: 'Failed to load data. Please try again.',
     txNoData: 'No transactions in this range.',
@@ -379,6 +381,7 @@ export const en = {
     chartByCode: 'By account code (USD)',
     txCredit: 'Credit',
     txDebit: 'Debit',
+    txBalance: 'Balance',
   },
 
   connections: {

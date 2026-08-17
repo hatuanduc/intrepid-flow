@@ -446,6 +446,7 @@ export type DailyMetricsRow = {
 export type MetricsResponse = {
   summary: { totalCredit: number; totalDebit: number; netFlow: number; txCount: number; accountCount: number };
   daily: DailyMetricsRow[];
+  balances: { accountId: number; balance: number | null }[];
 };
 
 export type JobAccountSummary = {
@@ -527,6 +528,7 @@ export type JobTransaction = {
   bankReference: string | null;
   creditAmount: number | null;
   debitAmount: number | null;
+  balance: number | null;
   fetchedAt: string;
 };
 
