@@ -19,6 +19,7 @@ export class UserResponseDto {
   @ApiProperty() email!: string;
   @ApiProperty({ nullable: true }) name!: string | null;
   @ApiProperty() isActive!: boolean;
+  @ApiProperty({ nullable: true }) lastLoginAt!: string | null;
   @ApiProperty({ type: [RoleSummaryDto] }) roles!: RoleSummaryDto[];
   @ApiProperty({ type: [PermissionSummaryDto] }) permissions!: PermissionSummaryDto[];
 }

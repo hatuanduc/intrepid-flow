@@ -144,6 +144,7 @@ export type UserItem = {
   name: string | null;
   isActive: boolean;
   hasPassword: boolean;
+  lastLoginAt: string | null;
   roles: Array<{ id: number; key: string; name: string }>;
   permissions: PermissionItem[];
 };

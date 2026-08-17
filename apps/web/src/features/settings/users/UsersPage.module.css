@@ -1,5 +1,11 @@
 /* Page-specific layout */
 .page { padding: 28px 32px; }
+@media (max-width: 768px) {
+  .page { padding: 16px; }
+  /* Last login column — supplementary info, hide on mobile to save width */
+  .table th:nth-child(5),
+  .table td:nth-child(5) { display: none; }
+}
 
 /* ── Shared via composes ── */
 .pageHeader     { composes: pageHeader     from '../../../styles/ui.module.css'; }

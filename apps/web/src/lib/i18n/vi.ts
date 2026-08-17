@@ -775,6 +775,8 @@ export const vi: Translations = {
     colEmail: 'Email',
     colRole: 'Vai trò',
     colStatus: 'Trạng thái',
+    colLastLogin: 'Đăng nhập lần cuối',
+    lastLoginNever: 'Chưa đăng nhập',
     statusPending: 'Chờ xác nhận',
     statusActive: 'Hoạt động',
     statusLocked: 'Đã khóa',

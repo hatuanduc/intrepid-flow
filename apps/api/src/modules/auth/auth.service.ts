@@ -34,12 +34,19 @@ export class AuthService {
 
   // Shared session-issuing step for every login path (password, Google, invite activation).
   // roles/permissions are intentionally empty here — JwtAuthGuard / me() resolve them from DB.
-  private issueLoginResponse(user: { id: number; email: string; name: string | null }) {
+  // Also stamps lastLoginAt — fire-and-forget-free (awaited) so it's never silently lost,
+  // but failure here shouldn't block the login itself, so it's caught and swallowed.
+  private async issueLoginResponse(user: { id: number; email: string; name: string | null }) {
     const token = jwt.sign(
       { sub: user.id, email: user.email },
       process.env.JWT_SECRET || 'dev-secret',
       { expiresIn: '7d' },
     );
+    try {
+      await this.prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+    } catch {
+      // Non-fatal — the session is still valid even if this stamp fails.
+    }
     return {
       token,
       user: { id: user.id, email: user.email, name: user.name, roles: [], permissions: [] },
@@ -145,7 +152,7 @@ export class AuthService {
     await this.prisma.userInvite.delete({ where: { token } });
     // Also issue a session so the invited user lands in the app immediately
     // instead of bouncing to the login page.
-    return { ok: true, ...this.issueLoginResponse(user) };
+    return { ok: true, ...(await this.issueLoginResponse(user)) };
   }
 
   // Always resolves { ok: true } regardless of whether the email is registered —

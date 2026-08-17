@@ -778,6 +778,8 @@ export const en = {
     colEmail: 'Email',
     colRole: 'Role',
     colStatus: 'Status',
+    colLastLogin: 'Last login',
+    lastLoginNever: 'Never',
     statusPending: 'Pending',
     statusActive: 'Active',
     statusLocked: 'Locked',

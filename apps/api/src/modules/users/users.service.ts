@@ -17,6 +17,7 @@ function toUserItem(user: UserListRow) {
     name: user.name,
     isActive: user.isActive,
     hasPassword: user.hasPassword,
+    lastLoginAt: user.lastLoginAt,
     roles: user.roles.map((item: { role: RoleSummary }) => item.role),
     permissions: user.permissions.map((item) => item.permission),
   };

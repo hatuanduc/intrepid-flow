@@ -354,7 +354,8 @@ function ConfirmModal({
 export default function UsersPage() {
   const currentUser = useUser();
   const toast = useToast();
-  const { t } = useT();
+  const { t, lang } = useT();
+  const locale = lang === 'vi' ? 'vi-VN' : 'en-US';
   const canViewUsers      = currentUser?.permissions.includes('users:view')        ?? false;
   const canCreateUser     = currentUser?.permissions.includes('users:create')      ?? false;
   const canCreateRole     = currentUser?.permissions.includes('roles:create')      ?? false;
@@ -487,6 +488,13 @@ export default function UsersPage() {
   function emptyMessage() {
     if (hasAnyFilter || statusFilter !== 'all') return t('users.noResultsFiltered');
     return t('users.noAccounts');
+  }
+
+  function fmtLastLogin(iso: string | null) {
+    if (!iso) return t('users.lastLoginNever');
+    const d = new Date(iso);
+    return d.toLocaleDateString(locale, { day: '2-digit', month: '2-digit', year: 'numeric' })
+      + ' ' + d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' });
   }
 
   if (!canViewUsers) return <AccessDenied />;
@@ -623,6 +631,7 @@ export default function UsersPage() {
                     <th className={s.th}>{t('users.colEmail')}</th>
                     <th className={s.th}>{t('users.colRole')}</th>
                     <th className={s.th}>{t('users.colStatus')}</th>
+                    <th className={s.th}>{t('users.colLastLogin')}</th>
                     <th className={s.th} />
                   </tr>
                 </thead>
@@ -656,6 +665,7 @@ export default function UsersPage() {
                             </span>
                         }
                       </td>
+                      <td className={`${s.td} ${s.emailCell}`}>{fmtLastLogin(u.lastLoginAt)}</td>
                       <td className={s.td}>
                         <MoreMenu
                           onEdit={canEditUser ? () => setEditUser(u) : undefined}

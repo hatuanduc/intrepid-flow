@@ -7,6 +7,7 @@ export const userListArgs = {
     name: true,
     isActive: true,
     hasPassword: true,
+    lastLoginAt: true,
     roles: {
       include: {
         role: {
