@@ -523,9 +523,13 @@ export class BankStatementService implements OnModuleInit {
         bankAccountId: accountId,
         postDate: { gte: from, lte: to },
       },
-      // id asc breaks same-day ties by insertion/discovery order — see
-      // sheets.service.ts (worker) for why postDate alone isn't enough.
-      orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
+      // Same-day ties broken by id DESC, not ASC — HSBC's export lists rows
+      // newest-first, and rows are parsed/inserted in that same file order, so a
+      // SMALLER id is actually the NEWER same-day transaction (verified against the
+      // balance chain: balance[i-1] + credit[i] - debit[i] === balance[i] only holds
+      // when read this way). See sheets.service.ts (worker) for the matching fix on
+      // the Google Sheets push side.
+      orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
       select: {
         id: true,
         postDate: true,
@@ -555,7 +559,8 @@ export class BankStatementService implements OnModuleInit {
 
     const txns = await this.prisma.bankTransaction.findMany({
       where: { jobId: job.id, bankAccountId: accountId },
-      orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
+      // See getAccountTransactions() above for why the same-day tiebreak is id DESC.
+      orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
       select: {
         id: true,
         postDate: true,

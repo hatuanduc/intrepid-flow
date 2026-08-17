@@ -172,20 +172,25 @@ export class SheetsService {
     // so writing them as-is would zigzag the date column after each sync. Sort
     // oldest-first (postDate ascending) to read chronologically top-to-bottom.
     //
-    // Same-day ties are broken by `id` (DB insertion order) ascending, NOT a plain
-    // reverse of the input array — a full reverse only works if `rows` is one
-    // contiguous, chronologically-ordered fetch. It isn't always: a later job can
-    // backfill an earlier date range out of order (day 4 synced before day 3), or the
-    // same day can be re-fetched more than once as new same-day transactions post.
-    // Sorting on the real `postDate` field handles the first case regardless of fetch
-    // order; `id` ascending handles the second, since a same-day row discovered by a
-    // later job run gets a later id and correctly sorts after the ones already there.
+    // Same-day ties are broken by `id` (DB insertion order) DESCENDING — NOT
+    // ascending, and NOT a plain reverse of the input array either. Because HSBC
+    // lists rows newest-first and excel.service.ts parses/inserts them in that same
+    // file order, a SMALLER id is actually the NEWER same-day transaction within a
+    // single fetch batch — confirmed by reconstructing the real order from the
+    // balance chain (balance[i-1] + credit[i] - debit[i] === balance[i] only holds
+    // reading id descending). Sorting on the real `postDate` field still handles a
+    // later job backfilling an earlier date range regardless of fetch order; `id`
+    // descending handles the same-day tie for the common case (one job inserting a
+    // full day's rows in one go). A same day re-fetched again later by another job
+    // (rare — only "today" before it's settled) still gets appended after via
+    // postDate/job ordering upstream, since those rows carry a distinctly later id
+    // range than anything already-synced.
     // `id` is undefined for a fresh excel.parse() result (not inserted yet) — those
     // rows fall back to their original HSBC file order via the sort's stability.
     const sortedRows = [...rows].sort((a, b) => {
       const dateDiff = a.postDate.getTime() - b.postDate.getTime();
       if (dateDiff !== 0) return dateDiff;
-      if (a.id != null && b.id != null) return a.id - b.id;
+      if (a.id != null && b.id != null) return b.id - a.id;
       return 0;
     });
 

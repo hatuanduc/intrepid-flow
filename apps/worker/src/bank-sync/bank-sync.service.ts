@@ -678,10 +678,11 @@ export class BankSyncService {
     // This job's own newly-inserted rows. orderBy is cosmetic — sheets.service.ts
     // re-sorts by (postDate, id) itself before writing, since `id` alone isn't a
     // reliable stand-in for calendar order once multiple jobs/re-fetches are involved.
+    // id DESC (not ASC) breaks same-day ties — see sheets.service.ts for why.
     const ownTxns = await this.prisma.bankTransaction.findMany({
       where: { jobId },
       include: { bankAccount: { select: { accountNumber: true } } },
-      orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
+      orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
     });
     const idsWithOwnRows = new Set(ownTxns.map(t => t.bankAccountId));
 
@@ -705,7 +706,7 @@ export class BankSyncService {
       ? await this.prisma.bankTransaction.findMany({
           where: { bankAccountId: { in: neverSyncedIds } },
           include: { bankAccount: { select: { accountNumber: true } } },
-          orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
+          orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
         })
       : [];
 
@@ -926,9 +927,10 @@ export class BankSyncService {
       // since rows here can span multiple jobs/re-fetches with no guaranteed relation
       // between insertion order and calendar order (e.g. a later job backfilling an
       // earlier date range, or the same day re-fetched as new same-day rows appear).
+      // id DESC (not ASC) breaks same-day ties — see sheets.service.ts for why.
       const dbRows = await this.prisma.bankTransaction.findMany({
         where: { bankAccountId, jobIds: { has: jobId } },
-        orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
+        orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
       });
 
       const rows: TransactionRow[] = dbRows.map(r => ({
