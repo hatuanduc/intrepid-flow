@@ -203,6 +203,42 @@ export class SheetsService {
       r.debitAmount ?? '',                        // F — debit amount
     ]);
 
+    // ── Grow the sheet's grid if the append would run past it ─────────────
+    // A tab's row/column count is a fixed grid size, not the size of its data —
+    // it does NOT auto-expand on write. A long-lived account sheet eventually
+    // fills every row the (template-inherited) grid started with, and
+    // values.update then fails with "exceeds grid limits" instead of just
+    // appending further down. Check the real grid size for this specific
+    // sheetId right before writing and pad it out if needed.
+    const requiredRowCount = startRow + appendValues.length - 1;
+    if (sheetId != null) {
+      const sheetMeta = await sheets.spreadsheets.get({
+        spreadsheetId,
+        ranges: [`'${sheetTab}'`],
+        fields: 'sheets.properties(sheetId,gridProperties)',
+      });
+      const currentRowCount = sheetMeta.data.sheets?.[0]?.properties?.gridProperties?.rowCount ?? 0;
+      if (requiredRowCount > currentRowCount) {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests: [
+              {
+                appendDimension: {
+                  sheetId,
+                  dimension: 'ROWS',
+                  length: requiredRowCount - currentRowCount,
+                },
+              },
+            ],
+          },
+        });
+        this.logger.log(
+          `Expanded sheet "${accountNumber}" grid from ${currentRowCount} to ${requiredRowCount} rows`,
+        );
+      }
+    }
+
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `'${sheetTab}'!A${startRow}`,
