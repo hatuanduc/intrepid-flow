@@ -348,6 +348,11 @@ export default function BankJobDetailPage() {
   // already closed for good at that point (by design: nothing changes on a finished
   // job otherwise), so there's no live channel left to pick this up. Short-poll
   // instead: re-fetch until the log actually grew, or give up after a few tries.
+  //
+  // Also re-fetches summary/stats once the log confirms the resync actually finished —
+  // otherwise the row's badge (e.g. "Sync failed") and the stat cards above stay stuck
+  // showing the OLD outcome forever, even though the log right below already shows a
+  // successful re-push. Logs alone told the story; the table/stats never caught up.
   async function pollForNewLog(jobId: string, prevLogCount: number) {
     for (let attempt = 0; attempt < 8; attempt++) {
       await new Promise(resolve => setTimeout(resolve, 1500));
@@ -355,6 +360,8 @@ export default function BankJobDetailPage() {
         const updated = await getBankJob(jobId);
         if ((updated.logs?.length ?? 0) > prevLogCount) {
           setJob(updated);
+          getBankJobSummary(jobId).then(setSummary).catch(() => {});
+          getBankJobStats(jobId).then(setStats).catch(() => {});
           return;
         }
         if (attempt === 7) setJob(updated);
@@ -367,11 +374,21 @@ export default function BankJobDetailPage() {
   async function handleForceResyncRow(e: React.MouseEvent, accountId: number) {
     if (!job) return;
     e.stopPropagation();
+    // Stays disabled through the whole poll below (not just the enqueue call) —
+    // sheets.service.ts re-appends every row with no dedup, so a second resync fired
+    // for this same account while the first is still running would duplicate every
+    // row a second time. The backend now also rejects a genuine duplicate outright
+    // (alreadyQueued below), but keeping the button disabled the whole time avoids
+    // even sending that redundant request in the first place.
     setResyncingRowId(accountId);
     try {
-      await resyncBankAccountSheets(job.id, accountId);
+      const res = await resyncBankAccountSheets(job.id, accountId);
+      if (res.alreadyQueued) {
+        toast.info(t('bankJob.forceResyncAlreadyRunning'));
+        return;
+      }
       toast.success(t('bankJob.forceResyncQueued'));
-      void pollForNewLog(job.id, job.logs?.length ?? 0);
+      await pollForNewLog(job.id, job.logs?.length ?? 0);
     } catch {
       toast.error(t('bankJob.forceResyncFailed'));
     } finally {
@@ -385,7 +402,8 @@ export default function BankJobDetailPage() {
     try {
       const res = await resyncBankJobSheets(job.id);
       toast.success(t('bankJob.forceResyncAllQueued', { count: String(res.count) }));
-      void pollForNewLog(job.id, job.logs?.length ?? 0);
+      if (res.skipped > 0) toast.info(t('bankJob.forceResyncAllSkipped', { count: String(res.skipped) }));
+      await pollForNewLog(job.id, job.logs?.length ?? 0);
     } catch {
       toast.error(t('bankJob.forceResyncAllFailed'));
     } finally {

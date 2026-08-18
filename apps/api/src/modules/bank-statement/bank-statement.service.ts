@@ -325,8 +325,11 @@ export class BankStatementService implements OnModuleInit {
     const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
     if (!account) throw new NotFoundException('BANK_ACCOUNT_NOT_FOUND');
 
+    if (await this.hasQueuedResync(bankAccountId)) {
+      return { ok: true, alreadyQueued: true };
+    }
     await this.queue.add('resync-sheets', { bankAccountId, jobId: job.id, triggeredBy });
-    return { ok: true };
+    return { ok: true, alreadyQueued: false };
   }
 
   // Bulk variant — force-resyncs every account that appears in a given job (e.g. after
@@ -339,10 +342,26 @@ export class BankStatementService implements OnModuleInit {
       where: { jobId: job.id },
       select: { bankAccountId: true },
     });
+    const toQueue: number[] = [];
+    for (const a of accounts) {
+      if (!(await this.hasQueuedResync(a.bankAccountId))) toQueue.push(a.bankAccountId);
+    }
     await Promise.all(
-      accounts.map(a => this.queue.add('resync-sheets', { bankAccountId: a.bankAccountId, jobId: job.id, triggeredBy })),
+      toQueue.map(bankAccountId => this.queue.add('resync-sheets', { bankAccountId, jobId: job.id, triggeredBy })),
     );
-    return { ok: true, count: accounts.length };
+    return { ok: true, count: toQueue.length, skipped: accounts.length - toQueue.length };
+  }
+
+  // sheets.service.ts's sync() always re-appends every row it's given with no dedup —
+  // fine for a single repair run, but a second resync queued for the SAME account while
+  // the first is still waiting/running would duplicate every row a second time. Check
+  // the live queue itself (not a DB flag, which could go stale across worker restarts
+  // or crashes) for an already-pending job for this exact account before adding another.
+  private async hasQueuedResync(bankAccountId: number): Promise<boolean> {
+    const pending = await this.queue.getJobs(['waiting', 'active', 'delayed']);
+    return pending.some(
+      j => j.name === 'resync-sheets' && (j.data as { bankAccountId?: number }).bankAccountId === bankAccountId,
+    );
   }
 
   async getMetrics(from: Date, to: Date, accountCode?: string, accountId?: number) {

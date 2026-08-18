@@ -470,14 +470,14 @@ export async function listBankAccounts() {
 }
 
 export async function resyncBankAccountSheets(jobPublicId: string, bankAccountId: number) {
-  return request<{ ok: boolean }>(`/management/bank-statement/jobs/${jobPublicId}/accounts/${bankAccountId}/resync-sheets`, {
+  return request<{ ok: boolean; alreadyQueued: boolean }>(`/management/bank-statement/jobs/${jobPublicId}/accounts/${bankAccountId}/resync-sheets`, {
     method: 'POST',
     auth: true,
   });
 }
 
 export async function resyncBankJobSheets(jobPublicId: string) {
-  return request<{ ok: boolean; count: number }>(`/management/bank-statement/jobs/${jobPublicId}/resync-sheets`, {
+  return request<{ ok: boolean; count: number; skipped: number }>(`/management/bank-statement/jobs/${jobPublicId}/resync-sheets`, {
     method: 'POST',
     auth: true,
   });
