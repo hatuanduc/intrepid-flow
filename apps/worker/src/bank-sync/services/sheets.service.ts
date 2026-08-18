@@ -212,12 +212,16 @@ export class SheetsService {
     // sheetId right before writing and pad it out if needed.
     const requiredRowCount = startRow + appendValues.length - 1;
     if (sheetId != null) {
+      // Filter by sheetId (a stable numeric id), not by name via `ranges` — an A1-notation
+      // range built from the account number isn't guaranteed to resolve to this exact tab,
+      // and silently falling back to some OTHER sheet's rowCount would make this whole
+      // check a no-op (looks fine, expansion never actually happens).
       const sheetMeta = await sheets.spreadsheets.get({
         spreadsheetId,
-        ranges: [`'${sheetTab}'`],
         fields: 'sheets.properties(sheetId,gridProperties)',
       });
-      const currentRowCount = sheetMeta.data.sheets?.[0]?.properties?.gridProperties?.rowCount ?? 0;
+      const targetSheet = sheetMeta.data.sheets?.find(sh => sh.properties?.sheetId === sheetId);
+      const currentRowCount = targetSheet?.properties?.gridProperties?.rowCount ?? 0;
       if (requiredRowCount > currentRowCount) {
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId,
