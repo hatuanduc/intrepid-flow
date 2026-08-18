@@ -951,15 +951,67 @@ export class BankSyncService {
       if (result.skipped) {
         const reason = result.reason === 'no_gsheet_config' ? `no GSheet config for ${account.accountName}` : (result.reason ?? 'unknown');
         await this.log(jobId, `Force resync — ${label}: skipped — ${reason}`, 'sheets_sync', 'warn');
+        await this.upsertJobAccount(jobId, bankAccountId, { sheetsSyncStatus: 'skipped', sheetsSyncError: reason });
       } else {
         await this.log(jobId, `Force resync — ${label}: pushed ${pl(result.rowsSynced ?? 0, 'row')} to GSheets.`, 'sheets_sync', 'success');
+        // This was the missing piece — the log line alone told the story, but nothing
+        // ever flipped BankSyncJobAccount.sheetsSyncStatus back to 'completed', so the
+        // job summary table (getJobSummary, driven entirely by this DB field) kept
+        // showing whatever status the ORIGINAL failed sync left behind — "Sync failed"
+        // forever, no matter how many times a force resync succeeded afterward.
+        await this.upsertJobAccount(jobId, bankAccountId, {
+          sheetsSyncStatus: 'completed',
+          rowsSynced: result.rowsSynced ?? 0,
+          sheetsSyncError: null,
+        });
       }
+      await this.maybeHealJobStatus(jobId);
       return { accountNumber: account.accountNumber, rowsSynced: result.rowsSynced ?? 0, skipped: result.skipped, reason: result.reason };
     } catch (err) {
       const msg = (err as Error).message ?? 'Unknown error';
       await this.log(jobId, `Force resync — ${label}: failed — ${msg}`, 'sheets_sync', 'error');
+      await this.upsertJobAccount(jobId, bankAccountId, { sheetsSyncStatus: 'failed', sheetsSyncError: msg });
       throw err;
     }
+  }
+
+  // Runs after every force-resync — a job that was left 'failed' purely because ONE OR
+  // MORE accounts failed to sync to Sheets should flip back to 'completed' once every
+  // account has since been resolved (fixed via force resync, or already fine to begin
+  // with), so the top-level banner/step stop reading "failed" forever after the user
+  // has actually repaired everything through this side channel.
+  //
+  // Deliberately conservative: only touches a job that's (a) currently 'failed', and
+  // (b) didn't fail because of the DOWNLOAD step (bank_sync) — force resync only
+  // re-pushes rows already in the DB, it can't fix a genuine fetch failure, so a job
+  // that failed for that reason must stay failed regardless of any Sheets outcome.
+  private async maybeHealJobStatus(jobId: number): Promise<void> {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true, steps: true } });
+    if (!job || job.status !== JOB_STATUS.FAILED) return;
+
+    const steps = parseSteps(job.steps);
+    const bankSyncStep = steps.find(s => s.key === 'bank_sync');
+    if (bankSyncStep?.status === 'failed') return;
+
+    const jobAccounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId },
+      select: { status: true, sheetsSyncStatus: true },
+    });
+    if (jobAccounts.length === 0) return;
+    const stillFailed = jobAccounts.some(a => a.status === 'failed' || a.sheetsSyncStatus === 'failed');
+    if (stillFailed) return;
+
+    // Update status/errorMessage directly (not via updateJob()) — updateJob() adds this
+    // attempt's elapsed wall-clock time to durationMsTotal, which would wrongly count
+    // the entire idle gap between the original failed run and whenever the user got
+    // around to force-resyncing it, hours or days of "duration" that was never actually
+    // spent running anything.
+    await this.prisma.bankSyncJob.update({
+      where: { id: jobId },
+      data: { status: JOB_STATUS.COMPLETED, errorMessage: null },
+    });
+    await this.updateStep(jobId, 'sheets_sync', { status: 'completed', completedAt: new Date().toISOString(), errorMessage: null });
+    await this.log(jobId, 'All accounts resolved via force resync — job marked completed.', 'sheets_sync', 'success');
   }
 }
 
