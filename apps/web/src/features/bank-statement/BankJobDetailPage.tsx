@@ -46,7 +46,7 @@ function StatusBadge({ status }: { status: string }) {
 function SheetsSyncBadge({
   status, error, t,
 }: {
-  status: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data';
+  status: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data' | 'not_attempted';
   error: string | null;
   t: ReturnType<typeof useT>['t'];
 }) {
@@ -684,7 +684,7 @@ export default function BankJobDetailPage() {
                     ) : (
                       <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
                     )}
-                    {canRun && (
+                    {canRun && acc.downloadStatus !== 'not_attempted' && (
                       <button
                         type="button"
                         className={s.summaryResyncBtn}

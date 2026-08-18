@@ -301,6 +301,7 @@ export const en = {
     sheetsSync_failed: 'Sync failed',
     sheetsSync_skipped: 'No GSheet config',
     sheetsSync_no_data: 'No new data',
+    sheetsSync_not_attempted: 'Not attempted',
     viewInMetrics: 'View in Metrics →',
     newBadge: 'New',
     transactions: 'transactions',

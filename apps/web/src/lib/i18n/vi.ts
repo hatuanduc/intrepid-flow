@@ -303,6 +303,7 @@ export const vi: Translations = {
     sheetsSync_failed: 'Lỗi đồng bộ',
     sheetsSync_skipped: 'Chưa có GSheet config',
     sheetsSync_no_data: 'Không có giao dịch mới',
+    sheetsSync_not_attempted: 'Chưa chạy job này',
     viewInMetrics: 'Xem trong Metrics →',
     newBadge: 'Mới',
     transactions: 'giao dịch',

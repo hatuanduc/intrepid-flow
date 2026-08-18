@@ -459,9 +459,9 @@ export type JobAccountSummary = {
   totalCredit: number;
   totalDebit: number;
   rowsDuplicate: number;
-  downloadStatus: 'pending' | 'completed' | 'failed';
+  downloadStatus: 'pending' | 'completed' | 'failed' | 'not_attempted';
   downloadError: string | null;
-  sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data';
+  sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data' | 'not_attempted';
   sheetsSyncError: string | null;
 };
 

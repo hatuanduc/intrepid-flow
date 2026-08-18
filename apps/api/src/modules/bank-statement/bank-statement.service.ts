@@ -601,9 +601,12 @@ export class BankStatementService implements OnModuleInit {
     };
   }
 
-  // Based on every BankSyncJobAccount row for this job (not just ones with transactions),
-  // so accounts that failed to download or had nothing new to sync still show up — otherwise
-  // the "Accounts fetched" / "Already up to date" stat cards would have nothing to filter into.
+  // Based on every currently syncEnabled account (not just ones this job's own
+  // BankSyncJobAccount rows cover) — an account added to the master list AFTER this
+  // job ran (or one the fetch loop never reached for any other reason) previously
+  // vanished from this list with no trace at all, indistinguishable from "doesn't
+  // exist". Merging in the full account list and marking the gap 'not_attempted'
+  // makes that kind of silent miss visible instead.
   async getJobSummary(jobPublicId: string) {
     const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
     if (!job) throw new NotFoundException('JOB_NOT_FOUND');
@@ -613,10 +616,33 @@ export class BankStatementService implements OnModuleInit {
       include: {
         bankAccount: { select: { accountNumber: true, accountName: true, accountCode: true, currency: true } },
       },
-      orderBy: { bankAccount: { accountName: 'asc' } },
+    });
+    const attemptedById = new Map(jobAccounts.map(ja => [ja.bankAccountId, ja]));
+
+    // Same filter as the worker's own fetch loop (bank-sync.service.ts) — the set of
+    // accounts a run is CURRENTLY configured to touch.
+    const currentAccounts = await this.prisma.bankAccount.findMany({
+      where: { syncEnabled: true, accountNameRef: { isActive: true } },
+      select: { id: true, accountNumber: true, accountName: true, accountCode: true, currency: true },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
     });
 
-    if (jobAccounts.length === 0) return [];
+    // Accounts this job DID attempt but that are no longer syncEnabled/active since
+    // (disabled or renamed after the fact) — still part of this job's own history,
+    // so keep them too instead of dropping them off the list retroactively.
+    const currentIds = new Set(currentAccounts.map(a => a.id));
+    const staleAccounts = jobAccounts
+      .filter(ja => !currentIds.has(ja.bankAccountId))
+      .map(ja => ({
+        id: ja.bankAccountId,
+        accountNumber: ja.bankAccount.accountNumber,
+        accountName: ja.bankAccount.accountName,
+        accountCode: ja.bankAccount.accountCode,
+        currency: ja.bankAccount.currency,
+      }));
+
+    const allAccounts = [...currentAccounts, ...staleAccounts];
+    if (allAccounts.length === 0) return [];
 
     const grouped = await this.prisma.bankTransaction.groupBy({
       by: ['bankAccountId'],
@@ -626,22 +652,23 @@ export class BankStatementService implements OnModuleInit {
     });
     const txByAccount = Object.fromEntries(grouped.map(g => [g.bankAccountId, g]));
 
-    return jobAccounts.map(ja => {
-      const tx = txByAccount[ja.bankAccountId];
+    return allAccounts.map(a => {
+      const ja = attemptedById.get(a.id);
+      const tx = txByAccount[a.id];
       return {
-        accountId: ja.bankAccountId,
-        accountNumber: ja.bankAccount.accountNumber,
-        accountName: ja.bankAccount.accountName,
-        accountCode: ja.bankAccount.accountCode,
-        currency: ja.bankAccount.currency,
+        accountId: a.id,
+        accountNumber: a.accountNumber,
+        accountName: a.accountName,
+        accountCode: a.accountCode,
+        currency: a.currency,
         txCount: tx?._count.id ?? 0,
         totalCredit: Number(tx?._sum.creditAmount ?? 0),
         totalDebit: Number(tx?._sum.debitAmount ?? 0),
-        rowsDuplicate: ja.rowsDuplicate ?? 0,
-        downloadStatus: ja.status,
-        downloadError: ja.errorMessage,
-        sheetsSyncStatus: ja.sheetsSyncStatus,
-        sheetsSyncError: ja.sheetsSyncError,
+        rowsDuplicate: ja?.rowsDuplicate ?? 0,
+        downloadStatus: ja?.status ?? 'not_attempted',
+        downloadError: ja?.errorMessage ?? null,
+        sheetsSyncStatus: ja?.sheetsSyncStatus ?? 'not_attempted',
+        sheetsSyncError: ja?.sheetsSyncError ?? null,
       };
     });
   }
