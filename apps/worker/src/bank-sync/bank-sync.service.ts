@@ -166,16 +166,21 @@ export class BankSyncService {
   // ─── Account discovery — scrape HSBCnet switcher, upsert BankAccount rows ───
 
   private async discoverAndSyncAccounts(jobId: number): Promise<void> {
-    const discovered: DiscoveredAccount[] = await this.playwright.discoverAccounts();
+    // Account names are master data (added manually) — discovery only creates
+    // accounts for names that already exist here, never new account names. Fetched
+    // up front (not after discovery) because discoverAccounts() now searches the
+    // HSBC switcher once per name instead of reading it unfiltered — the switcher's
+    // own list is capped at a fixed page size, so an unfiltered read used to silently
+    // drop any account past that cutoff (a company with 3 real accounts could come
+    // back with just 1). Searching per-name keeps every result set well under that cap.
+    const accountNames = await this.prisma.bankAccountName.findMany({ where: { isActive: true } });
+    const accountNameByName = new Map(accountNames.map(a => [a.name.trim().toLowerCase(), a]));
+
+    const discovered: DiscoveredAccount[] = await this.playwright.discoverAccounts(accountNames.map(a => a.name));
     if (discovered.length === 0) {
       await this.log(jobId, 'No accounts discovered from HSBCnet — keeping existing account list.', 'bank_sync', 'warn');
       return;
     }
-
-    // Account names are master data (added manually) — discovery only creates
-    // accounts for names that already exist here, never new account names.
-    const accountNames = await this.prisma.bankAccountName.findMany({ where: { isActive: true } });
-    const accountNameByName = new Map(accountNames.map(a => [a.name.trim().toLowerCase(), a]));
 
     const existingNumbers = new Set(
       (await this.prisma.bankAccount.findMany({

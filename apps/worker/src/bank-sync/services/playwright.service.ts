@@ -24,7 +24,6 @@ const SELECTORS = {
   changeAccountInput: 'input[aria-label*="account number or title"]',
   switcherList:       'ul.switcher-option[role="listbox"]',
   switcherItem:       'li.switcher-option--item[role="option"]',
-  switcherCompany:    'p.switcher-option--number',
   switcherAccount:    'p.switcher-option--account',
 
   // Transaction list / filter — verified end-to-end against the real page (console
@@ -271,10 +270,20 @@ export class PlaywrightService {
   // ─── Account Discovery ──────────────────────────────────────────────────────
 
   /**
-   * Navigate to account detail page, open the "Change account" search to reveal
-   * the full account switcher list, and scrape all available accounts.
+   * Navigate to account detail page, then search the "Change account" switcher
+   * once per known company name and scrape whatever accounts come back.
+   *
+   * Searching per-name (instead of opening the switcher unfiltered and reading
+   * every item at once) works around HSBC's switcher list being capped — an
+   * unfiltered open only ever renders a bounded page of items (observed: exactly
+   * 20, regardless of how many accounts actually exist — e.g. a company with 3
+   * real accounts came back with only 1 when read from the unfiltered list,
+   * while every company whose accounts happened to fall within the first 20
+   * looked completely fine). Filtering by the company's own title first keeps
+   * each result set well under that cap, so nothing past position 20 is ever
+   * silently dropped.
    */
-  async discoverAccounts(): Promise<DiscoveredAccount[]> {
+  async discoverAccounts(companyNames: string[]): Promise<DiscoveredAccount[]> {
     const page = this.requirePage();
 
     // Step 1: Navigate to Account Information page via the SPA's hash route.
@@ -318,46 +327,58 @@ export class PlaywrightService {
     // lands before the page has finished hydrating (input is in the DOM but its onClick
     // handler isn't attached yet), which is a common race right after a full navigation.
     this.logger.log(`[discover] Waiting for switcher list: ${SELECTORS.switcherList}`);
-    let switcher = null;
-    for (let attempt = 1; attempt <= 3 && !switcher; attempt++) {
+    let switcherOpen = null;
+    for (let attempt = 1; attempt <= 3 && !switcherOpen; attempt++) {
       await searchInput.click();
-      switcher = await page.waitForSelector(SELECTORS.switcherList, { timeout: 4_000 }).catch(() => null);
-      if (!switcher) this.logger.warn(`[discover] Switcher list not found (attempt ${attempt}/3) — retrying click`);
+      switcherOpen = await page.waitForSelector(SELECTORS.switcherList, { timeout: 4_000 }).catch(() => null);
+      if (!switcherOpen) this.logger.warn(`[discover] Switcher list not found (attempt ${attempt}/3) — retrying click`);
     }
-    if (!switcher) throw new Error('Account switcher list not found');
-    const items = await switcher.$$(SELECTORS.switcherItem);
-    this.logger.log(`[discover] Found ${items.length} items in switcher`);
+    if (!switcherOpen) throw new Error('Account switcher list not found');
 
+    // Step 5: search once per known company name, scraping whatever comes back for
+    // each — see the method doc comment above for why (switcher list page cap).
+    // `.fill()` replaces the input's full value each time, so no explicit clear is
+    // needed between names.
     const accounts: DiscoveredAccount[] = [];
-    for (const item of items) {
-      const companyName = await item.$eval(
-        SELECTORS.switcherCompany,
-        (el) => el.textContent?.trim() ?? '',
-      ).catch(() => '');
+    const seenAccountNumbers = new Set<string>();
 
-      const accountEl = await item.$(SELECTORS.switcherAccount);
-      if (!accountEl) continue;
+    for (const companyName of companyNames) {
+      await searchInput.fill(companyName);
+      const switcher = await page.waitForSelector(SELECTORS.switcherList, { timeout: 5_000 }).catch(() => null);
+      if (!switcher) {
+        this.logger.warn(`[discover] No switcher results for "${companyName}"`);
+        continue;
+      }
 
-      // accountNumber is the direct text node; <i> is country; <span> is currency
-      const accountNumber = await accountEl.evaluate((el) =>
-        Array.from(el.childNodes)
-          .filter((n) => n.nodeType === Node.TEXT_NODE)
-          .map((n) => n.textContent?.trim())
-          .filter(Boolean)
-          .join('')
-          .trim(),
-      );
-      const countryCode = await accountEl.$eval('i', (el) => el.textContent?.trim() ?? '').catch(() => '');
-      const currency = await accountEl.$eval('span', (el) => el.textContent?.trim() ?? '').catch(() => '');
+      const items = await switcher.$$(SELECTORS.switcherItem);
+      this.logger.log(`[discover] "${companyName}": ${items.length} account(s) found`);
 
-      if (accountNumber) {
+      for (const item of items) {
+        const accountEl = await item.$(SELECTORS.switcherAccount);
+        if (!accountEl) continue;
+
+        // accountNumber is the direct text node; <i> is country; <span> is currency
+        const accountNumber = await accountEl.evaluate((el) =>
+          Array.from(el.childNodes)
+            .filter((n) => n.nodeType === Node.TEXT_NODE)
+            .map((n) => n.textContent?.trim())
+            .filter(Boolean)
+            .join('')
+            .trim(),
+        );
+        if (!accountNumber || seenAccountNumbers.has(accountNumber)) continue;
+
+        const countryCode = await accountEl.$eval('i', (el) => el.textContent?.trim() ?? '').catch(() => '');
+        const currency = await accountEl.$eval('span', (el) => el.textContent?.trim() ?? '').catch(() => '');
+
+        seenAccountNumbers.add(accountNumber);
         accounts.push({ companyName, accountNumber, countryCode, currency });
       }
     }
 
     // Close the switcher dropdown
     await page.keyboard.press('Escape');
-    this.logger.log(`Discovered ${accounts.length} accounts from switcher`);
+    this.logger.log(`Discovered ${accounts.length} accounts across ${companyNames.length} company name(s)`);
     return accounts;
   }
 
