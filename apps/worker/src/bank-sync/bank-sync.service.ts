@@ -561,7 +561,14 @@ export class BankSyncService {
         });
 
         if (inserted > 0 || !everSynced) {
-          result.set(account.accountNumber, rows);
+          // Which exact rows to push to Sheets is resolved below via
+          // loadTransactionsForJob() (DB-driven — only this job's genuinely NEW rows,
+          // or full history for a never-synced account) — NOT `rows` here, which is
+          // this whole download's raw parse and would include already-synced
+          // duplicates whenever this same range gets re-fetched (e.g. a manual re-run
+          // later the same day re-finding a handful of new transactions alongside ones
+          // already pushed this morning) — re-pushing those duplicates onto the sheet
+          // every time, since Sheets itself has no dedup ([[project-bank-sync-design]]).
           withNew++;
         } else {
           alreadyUpToDate++;
@@ -581,8 +588,11 @@ export class BankSyncService {
       summaryMsg = `Done — ${pl(accounts.length, 'account number')} checked, ${withNew} had new transactions, ${alreadyUpToDate} already up to date.`;
     }
     await this.log(jobId, summaryMsg, 'bank_sync', 'success');
-    // Browser stays open — session reused by next job run
-    return result;
+    // Browser stays open — session reused by next job run.
+    // Rebuild the row set to sync from DB (same query loadTransactionsForJob() uses
+    // for the step2-only retry path) instead of accumulating it during the loop above —
+    // see the comment at the `withNew++` site for why.
+    return await this.loadTransactionsForJob(jobId);
   }
 
   // ─── Step 2: Sheets sync (read DB → push GSheets) ───────────────────────────
