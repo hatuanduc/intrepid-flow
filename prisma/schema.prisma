@@ -234,6 +234,13 @@ model BankTransaction {
   // Force Resync uses this (not jobId alone) so a job can still manage/re-push data it
   // has seen even if the original inserting job was since deleted.
   jobIds            Int[]    @default([]) @map("job_ids")
+  // True same-day position, reconstructed via the balance chain (see sheets.service.ts's
+  // orderByBalanceChain) — `id` (insertion order) only matches real bank chronology when
+  // a whole day was fetched by a single job; a day split across ≥2 job runs can leave a
+  // later-discovered row that actually belongs earlier still carrying a larger id. Only
+  // set (via a one-off backfill) for days with ≥2 rows; null means "id already correct"
+  // (single-row day) or "not yet backfilled" — ORDER BY falls back to id in both cases.
+  chainOrder        Int?     @map("chain_order")
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
   job         BankSyncJob @relation(fields: [jobId], references: [id])

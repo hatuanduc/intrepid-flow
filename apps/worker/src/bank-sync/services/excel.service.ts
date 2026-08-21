@@ -149,6 +149,15 @@ export class ExcelService {
       rows.push(partial as TransactionRow);
     });
 
+    // HSBC's export lists rows newest-first (top of file = most recent transaction).
+    // Reverse here, once, right after parsing — so every downstream consumer (DB
+    // insertion order/id, GSheets append, anything else that reads `rows` in array
+    // order) already sees oldest-first without needing its own reordering trick.
+    // In particular, DB `id` (auto-increment on insert) then rises in true
+    // chronological order for a single fetch/insert batch, matching the assumption
+    // sheets.service.ts's plain append relies on.
+    rows.reverse();
+
     this.logger.log(`Parsed ${rows.length} transaction rows`);
     return { rows, validation, actualHeaders };
   }

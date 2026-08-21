@@ -546,13 +546,14 @@ export class BankStatementService implements OnModuleInit {
         bankAccountId: accountId,
         postDate: { gte: from, lte: to },
       },
-      // Same-day ties broken by id DESC, not ASC — HSBC's export lists rows
-      // newest-first, and rows are parsed/inserted in that same file order, so a
-      // SMALLER id is actually the NEWER same-day transaction (verified against the
-      // balance chain: balance[i-1] + credit[i] - debit[i] === balance[i] only holds
-      // when read this way). See sheets.service.ts (worker) for the matching fix on
-      // the Google Sheets push side.
-      orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
+      // Same-day ties: chainOrder first when set (the real bank order, reconstructed
+      // via the balance chain — see sheets.service.ts's orderByBalanceChain — for a day
+      // whose rows were split across ≥2 job runs, where id no longer reflects bank
+      // chronology), falling back to id ASC otherwise. excel.service.ts now reverses
+      // HSBC's newest-first export to oldest-first before insertion, so id ASC alone
+      // already matches bank order for the common single-job-per-day case; chainOrder
+      // only needs to be populated (via a one-off backfill) for the days where it doesn't.
+      orderBy: [{ postDate: 'asc' }, { chainOrder: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
       select: {
         id: true,
         postDate: true,
@@ -582,8 +583,8 @@ export class BankStatementService implements OnModuleInit {
 
     const txns = await this.prisma.bankTransaction.findMany({
       where: { jobId: job.id, bankAccountId: accountId },
-      // See getAccountTransactions() above for why the same-day tiebreak is id DESC.
-      orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
+      // See getAccountTransactions() above for why the same-day tiebreak is chainOrder → id.
+      orderBy: [{ postDate: 'asc' }, { chainOrder: { sort: 'asc', nulls: 'last' } }, { id: 'asc' }],
       select: {
         id: true,
         postDate: true,

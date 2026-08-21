@@ -691,13 +691,13 @@ export class BankSyncService {
     if (jobAccounts.length === 0) return new Map();
 
     // This job's own newly-inserted rows. orderBy is cosmetic — sheets.service.ts
-    // re-sorts by (postDate, id) itself before writing, since `id` alone isn't a
-    // reliable stand-in for calendar order once multiple jobs/re-fetches are involved.
-    // id DESC (not ASC) breaks same-day ties — see sheets.service.ts for why.
+    // re-sorts by postDate itself before writing (excel.service.ts already reverses
+    // HSBC's newest-first export before insertion, so id ASC matches bank order for
+    // the common case — see sheets.service.ts for the accepted edge case and repair tool).
     const ownTxns = await this.prisma.bankTransaction.findMany({
       where: { jobId },
       include: { bankAccount: { select: { accountNumber: true } } },
-      orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
+      orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
     });
     const idsWithOwnRows = new Set(ownTxns.map(t => t.bankAccountId));
 
@@ -721,7 +721,7 @@ export class BankSyncService {
       ? await this.prisma.bankTransaction.findMany({
           where: { bankAccountId: { in: neverSyncedIds } },
           include: { bankAccount: { select: { accountNumber: true } } },
-          orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
+          orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
         })
       : [];
 
@@ -938,14 +938,14 @@ export class BankSyncService {
     const label = `${account.accountName} (${account.accountNumber})`;
 
     try {
-      // orderBy is cosmetic — sheets.service.ts re-sorts by (postDate, id) itself,
-      // since rows here can span multiple jobs/re-fetches with no guaranteed relation
-      // between insertion order and calendar order (e.g. a later job backfilling an
-      // earlier date range, or the same day re-fetched as new same-day rows appear).
-      // id DESC (not ASC) breaks same-day ties — see sheets.service.ts for why.
+      // orderBy is cosmetic — sheets.service.ts re-sorts by postDate itself before
+      // appending. id ASC matches bank order for the common case (excel.service.ts
+      // reverses HSBC's newest-first export before insertion) — see sheets.service.ts
+      // for the accepted edge case (same day fetched across ≥2 job runs) and its
+      // balance-chain-based repair tool for when that actually happens.
       const dbRows = await this.prisma.bankTransaction.findMany({
         where: { bankAccountId, jobIds: { has: jobId } },
-        orderBy: [{ postDate: 'asc' }, { id: 'desc' }],
+        orderBy: [{ postDate: 'asc' }, { id: 'asc' }],
       });
 
       const rows: TransactionRow[] = dbRows.map(r => ({
