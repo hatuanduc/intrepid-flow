@@ -40,14 +40,16 @@ variable "stop_schedule_enabled" {
   default     = false
 }
 
-variable "start_schedule" {
-  description = "EventBridge cron to START the instance (UTC)"
-  default     = "cron(0 2 ? * MON-FRI *)" # 09:00 GMT+7 weekdays
+variable "start_schedules" {
+  description = "EventBridge crons (UTC) to START the instance — one per daily run window"
+  type        = list(string)
+  default     = ["cron(0 2 ? * MON-FRI *)"] # 09:00 GMT+7 weekdays
 }
 
-variable "stop_schedule" {
-  description = "EventBridge cron to STOP the instance (UTC)"
-  default     = "cron(0 4 ? * MON-FRI *)" # 11:00 GMT+7 weekdays
+variable "stop_schedules" {
+  description = "EventBridge crons (UTC) to STOP the instance — one per daily run window, plus optionally a later safety-net stop"
+  type        = list(string)
+  default     = ["cron(0 4 ? * MON-FRI *)"] # 11:00 GMT+7 weekdays
 }
 
 variable "github_repo" {

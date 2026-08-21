@@ -43,11 +43,12 @@ module "app" {
   vpc_id    = data.terraform_remote_state.shared.outputs.vpc_id
   subnet_id = data.terraform_remote_state.shared.outputs.public_subnet_id
 
-  # Prod: start 09:00 GMT+7, stop 11:00 GMT+7 (weekdays)
+  # Prod: start 09:00 GMT+7, stop 11:00 GMT+7 (weekdays) — unchanged from before,
+  # just re-expressed as single-item lists to match the module's new shape.
   start_schedule_enabled = true
   stop_schedule_enabled  = true
-  start_schedule         = "cron(0 2 ? * MON-FRI *)"
-  stop_schedule          = "cron(0 4 ? * MON-FRI *)"
+  start_schedules        = ["cron(0 2 ? * MON-FRI *)"]
+  stop_schedules         = ["cron(0 4 ? * MON-FRI *)"]
 
   github_repo   = "hatuanduc/intrepid-flow"
   deploy_bucket = "intrepid-terraform-state"
