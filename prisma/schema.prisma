@@ -143,6 +143,11 @@ model BankAccount {
   // "should the sync job fetch this account" toggle a user controls (e.g. to test
   // with only a subset of accounts) without discovery undoing it on the next run.
   syncEnabled    Boolean   @default(true) @map("sync_enabled")
+  // Per-account override for PDF export (see BankDriveExportConfig for the
+  // country-level default) — effective enablement is
+  // BankDriveExportConfig.isActive AND this field, same dual-gate pattern
+  // BankGsheetConfig.isActive + syncEnabled already uses.
+  pdfExportEnabled Boolean @default(true) @map("pdf_export_enabled")
   createdAt      DateTime  @default(now()) @map("created_at")
   // Bounds of the most recent successful fetch — a future run whose [from,to] request
   // falls entirely within [lastSyncedFrom, lastSyncedTo] can skip re-downloading, since
@@ -205,6 +210,13 @@ model BankSyncJobAccount {
   errorMessage     String?  @map("error_message")
   sheetsSyncStatus String   @default("pending") @map("sheets_sync_status") // pending | completed | failed | skipped
   sheetsSyncError  String?  @map("sheets_sync_error")
+  // Aggregate PDF export status for this account within this job — mirrors
+  // sheetsSyncStatus/sheetsSyncError above. Per-transaction detail lives on
+  // BankTransactionPdf; this is just the account-level rollup for summary/metrics.
+  pdfStatus        String   @default("pending") @map("pdf_status") // pending | completed | failed | skipped | no_data
+  pdfFetched       Int      @default(0) @map("pdf_fetched")
+  pdfFailed        Int      @default(0) @map("pdf_failed")
+  pdfError         String?  @map("pdf_error")
   createdAt        DateTime @default(now()) @map("created_at")
 
   job         BankSyncJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
@@ -244,6 +256,7 @@ model BankTransaction {
 
   bankAccount BankAccount @relation(fields: [bankAccountId], references: [id])
   job         BankSyncJob @relation(fields: [jobId], references: [id])
+  pdf         BankTransactionPdf?
 
   @@unique([bankAccountId, dataHash])
   @@map("bank_transactions")
@@ -272,6 +285,55 @@ model BankGsheetConfig {
   updatedAt         DateTime @updatedAt @map("updated_at")
 
   @@map("bank_gsheet_configs")
+}
+
+// Root Google Drive folder per accountCode (country/company) that PDF exports get
+// filed under, following accountName/accountNumber/year/month/day sub-folders created
+// on demand by the worker. Mirrors BankGsheetConfig's shape exactly — same country-level
+// config pattern, just pointing at a Drive folder instead of a Sheet.
+model BankDriveExportConfig {
+  id            Int      @id @default(autoincrement())
+  accountCode   String   @unique @map("account_code")
+  rootFolderId  String   @map("root_folder_id")
+  rootFolderUrl String?  @map("root_folder_url")
+  isActive      Boolean  @default(true) @map("is_active")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("bank_drive_export_configs")
+}
+
+// One row per BankTransaction whose PDF has been (attempted to be) fetched from HSBC's
+// "Chi tiết giao dịch" popup. This — not the AITRANPRINT export filename, which is
+// regenerated with a fresh timestamp on every export — is the real dedup key: once
+// status='fetched' for a transaction, later job runs skip it permanently, since the PDF
+// receipt for an already-recorded transaction never changes. fileName/driveFileId/
+// driveFileUrl/s3Key are metadata/audit trail only.
+model BankTransactionPdf {
+  id                Int       @id @default(autoincrement())
+  bankTransactionId Int       @unique @map("bank_transaction_id")
+  jobId             Int       @map("job_id")
+  // Whether the PDF itself has been captured from HSBC and secured in S3 — this is
+  // the ONLY status that gates re-running the (expensive) Playwright click-through in
+  // exportTransactionPdfs()'s shouldFetch(). Drive upload is tracked completely
+  // separately via driveSyncStatus below, so a Drive failure never forces a re-fetch
+  // from HSBC — retrying Drive just re-reads the buffer already sitting in S3.
+  status            String    @default("pending") @map("status") // pending | fetched | failed
+  fileName          String?   @map("file_name")
+  s3Key             String?   @map("s3_key")
+  errorMessage      String?   @map("error_message") // fetch/S3 error only — see driveError for Drive
+  fetchedAt         DateTime? @map("fetched_at")
+  driveFileId       String?   @map("drive_file_id")
+  driveFileUrl      String?   @map("drive_file_url")
+  driveSyncStatus   String    @default("pending") @map("drive_sync_status") // pending | synced | failed
+  driveError        String?   @map("drive_error")
+  driveSyncedAt     DateTime? @map("drive_synced_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  bankTransaction BankTransaction @relation(fields: [bankTransactionId], references: [id], onDelete: Cascade)
+
+  @@map("bank_transaction_pdfs")
 }
 
 model GasLink {

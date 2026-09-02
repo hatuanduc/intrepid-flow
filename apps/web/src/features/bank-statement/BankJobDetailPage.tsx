@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   getBankJob, retryBankJob, cancelBankJob, deleteBankJob, getApiBaseUrl, getBankJobSummary,
   getJobAccountTransactions, getBankJobStats, resyncBankAccountSheets, resyncBankJobSheets,
+  resyncBankAccountDrive, resyncBankJobDrive,
   type BankSyncJob, type JobAccountSummary, type JobTransaction, type JobStats,
 } from '../../lib/api';
 import RightPanel from '../../components/common/RightPanel';
@@ -17,6 +18,7 @@ import BackButton from '../../components/common/BackButton';
 import { Spinner } from '../../components/common/PageLoader';
 import { useToast } from '../../components/common/Toast';
 import { useT } from '../../lib/i18n';
+import { openTransactionPdfInNewTab } from '../../lib/pdf';
 import s from './BankJobDetailPage.module.css';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ function StatusBadge({ status }: { status: string }) {
     : status === 'waiting_2fa'       ? s.badgeWarn
     : status === 'pending'           ? s.badgeDefault
     : ['checking_session', 'logging_in', 'authenticated', 'discovering_accounts',
-       'downloading', 'storing', 'syncing_sheets'].includes(status) ? s.badgeRunning
+       'downloading', 'storing', 'exporting_pdf', 'syncing_sheets'].includes(status) ? s.badgeRunning
     : s.badgeDefault;
   const key = `bankStatement.status_${status}`;
   const label = t(key);
@@ -62,6 +64,94 @@ function SheetsSyncBadge({
     >
       {label}
     </span>
+  );
+}
+
+// Same shape as SheetsSyncBadge above, for the PDF export step's aggregate outcome
+// per account — this is the "was PDF fetching done for this day" surface the plan
+// asks for at a glance, next to the existing Sheets-sync badge.
+function PdfSyncBadge({
+  status, fetched, failed, error, t,
+}: {
+  status: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data' | 'not_attempted';
+  fetched: number;
+  failed: number;
+  error: string | null;
+  t: ReturnType<typeof useT>['t'];
+}) {
+  const cls = status === 'completed' ? s.badgeSuccess
+    : status === 'failed'  ? s.badgeError
+    : status === 'skipped' ? s.badgeWarn
+    : s.badgeDefault;
+  const label = status === 'completed' && fetched > 0
+    ? t('bankJob.pdfSync_completedCount', { n: fetched })
+    : t(`bankJob.pdfSync_${status}`);
+  // The badge itself was never a click target — a user had no visual cue that a fetched
+  // PDF is one click (on the row, not the badge) away from viewing. The small file icon
+  // + hint tooltip signals that without changing behavior — clicking anywhere on the row
+  // already opens the transaction panel with each transaction's own PDF icon/link.
+  return (
+    <span
+      className={`${s.badge} ${cls} ${s.summarySyncBadge}`}
+      title={status === 'completed' ? t('bankJob.pdfClickRowHint') : (failed > 0 ? (error ?? undefined) : undefined)}
+    >
+      {status === 'completed' && (
+        <svg width="10" height="10" viewBox="0 0 14 14" fill="none" style={{ marginRight: 3, verticalAlign: '-1px' }}>
+          <path d="M3 1.5h5l3 3v8h-8v-11z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+          <path d="M8 1.5v3h3" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+        </svg>
+      )}
+      {label}
+    </span>
+  );
+}
+
+// Drive-sync counterpart to SheetsSyncBadge — driveStatus is computed on the fly
+// server-side (see getJobSummary()), a narrower 4-value enum than sheets/pdf's
+// (no 'skipped'/'no_data': Drive delivery either has nothing to do yet, is fully
+// synced, has something pending, or has something that failed).
+function DriveSyncBadge({
+  status, failed, error, t,
+}: {
+  status: 'pending' | 'completed' | 'failed' | 'not_attempted';
+  failed: number;
+  error: string | null;
+  t: ReturnType<typeof useT>['t'];
+}) {
+  const cls = status === 'completed' ? s.badgeSuccess
+    : status === 'failed'  ? s.badgeError
+    : status === 'pending' ? s.badgeWarn
+    : s.badgeDefault;
+  return (
+    <span
+      className={`${s.badge} ${cls} ${s.summarySyncBadge}`}
+      title={failed > 0 ? (error ?? undefined) : undefined}
+    >
+      {t(`bankJob.driveSync_${status}`)}
+    </span>
+  );
+}
+
+// Small reload icon button shared by every "force resync this row / retry this
+// column for everyone" action in the summary table (row-level: opacity 0 → 1 on row
+// hover, matched by .summaryResyncBtn; header-level: always visible, matched by
+// .summaryHeaderResyncBtn passed in via className).
+function ResyncIconButton({ busy, onClick, title, className }: {
+  busy: boolean;
+  onClick: (e: React.MouseEvent) => void;
+  title: string;
+  className: string;
+}) {
+  return (
+    <button type="button" className={className} onClick={onClick} disabled={busy} title={title}>
+      {busy ? (
+        <Spinner size={12} />
+      ) : (
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+          <path d="M11.5 3.5a5 5 0 1 0 1.2 5.1M12 1.5v3h-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+    </button>
   );
 }
 
@@ -239,6 +329,8 @@ export default function BankJobDetailPage() {
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [resyncingRowId, setResyncingRowId] = useState<number | null>(null);
   const [resyncingAll, setResyncingAll] = useState(false);
+  const [resyncingDriveRowId, setResyncingDriveRowId] = useState<number | null>(null);
+  const [resyncingAllDrive, setResyncingAllDrive] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [showRaw, setShowRaw]   = useState(false);
   const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
@@ -325,7 +417,7 @@ export default function BankJobDetailPage() {
     esRef.current = es;
   }
 
-  async function handleRetry(stepKey?: 'bank_sync' | 'sheets_sync') {
+  async function handleRetry(stepKey?: 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync') {
     if (!job) return;
     setRetrying(true);
     try {
@@ -408,6 +500,43 @@ export default function BankJobDetailPage() {
       toast.error(t('bankJob.forceResyncAllFailed'));
     } finally {
       setResyncingAll(false);
+    }
+  }
+
+  // Drive counterparts — same shape as the two Sheets handlers above, just pointed at
+  // the resync-drive endpoints. No HSBC/Playwright involved on either path (single row
+  // or all), so these are always safe to fire regardless of whether HSBC is reachable.
+  async function handleForceResyncDriveRow(e: React.MouseEvent, accountId: number) {
+    if (!job) return;
+    e.stopPropagation();
+    setResyncingDriveRowId(accountId);
+    try {
+      const res = await resyncBankAccountDrive(job.id, accountId);
+      if (res.alreadyQueued) {
+        toast.info(t('bankJob.forceResyncDriveAlreadyRunning'));
+        return;
+      }
+      toast.success(t('bankJob.forceResyncDriveQueued'));
+      await pollForNewLog(job.id, job.logs?.length ?? 0);
+    } catch {
+      toast.error(t('bankJob.forceResyncDriveFailed'));
+    } finally {
+      setResyncingDriveRowId(null);
+    }
+  }
+
+  async function handleForceResyncAllDrive() {
+    if (!job) return;
+    setResyncingAllDrive(true);
+    try {
+      const res = await resyncBankJobDrive(job.id);
+      toast.success(t('bankJob.forceResyncAllDriveQueued', { count: String(res.count) }));
+      if (res.skipped > 0) toast.info(t('bankJob.forceResyncAllDriveSkipped', { count: String(res.skipped) }));
+      await pollForNewLog(job.id, job.logs?.length ?? 0);
+    } catch {
+      toast.error(t('bankJob.forceResyncAllDriveFailed'));
+    } finally {
+      setResyncingAllDrive(false);
     }
   }
 
@@ -665,6 +794,36 @@ export default function BankJobDetailPage() {
                 </Link>
               </div>
               <div className={s.summaryTableWrap}>
+                <div className={s.summaryHeaderRow}>
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span />
+                  <span className={s.summaryColHeader}>
+                    {t('bankJob.colGSheet')}
+                    {canRun && (
+                      <ResyncIconButton
+                        busy={resyncingAll}
+                        onClick={handleForceResyncAll}
+                        title={t('bankJob.forceResyncAllHint')}
+                        className={s.summaryHeaderResyncBtn}
+                      />
+                    )}
+                  </span>
+                  <span className={s.summaryColHeader}>
+                    {t('bankJob.colPdf')}
+                    {canRun && (
+                      <ResyncIconButton
+                        busy={resyncingAllDrive}
+                        onClick={handleForceResyncAllDrive}
+                        title={t('bankJob.forceResyncAllDriveHint')}
+                        className={s.summaryHeaderResyncBtn}
+                      />
+                    )}
+                  </span>
+                  <span />
+                </div>
                 {summary.filter(acc => matchesStatFilter(acc, statFilter)).map(acc => (
                   <div
                     key={acc.accountId}
@@ -700,24 +859,30 @@ export default function BankJobDetailPage() {
                         {t('bankJob.downloadFailed')}
                       </span>
                     ) : (
-                      <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
-                    )}
-                    {canRun && acc.downloadStatus !== 'not_attempted' && (
-                      <button
-                        type="button"
-                        className={s.summaryResyncBtn}
-                        onClick={e => handleForceResyncRow(e, acc.accountId)}
-                        disabled={resyncingRowId === acc.accountId}
-                        title={t('bankJob.forceResyncHint')}
-                      >
-                        {resyncingRowId === acc.accountId ? (
-                          <Spinner size={14} />
-                        ) : (
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                            <path d="M11.5 3.5a5 5 0 1 0 1.2 5.1M12 1.5v3h-3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        )}
-                      </button>
+                      <>
+                        <span className={s.summarySyncCell}>
+                          <SheetsSyncBadge status={acc.sheetsSyncStatus} error={acc.sheetsSyncError} t={t} />
+                          {canRun && acc.downloadStatus !== 'not_attempted' && (
+                            <ResyncIconButton
+                              busy={resyncingRowId === acc.accountId}
+                              onClick={e => handleForceResyncRow(e, acc.accountId)}
+                              title={t('bankJob.forceResyncHint')}
+                              className={s.summaryResyncBtn}
+                            />
+                          )}
+                        </span>
+                        <span className={s.summarySyncCell}>
+                          <PdfSyncBadge status={acc.pdfStatus} fetched={acc.pdfFetched} failed={acc.pdfFailed} error={acc.pdfError} t={t} />
+                          {canRun && acc.downloadStatus !== 'not_attempted' && (
+                            <ResyncIconButton
+                              busy={resyncingDriveRowId === acc.accountId}
+                              onClick={e => handleForceResyncDriveRow(e, acc.accountId)}
+                              title={t('bankJob.forceResyncDriveHint')}
+                              className={s.summaryResyncBtn}
+                            />
+                          )}
+                        </span>
+                      </>
                     )}
                     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={s.summaryArrow}>
                       <path d="M5 3l4 4-4 4" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
@@ -806,6 +971,7 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
   const { t } = useT();
   const toast = useToast();
   const [resyncing, setResyncing] = useState(false);
+  const [resyncingDrive, setResyncingDrive] = useState(false);
 
   async function handleResyncSheets() {
     setResyncing(true);
@@ -820,11 +986,25 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
     }
   }
 
+  async function handleResyncDrive() {
+    setResyncingDrive(true);
+    try {
+      await resyncBankAccountDrive(jobId, acc.accountId);
+      toast.success(t('bankJob.forceResyncDriveQueued'));
+      onResynced();
+    } catch {
+      toast.error(t('bankJob.forceResyncDriveFailed'));
+    } finally {
+      setResyncingDrive(false);
+    }
+  }
+
   return (
     <div className={s.txPanel}>
       <div className={s.txPanelMeta}>
         <span className={s.txPanelAccNum}>{acc.accountNumber}</span>
         <span className={s.summaryCurrency}>{acc.currency}</span>
+        <DriveSyncBadge status={acc.driveStatus} failed={acc.driveFailed} error={null} t={t} />
         <span className={s.txPanelCount}>{acc.txCount} {t('bankJob.transactions')}</span>
         {canRun && (
           <button
@@ -835,6 +1015,17 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
             title={t('bankJob.forceResyncHint')}
           >
             {resyncing ? t('bankJob.forceResyncRunning') : t('bankJob.forceResync')}
+          </button>
+        )}
+        {canRun && (
+          <button
+            type="button"
+            className={s.btnSecondary}
+            onClick={handleResyncDrive}
+            disabled={resyncingDrive}
+            title={t('bankJob.forceResyncDriveHint')}
+          >
+            {resyncingDrive ? t('bankJob.forceResyncDriveRunning') : t('bankJob.forceResyncDrive')}
           </button>
         )}
       </div>
@@ -855,6 +1046,7 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
               <col style={{ width: '120px' }} />
               <col style={{ width: '120px' }} />
               <col style={{ width: '140px' }} />
+              <col style={{ width: '48px' }} />
             </colgroup>
             <thead>
               <tr>
@@ -865,6 +1057,7 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.debitAmount')}</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankJob.balance')}</th>
                 <th className={s.txTh}>{t('bankJob.fetchedAt')}</th>
+                <th className={s.txTh} style={{ textAlign: 'center' }}>{t('bankJob.pdf')}</th>
               </tr>
             </thead>
             <tbody>
@@ -883,6 +1076,9 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
                     {tx.balance != null ? tx.balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
                   </td>
                   <td className={s.txTdFetched}>{formatDateTime(tx.fetchedAt)}</td>
+                  <td className={s.txTd} style={{ textAlign: 'center' }}>
+                    <PdfIconButton hasPdf={tx.hasPdf} transactionId={tx.id} t={t} />
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -890,6 +1086,32 @@ function TxDetailPanel({ acc, rows, loading, canRun, jobId, onResynced }: {
         </div>
       )}
     </div>
+  );
+}
+
+// Exported for reuse by BankMetricsPage's own transaction table — a per-transaction
+// "view PDF" icon, enabled only once BankTransactionPdf.status reaches 'fetched'
+// (see JobTransaction.hasPdf). Muted/inert placeholder otherwise, since most
+// transactions never get a PDF (only "ủy nhiệm chi"/transfer rows do). Safe to reuse
+// across files — its `s.pdfIconBtn`/`s.pdfIconDisabled` classes resolve against THIS
+// file's own CSS module import regardless of which page renders it.
+export function PdfIconButton({ hasPdf, transactionId, t }: { hasPdf: boolean; transactionId: number; t: ReturnType<typeof useT>['t'] }) {
+  const toast = useToast();
+  if (!hasPdf) {
+    return <span className={s.pdfIconDisabled} title={t('bankJob.pdfNotAvailable')}>—</span>;
+  }
+  return (
+    <button
+      type="button"
+      className={s.pdfIconBtn}
+      title={t('bankJob.viewPdf')}
+      onClick={() => openTransactionPdfInNewTab(transactionId, () => toast.error(t('bankJob.pdfOpenFailed')))}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <path d="M3 1.5h5l3 3v8h-8v-11z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+        <path d="M8 1.5v3h3" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+      </svg>
+    </button>
   );
 }
 
@@ -906,7 +1128,7 @@ function JobTimeline({
   setShowRaw: (v: boolean | ((prev: boolean) => boolean)) => void;
   openSteps: Set<string>;
   onToggleStep: (key: string) => void;
-  onRetryStep: (stepKey?: 'bank_sync' | 'sheets_sync') => void;
+  onRetryStep: (stepKey?: 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync') => void;
   renderLogNodes: (logs: LogItem[], stepKey: string) => React.ReactNode;
 }) {
   const { t } = useT();
@@ -917,7 +1139,7 @@ function JobTimeline({
   const isDev = process.env.NODE_ENV !== 'production';
 
   // Group logs by step
-  const logsByStep: Record<string, LogItem[]> = { bank_sync: [], sheets_sync: [], _general: [] };
+  const logsByStep: Record<string, LogItem[]> = { bank_sync: [], pdf_export: [], drive_sync: [], sheets_sync: [], _general: [] };
   for (const entry of job.logs) {
     const bucket = entry.step && entry.step in logsByStep ? entry.step : '_general';
     const level: LogLevel = (['info', 'success', 'warn', 'error'].includes(entry.level ?? '') ? entry.level : 'info') as LogLevel;
@@ -947,56 +1169,73 @@ function JobTimeline({
             : s.stepDotPending;
           const isOpen = step.status === 'running' || openSteps.has(step.key);
           const hasLogs = stepLogs.length > 0;
+          // Purely presentational grouping — "Bank statement" (bank_sync + sheets_sync)
+          // and "Export transaction PDFs" (pdf_export + drive_sync) — rendered as a
+          // label above whichever step starts each group. Doesn't touch job.steps
+          // itself: retry/dependency logic (STEP_DEPENDENTS on the API side) is keyed
+          // by step, not by group.
+          const groupTitleKey = step.key === 'bank_sync' ? 'groupBankStatement'
+            : step.key === 'pdf_export' ? 'groupPdfExport'
+            : null;
 
           return (
-            <div key={step.key} className={s.stepRow}>
-              <div className={s.stepTrack}>
-                <span className={`${s.stepDot} ${stepDotCls}`} />
-                {!isLast && <span className={s.stepLine} />}
-              </div>
-              <div className={s.stepContent}>
-                <div
-                  className={`${s.stepHeader} ${hasLogs ? s.stepHeaderClickable : ''}`}
-                  onClick={hasLogs ? () => onToggleStep(step.key) : undefined}
-                >
-                  <span className={s.stepLabel}>
-                    {step.key === 'bank_sync' ? t('bankJob.stepBankSync')
-                      : step.key === 'sheets_sync' ? t('bankJob.stepSheetsSync')
-                      : step.label}
-                  </span>
-                  {step.completedAt && step.startedAt && (
-                    <span className={s.stepDuration}>
-                      {formatDuration(new Date(step.completedAt).getTime() - new Date(step.startedAt).getTime())}
+            <React.Fragment key={step.key}>
+              {groupTitleKey && (
+                <div className={`${s.stepGroupHeader} ${si === 0 ? s.stepGroupHeaderFirst : ''}`}>
+                  {t(`bankJob.${groupTitleKey}`)}
+                </div>
+              )}
+              <div className={s.stepRow}>
+                <div className={s.stepTrack}>
+                  <span className={`${s.stepDot} ${stepDotCls}`} />
+                  {!isLast && <span className={s.stepLine} />}
+                </div>
+                <div className={s.stepContent}>
+                  <div
+                    className={`${s.stepHeader} ${hasLogs ? s.stepHeaderClickable : ''}`}
+                    onClick={hasLogs ? () => onToggleStep(step.key) : undefined}
+                  >
+                    <span className={s.stepLabel}>
+                      {step.key === 'bank_sync' ? t('bankJob.stepBankSync')
+                        : step.key === 'sheets_sync' ? t('bankJob.stepSheetsSync')
+                        : step.key === 'pdf_export' ? t('bankJob.stepPdfExport')
+                        : step.key === 'drive_sync' ? t('bankJob.stepDriveSync')
+                        : step.label}
                     </span>
+                    {step.completedAt && step.startedAt && (
+                      <span className={s.stepDuration}>
+                        {formatDuration(new Date(step.completedAt).getTime() - new Date(step.startedAt).getTime())}
+                      </span>
+                    )}
+                    {canRetryStep && (
+                      <button
+                        className={s.stepRetryBtn}
+                        disabled={retrying}
+                        onClick={(e) => { e.stopPropagation(); onRetryStep(step.key as 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync'); }}
+                      >
+                        {retrying ? '...' : t('bankJob.retryStep')}
+                      </button>
+                    )}
+                    {hasLogs && (
+                      <span className={s.stepChevron}>{isOpen ? '▴' : '▾'}</span>
+                    )}
+                  </div>
+                  {isOpen && hasLogs && (
+                    <div className={s.stepLogs}>
+                      {renderLogNodes(stepLogs, step.key)}
+                    </div>
                   )}
-                  {canRetryStep && (
-                    <button
-                      className={s.stepRetryBtn}
-                      disabled={retrying}
-                      onClick={(e) => { e.stopPropagation(); onRetryStep(step.key as 'bank_sync' | 'sheets_sync'); }}
-                    >
-                      {retrying ? '...' : t('bankJob.retryStep')}
-                    </button>
-                  )}
-                  {hasLogs && (
-                    <span className={s.stepChevron}>{isOpen ? '▴' : '▾'}</span>
+                  {isDev && isOpen && step.status === 'failed' && step.errorMessage && (
+                    <div className={s.stepErrorToggle}>
+                      <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
+                        {showRaw ? t('bankJob.hideRaw') : t('bankJob.showRaw')}
+                      </button>
+                      {showRaw && <pre className={s.rawErrorCode}>{step.errorMessage}</pre>}
+                    </div>
                   )}
                 </div>
-                {isOpen && hasLogs && (
-                  <div className={s.stepLogs}>
-                    {renderLogNodes(stepLogs, step.key)}
-                  </div>
-                )}
-                {isDev && isOpen && step.status === 'failed' && step.errorMessage && (
-                  <div className={s.stepErrorToggle}>
-                    <button className={s.rawErrorToggle} onClick={() => setShowRaw(v => !v)}>
-                      {showRaw ? t('bankJob.hideRaw') : t('bankJob.showRaw')}
-                    </button>
-                    {showRaw && <pre className={s.rawErrorCode}>{step.errorMessage}</pre>}
-                  </div>
-                )}
               </div>
-            </div>
+            </React.Fragment>
           );
         })
       ) : (

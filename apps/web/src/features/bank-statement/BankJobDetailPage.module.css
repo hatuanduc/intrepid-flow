@@ -106,16 +106,42 @@
   border-radius: 8px; overflow: hidden;
 }
 
-.summaryRow {
+/* Shared by .summaryRow and .summaryHeaderRow so header labels line up exactly with
+   the cells underneath — keep both in sync if this ever changes. Sheets-sync + PDF-sync
+   columns each carry their own retry icon inline now (see .summarySyncCell) instead of
+   a separate trailing resync-button column. When downloadStatus==='failed' only ONE
+   element renders in their place (.summaryDownloadFailed) — it spans both columns
+   (grid-column: span 2) so the grid doesn't shift the arrow column left. */
+.summaryRow, .summaryHeaderRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 56px 90px 140px 140px 160px 24px 14px;
+  grid-template-columns: minmax(0, 1fr) 56px 90px 140px 140px 136px 136px 14px;
   align-items: center; gap: 12px;
+}
+
+.summaryRow {
   padding: 10px 14px; text-decoration: none;
   border-bottom: 1px solid var(--color-border-light);
   cursor: pointer; transition: background 0.12s;
 }
 .summaryRow:last-child { border-bottom: none; }
 .summaryRow:hover { background: var(--bg-hover); }
+
+.summaryHeaderRow {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+.summaryColHeader {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; color: var(--color-secondary);
+  justify-self: start;
+}
+.summaryHeaderResyncBtn {
+  width: 18px; height: 18px; border: none; background: none; border-radius: 5px;
+  color: var(--color-muted); display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.summaryHeaderResyncBtn:hover:not(:disabled) { background: var(--bg-subtle); color: var(--color-ink); }
+.summaryHeaderResyncBtn:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .summaryRowAccount { display: flex; align-items: center; gap: 9px; min-width: 0; }
 .summaryAvatar {
@@ -144,10 +170,14 @@
 .summarySyncBadge { justify-self: start; width: fit-content; }
 .summaryArrow   { color: var(--color-subtle); justify-self: center; }
 
+/* GSheet/PDF column cell — badge + its own inline retry icon, replacing the old
+   separate trailing resync-button column. */
+.summarySyncCell { display: flex; align-items: center; gap: 4px; justify-self: start; min-width: 0; }
+
 .summaryResyncBtn {
-  width: 24px; height: 24px; border: none; background: none; border-radius: 6px;
+  width: 20px; height: 20px; border: none; background: none; border-radius: 5px;
   color: var(--color-muted); display: flex; align-items: center; justify-content: center;
-  justify-self: center; cursor: pointer; opacity: 0; transition: opacity 0.12s, background 0.12s;
+  flex-shrink: 0; cursor: pointer; opacity: 0; transition: opacity 0.12s, background 0.12s;
 }
 .summaryRow:hover .summaryResyncBtn { opacity: 1; }
 .summaryResyncBtn:hover:not(:disabled) { background: var(--bg-subtle); color: var(--color-ink); }
@@ -155,6 +185,17 @@
 
 /* ── Unified vertical job timeline ── */
 .jobTimeline { display: flex; flex-direction: column; }
+
+/* Group label above the first step of each conceptual group (Bank statement /
+   Export transaction PDFs) — purely presentational, sits at the same left offset as
+   .stepLabel (dot width 14px + .stepRow gap 14px = 28px) so it reads as a section
+   title over the steps below it, not as a step itself. */
+.stepGroupHeader {
+  font-size: 11px; font-weight: 700; color: var(--color-muted);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin: 18px 0 6px 28px;
+}
+.stepGroupHeaderFirst { margin-top: 0; }
 
 .stepRow { display: flex; gap: 14px; }
 
@@ -320,6 +361,14 @@
   white-space: nowrap; vertical-align: top;
   overflow: hidden; text-overflow: ellipsis;
 }
+
+.pdfIconBtn {
+  width: 24px; height: 24px; border: none; background: none; border-radius: 6px;
+  color: var(--color-muted); display: inline-flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.12s, color 0.12s;
+}
+.pdfIconBtn:hover { background: var(--bg-subtle); color: var(--color-accent); }
+.pdfIconDisabled { color: var(--color-subtle); font-size: 12px; }
 .txTable tr:last-child .txTd,
 .txTable tr:last-child .txTdNarrative,
 .txTable tr:last-child .txTdMono,
@@ -379,6 +428,9 @@
 
 .summaryDownloadFailed {
   font-size: 11px; font-weight: 500; color: #df1b41;
+  /* Rendered alone (download failed → neither sheets- nor pdf-sync ever ran), so it
+     must span both badge columns instead of leaving the second one visually empty. */
+  grid-column: span 2;
 }
 .summaryFilterEmpty {
   font-size: 13px; color: var(--color-subtle); padding: 24px 0; text-align: center;

@@ -17,6 +17,7 @@ import AccessDenied from '../../components/common/AccessDenied';
 import PageLoader, { Spinner } from '../../components/common/PageLoader';
 import Pagination from '../../components/common/Pagination';
 import RightPanel from '../../components/common/RightPanel';
+import { PdfIconButton } from './BankJobDetailPage';
 import s from './BankMetricsPage.module.css';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -631,6 +632,7 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
               <col style={{ width: '130px' }} />
               <col style={{ width: '130px' }} />
               <col style={{ width: '130px' }} />
+              <col style={{ width: '48px' }} />
             </colgroup>
             <thead>
               <tr>
@@ -640,6 +642,7 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txCredit')}</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txDebit')}</th>
                 <th className={s.txTh} style={{ textAlign: 'right' }}>{t('bankMetrics.txBalance')}</th>
+                <th className={s.txTh} style={{ textAlign: 'center' }}>{t('bankJob.pdf')}</th>
               </tr>
             </thead>
             <tbody>
@@ -656,6 +659,9 @@ function MetricsTxPanel({ row, txRows, loading, fromDate, toDate }: {
                   </td>
                   <td className={s.txTdBalance}>
                     {tx.balance != null ? fmtAmount(tx.balance) : '—'}
+                  </td>
+                  <td className={s.txTd} style={{ textAlign: 'center' }}>
+                    <PdfIconButton hasPdf={tx.hasPdf} transactionId={tx.id} t={t} />
                   </td>
                 </tr>
               ))}

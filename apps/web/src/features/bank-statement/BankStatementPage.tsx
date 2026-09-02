@@ -184,7 +184,7 @@ export default function BankStatementPage() {
     }
   }
 
-  async function handleRetry(id: string, stepKey?: 'bank_sync' | 'sheets_sync') {
+  async function handleRetry(id: string, stepKey?: 'bank_sync' | 'pdf_export' | 'drive_sync' | 'sheets_sync') {
     setRetryingId(id);
     setOpenMenu(null);
     try {

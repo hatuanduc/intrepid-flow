@@ -27,3 +27,8 @@ output "reconcile_lambda_name" {
   description = "Lambda function name — copy into RECONCILE_LAMBDA_NAME in your local .env"
   value       = aws_lambda_function.reconcile.function_name
 }
+
+output "bank_statement_pdf_bucket" {
+  description = "S3 bucket for bank-sync transaction PDFs — copy into BANK_STATEMENT_PDF_BUCKET in your local .env to test against this env's real bucket"
+  value       = aws_s3_bucket.bank_statement_pdfs.bucket
+}

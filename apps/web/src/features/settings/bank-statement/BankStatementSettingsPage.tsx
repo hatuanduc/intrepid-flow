@@ -5,10 +5,11 @@ import { useRouter } from 'next/navigation';
 import {
   getBankSettings, updateBankSettings, triggerBankSync,
   listBankGsheets, upsertBankGsheet,
+  listBankDriveExportConfigs, upsertBankDriveExportConfig,
   listBankAccounts, listBankAccountNames,
-  createBankAccountName, updateBankAccountName, deleteBankAccountName, updateBankAccountSync,
+  createBankAccountName, updateBankAccountName, deleteBankAccountName, updateBankAccountSync, updateBankAccountPdfExport,
   type BankJobSettings, type SyncDateMode,
-  type BankGsheetConfig, type BankAccount, type BankAccountNameItem,
+  type BankGsheetConfig, type BankDriveExportConfig, type BankAccount, type BankAccountNameItem,
 } from '../../../lib/api';
 import { useHasPermission } from '../../../hooks/useHasPermission';
 import AccessDenied from '../../../components/common/AccessDenied';
@@ -21,9 +22,10 @@ import Select from '../../../components/common/Select';
 import ServiceAccountShareInfo from '../../../components/common/ServiceAccountShareInfo';
 import Tooltip from '../../../components/common/Tooltip';
 import { extractSpreadsheetId, isValidSpreadsheetId } from '../../../lib/googleSheets';
+import { extractFolderId, isValidFolderId } from '../../../lib/googleDrive';
 import s from './BankStatementSettingsPage.module.css';
 
-type Tab = 'schedule' | 'connect' | 'accounts' | 'gsheets';
+type Tab = 'schedule' | 'connect' | 'accounts' | 'gsheets' | 'pdfExport';
 
 export default function BankStatementSettingsPage() {
   const canView = useHasPermission('bank_statement:view');
@@ -35,20 +37,23 @@ export default function BankStatementSettingsPage() {
 
   const [settings, setSettings] = useState<BankJobSettings | null>(null);
   const [gsheets, setGsheets] = useState<BankGsheetConfig[]>([]);
+  const [driveConfigs, setDriveConfigs] = useState<BankDriveExportConfig[]>([]);
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([]);
   const [accountNames, setAccountNames] = useState<BankAccountNameItem[]>([]);
 
   async function load() {
     setLoading(true);
     try {
-      const [s, g, ba, an] = await Promise.all([
+      const [s, g, d, ba, an] = await Promise.all([
         getBankSettings(),
         listBankGsheets(),
+        listBankDriveExportConfigs().catch(() => [] as BankDriveExportConfig[]),
         listBankAccounts().catch(() => [] as BankAccount[]),
         listBankAccountNames({ all: true }).catch(() => [] as BankAccountNameItem[]),
       ]);
       setSettings(s);
       setGsheets(g);
+      setDriveConfigs(d);
       setBankAccounts(ba);
       setAccountNames(an);
     } finally {
@@ -83,6 +88,7 @@ export default function BankStatementSettingsPage() {
     ['connect',  t('bankSettings.tabConnect')],
     ['accounts', t('bankSettings.tabAccounts')],
     ['gsheets',  'Google Sheets'],
+    ['pdfExport', t('bankSettings.tabPdfExport')],
   ];
 
   return (
@@ -117,6 +123,7 @@ export default function BankStatementSettingsPage() {
           canConfig={canConfig}
           onNameToggled={(id, isActive) => setAccountNames(prev => prev.map(n => (n.id === id ? { ...n, isActive } : n)))}
           onAccountToggled={(id, syncEnabled) => setBankAccounts(prev => prev.map(a => (a.id === id ? { ...a, syncEnabled } : a)))}
+          onAccountPdfToggled={(id, pdfExportEnabled) => setBankAccounts(prev => prev.map(a => (a.id === id ? { ...a, pdfExportEnabled } : a)))}
           onDataChanged={refreshAccounts}
         />
       )}
@@ -128,6 +135,21 @@ export default function BankStatementSettingsPage() {
           canConfig={canConfig}
           onSaved={(s) => { if (s) setSettings(s); else load(); }}
           toast={toast}
+        />
+      )}
+      {tab === 'pdfExport' && (
+        <PdfExportTab
+          driveConfigs={driveConfigs}
+          accountNames={accountNames}
+          canConfig={canConfig}
+          toast={toast}
+          onConfigSaved={(config) => setDriveConfigs(prev => {
+            const idx = prev.findIndex(c => c.accountCode === config.accountCode);
+            if (idx < 0) return [...prev, config];
+            const next = [...prev];
+            next[idx] = config;
+            return next;
+          })}
         />
       )}
     </div>
@@ -631,13 +653,14 @@ function AccountNamePanel({
 }
 
 function AccountsTab({
-  accountNames, bankAccounts, canConfig, onNameToggled, onAccountToggled, onDataChanged,
+  accountNames, bankAccounts, canConfig, onNameToggled, onAccountToggled, onAccountPdfToggled, onDataChanged,
 }: {
   accountNames: BankAccountNameItem[];
   bankAccounts: BankAccount[];
   canConfig: boolean;
   onNameToggled: (id: number, isActive: boolean) => void;
   onAccountToggled: (id: number, syncEnabled: boolean) => void;
+  onAccountPdfToggled: (id: number, pdfExportEnabled: boolean) => void;
   onDataChanged: () => void;
 }) {
   const { t } = useT();
@@ -690,6 +713,20 @@ function AccountsTab({
     try {
       await updateBankAccountSync(a.id, next);
       onAccountToggled(a.id, next);
+    } catch {
+      toast.error(t('bankSettings.updateFailed'));
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function toggleAccountPdfExport(a: BankAccount) {
+    if (!canConfig || savingId === a.id) return;
+    setSavingId(a.id);
+    const next = !a.pdfExportEnabled;
+    try {
+      await updateBankAccountPdfExport(a.id, next);
+      onAccountPdfToggled(a.id, next);
     } catch {
       toast.error(t('bankSettings.updateFailed'));
     } finally {
@@ -782,12 +819,13 @@ function AccountsTab({
                   <th className={s.th} style={{ width: 80 }}>Currency</th>
                   <th className={s.th}>{t('bankSettings.lastSync')}</th>
                   <th className={s.th} style={{ width: 70 }}>{t('bankSettings.colSync')}</th>
+                  <th className={s.th} style={{ width: 70 }}>{t('bankSettings.colPdfExport')}</th>
                 </tr>
               </thead>
               <tbody>
                 {detailAccounts.length === 0 && (
                   <tr>
-                    <td className={s.td} colSpan={4} style={{ textAlign: 'center' }}>
+                    <td className={s.td} colSpan={5} style={{ textAlign: 'center' }}>
                       <span className={s.syncNever}>{t('bankSettings.noAccountsSynced')}</span>
                     </td>
                   </tr>
@@ -813,6 +851,21 @@ function AccountsTab({
                       ) : (
                         <span className={a.syncEnabled ? s.syncDate : s.syncNever}>
                           {a.syncEnabled ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
+                        </span>
+                      )}
+                    </td>
+                    <td className={s.td}>
+                      {canConfig ? (
+                        <button
+                          type="button"
+                          className={`${s.toggle} ${a.pdfExportEnabled ? s.toggleOn : ''}`}
+                          onClick={() => toggleAccountPdfExport(a)}
+                          disabled={savingId === a.id}
+                          title={a.pdfExportEnabled ? t('bankSettings.pdfExportActiveTitle') : t('bankSettings.pdfExportInactiveTitle')}
+                        />
+                      ) : (
+                        <span className={a.pdfExportEnabled ? s.syncDate : s.syncNever}>
+                          {a.pdfExportEnabled ? t('bankSettings.pdfExportActiveTitle') : t('bankSettings.pdfExportInactiveTitle')}
                         </span>
                       )}
                     </td>
@@ -1169,6 +1222,201 @@ function GsheetCountryCard({
               <div className={s.spreadsheetDisplay} onClick={canConfig ? startEdit : undefined} style={!canConfig ? { cursor: 'default' } : undefined}>
                 <span className={s.spreadsheetText}>
                   {displayId || <span className={s.spreadsheetPlaceholder}>{t('bankSettings.spreadsheetNotConfigured')}</span>}
+                </span>
+                {canConfig && (
+                  <svg className={s.spreadsheetEditIcon} width="12" height="12" viewBox="0 0 13 13" fill="none">
+                    <path d="M9.2 1.8l2 2L4 11H2v-2L9.2 1.8z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Tab: PDF Export (Google Drive) ────────────────────────────────────────────
+// Copies GsheetsTab/GsheetCountryCard's shape almost verbatim — same per-country
+// (accountCode) config, same toggle to enable/disable, just pointing at a Drive
+// root folder instead of a spreadsheet. See drive.service.ts (worker) for the
+// accountName/accountNumber/year/month/day sub-folders created under this root.
+
+function PdfExportTab({
+  driveConfigs, accountNames, canConfig, toast, onConfigSaved,
+}: {
+  driveConfigs: BankDriveExportConfig[];
+  accountNames: BankAccountNameItem[];
+  canConfig: boolean;
+  toast: ReturnType<typeof useToast>;
+  onConfigSaved: (config: BankDriveExportConfig) => void;
+}) {
+  const { t } = useT();
+  const configMap = Object.fromEntries(driveConfigs.map(c => [c.accountCode, c]));
+
+  return (
+    <div className={s.section}>
+      <div>
+        <p className={s.sectionTitle}>{t('bankSettings.pdfExportByAccount')}</p>
+        <p className={s.sectionDesc}>{t('bankSettings.pdfExportByAccountDesc')}</p>
+      </div>
+
+      {accountNames.length === 0 && (
+        <div className={s.empty}>{t('bankSettings.noAccountsYet')}</div>
+      )}
+
+      <div className={s.countryCardList}>
+        {accountNames.map(an => (
+          <DriveCountryCard
+            key={an.accountCode}
+            accountCode={an.accountCode}
+            countryName={an.name}
+            existing={configMap[an.accountCode] ?? null}
+            canConfig={canConfig}
+            toast={toast}
+            onSaved={onConfigSaved}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DriveCountryCard({
+  accountCode, countryName, existing, canConfig, toast, onSaved,
+}: {
+  accountCode: string;
+  countryName: string;
+  existing: BankDriveExportConfig | null;
+  canConfig: boolean;
+  toast: ReturnType<typeof useToast>;
+  onSaved: (config: BankDriveExportConfig) => void;
+}) {
+  const { t } = useT();
+  const [folderId, setFolderId] = useState(existing?.rootFolderId ?? '');
+  const [isActive, setIsActive] = useState(existing?.isActive ?? false);
+  const [saving, setSaving] = useState(false);
+  const [expanded, setExpanded] = useState(!!(existing?.rootFolderId));
+  const [editing, setEditing] = useState(false);
+  const [savedId, setSavedId] = useState(existing?.rootFolderId ?? '');
+  const [idError, setIdError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function save(overrides?: { isActive?: boolean; id?: string }) {
+    const activeVal = overrides?.isActive ?? isActive;
+    const rawId = (overrides?.id ?? folderId).trim();
+    if (!rawId) return;
+    const idVal = extractFolderId(rawId);
+    if (!isValidFolderId(idVal)) {
+      setIdError(t('bankSettings.folderIdInvalid'));
+      return;
+    }
+    setIdError(null);
+    setFolderId(idVal);
+    setSaving(true);
+    try {
+      const updated = await upsertBankDriveExportConfig(accountCode, { rootFolderId: idVal, isActive: activeVal });
+      setSavedId(idVal);
+      setEditing(false);
+      // Bubble up to the page's own driveConfigs state — this card's local state
+      // (savedId/isActive) only lives as long as it's mounted, and switching tabs
+      // unmounts it; without this, switching away and back re-initializes from the
+      // stale `existing` prop (whatever driveConfigs held at page load) and the just-
+      // saved folder ID appears to have vanished, even though it's safely in the DB.
+      onSaved(updated);
+      toast.success(t('bankSettings.configSaved', { code: accountCode }));
+    } catch {
+      toast.error(t('bankSettings.configSaveFailed', { code: accountCode }));
+    } finally { setSaving(false); }
+  }
+
+  async function toggleActive() {
+    if (!canConfig) return;
+    const next = !isActive;
+    setIsActive(next);
+    setExpanded(next);
+    if (savedId) {
+      await save({ isActive: next });
+    } else if (next) {
+      setEditing(true);
+      setTimeout(() => inputRef.current?.focus(), 0);
+    } else {
+      setEditing(false);
+    }
+  }
+
+  function startEdit() {
+    if (!canConfig) return;
+    setExpanded(true); setEditing(true);
+    setTimeout(() => inputRef.current?.focus(), 0);
+  }
+
+  function cancelEdit() {
+    setFolderId(savedId);
+    setIdError(null);
+    setEditing(false);
+  }
+
+  function handleBlur() {
+    const trimmed = folderId.trim();
+    if (trimmed && trimmed !== savedId) { void save({ id: trimmed }); }
+    else if (savedId) { setEditing(false); }
+  }
+
+  function handleKeyDown(e: { key: string; preventDefault(): void }) {
+    if (e.key === 'Enter') { e.preventDefault(); void save(); }
+    if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); }
+  }
+
+  const displayId = savedId || folderId;
+
+  return (
+    <div className={`${s.countryCard} ${isActive ? s.countryCardActive : ''}`}>
+      <div className={s.countryCardHeader}>
+        <button className={s.countryCardExpand} onClick={() => setExpanded(v => !v)}>
+          <svg className={`${s.chevron} ${expanded ? s.chevronOpen : ''}`} width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M3 5l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          <CountryBadge code={accountCode} />
+          <span className={s.countryCardName}>{countryName}</span>
+          {displayId && <span className={s.countryCardSpreadsheetHint}>{displayId.slice(0, 20)}…</span>}
+        </button>
+        <div className={s.countryCardActions}>
+          <button
+            className={`${s.toggle} ${isActive ? s.toggleOn : ''}`}
+            onClick={e => { e.stopPropagation(); void toggleActive(); }}
+            title={isActive ? t('bankSettings.pdfExportActiveTitle') : t('bankSettings.pdfExportInactiveTitle')}
+            disabled={!canConfig}
+          />
+        </div>
+      </div>
+      {expanded && (
+        <div className={s.countryCardBody}>
+          <div className={s.field}>
+            <label className={s.label}>
+              {t('bankSettings.folderIdLabel')}
+              <Tooltip>{t('bankSettings.folderIdTooltip')}</Tooltip>
+            </label>
+            {editing ? (
+              <>
+                <input
+                  ref={inputRef}
+                  className={`${s.input} ${s.inputFull} ${idError ? s.inputError : ''}`}
+                  value={folderId}
+                  onChange={e => { setFolderId(e.target.value); setIdError(null); }}
+                  onBlur={handleBlur}
+                  onKeyDown={handleKeyDown}
+                  placeholder={t('bankSettings.folderIdPlaceholder')}
+                  disabled={saving}
+                />
+                {idError && <span className={s.fieldError}>{idError}</span>}
+                {saving && <span className={s.fieldHint}>{t('bankSettings.saving')}</span>}
+              </>
+            ) : (
+              <div className={s.spreadsheetDisplay} onClick={canConfig ? startEdit : undefined} style={!canConfig ? { cursor: 'default' } : undefined}>
+                <span className={s.spreadsheetText}>
+                  {displayId || <span className={s.spreadsheetPlaceholder}>{t('bankSettings.folderNotConfigured')}</span>}
                 </span>
                 {canConfig && (
                   <svg className={s.spreadsheetEditIcon} width="12" height="12" viewBox="0 0 13 13" fill="none">

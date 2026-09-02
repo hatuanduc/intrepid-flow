@@ -6,6 +6,7 @@ import { BankSyncService } from './bank-sync.service';
 import { PlaywrightService } from './services/playwright.service';
 import { ExcelService } from './services/excel.service';
 import { SheetsService } from './services/sheets.service';
+import { DriveService } from './services/drive.service';
 
 @Module({
   imports: [BullModule.registerQueue({ name: BANK_SYNC_QUEUE })],
@@ -15,6 +16,7 @@ import { SheetsService } from './services/sheets.service';
     PlaywrightService,
     ExcelService,
     SheetsService,
+    DriveService,
   ],
 })
 export class BankSyncModule {}

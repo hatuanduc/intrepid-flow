@@ -1,6 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
-import { MOCK_ACCOUNTS, getAccountTransactions, parseDMY, type TxRow } from '../_data';
+import { MOCK_ACCOUNTS, getAccountTransactions, parseDMY, formatAriaDate, timeForRow, rowReference, type TxRow } from '../_data';
+
+// Rows per page — small on purpose so most mock accounts' fixture data (4-6 rows)
+// spans ≥2 pages, letting the worker's pagination-walking logic actually be
+// exercised end-to-end against this mock instead of only ever seeing page 1.
+const MOCK_PAGE_SIZE = 3;
 
 export default function MockAccountDetailPage() {
   const [selectedId, setSelectedId] = useState(MOCK_ACCOUNTS[0].id);
@@ -17,6 +22,12 @@ export default function MockAccountDetailPage() {
   const [appliedFrom, setAppliedFrom] = useState('');
   const [appliedTo, setAppliedTo] = useState('');
   const [exportOpen, setExportOpen] = useState(false);
+  const [tablePage, setTablePage] = useState(1);
+  // Row action "..." menu + "Chi tiết giao dịch" popup — mirrors the real
+  // button#transaction_action_button_N / ul#transaction-more-dropdown-N /
+  // .dialogue-window__TXNDetail structure the worker's automation targets.
+  const [openActionRef, setOpenActionRef] = useState<string | null>(null);
+  const [detailRef, setDetailRef] = useState<string | null>(null);
 
   const selected = MOCK_ACCOUNTS.find((a) => a.id === selectedId) ?? MOCK_ACCOUNTS[0];
 
@@ -42,7 +53,7 @@ export default function MockAccountDetailPage() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape') { setSwitcherOpen(false); setExportOpen(false); }
+      if (e.key === 'Escape') { setSwitcherOpen(false); setExportOpen(false); setOpenActionRef(null); setDetailRef(null); }
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -60,6 +71,9 @@ export default function MockAccountDetailPage() {
     setFiltersOpen(false);
     setDateRangeOpen(false);
     setExportOpen(false);
+    setTablePage(1);
+    setOpenActionRef(null);
+    setDetailRef(null);
   }
 
   // Real HSBCnet applies the date filter automatically once both fields hold a value
@@ -70,6 +84,7 @@ export default function MockAccountDetailPage() {
     if (fromDate && value) {
       setAppliedFrom(fromDate);
       setAppliedTo(value);
+      setTablePage(1);
     }
   }
 
@@ -86,6 +101,25 @@ export default function MockAccountDetailPage() {
     from: appliedFrom,
     to:   appliedTo,
   });
+
+  const totalPages = Math.max(1, Math.ceil(shownTxns.length / MOCK_PAGE_SIZE));
+  const pagedTxns = shownTxns.slice((tablePage - 1) * MOCK_PAGE_SIZE, tablePage * MOCK_PAGE_SIZE);
+  const detailTxn = detailRef ? shownTxns.find((t) => t.bankRef === detailRef) ?? null : null;
+
+  function pdfExportHref(t: TxRow): string {
+    const params = new URLSearchParams({
+      acc: selected.number,
+      name: selected.company,
+      bank: selected.bankName,
+      cur: selected.currency,
+      ref: t.bankRef,
+      cref: t.customerRef ?? '',
+      narrative: t.narrative,
+      date: t.postDate,
+      amount: String(t.credit ?? t.debit ?? ''),
+    });
+    return `/api/mock-hsbc/export-transaction-pdf?${params.toString()}`;
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f5f5' }}>
@@ -239,6 +273,12 @@ export default function MockAccountDetailPage() {
             </p>
           ) : (
             <>
+              {/* Wrapper class matches the real HSBC site (confirmed via DevTools — see
+                  the CSS rule ".account-transactions-table .table-wrapper .table__body
+                  tr td.showLastCellBorder button") — the worker's row-action-button scan
+                  is scoped to this class specifically to avoid matching stale elements
+                  left over from a previous account's table, so the mock needs it too. */}
+              <div className="account-transactions-table">
               <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: 16, fontSize: 13 }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #ddd' }}>
@@ -247,26 +287,155 @@ export default function MockAccountDetailPage() {
                     <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#555' }}>Credit</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#555' }}>Debit</th>
                     <th style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600, fontSize: 12, color: '#555' }}>Balance</th>
+                    <th style={{ padding: '8px 12px', textAlign: 'center', fontWeight: 600, fontSize: 12, color: '#555' }}></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {shownTxns.map((t) => (
-                    <tr key={t.bankRef} style={{ borderBottom: '1px solid #eee' }}>
-                      <td style={{ padding: '8px 12px' }}>{t.postDate}</td>
-                      <td style={{ padding: '8px 12px' }}>{t.narrative}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', color: t.credit ? '#059669' : undefined }}>
-                        {t.credit != null ? t.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', color: t.debit ? '#dc2626' : undefined }}>
-                        {t.debit != null ? t.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
-                      </td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right' }}>
-                        {t.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                      </td>
-                    </tr>
-                  ))}
+                  {pagedTxns.map((t) => {
+                    // Global index (across all pages, not just the current slice) — real
+                    // HSBC's button ids appear to number rows stably regardless of which
+                    // page is showing, so the mock mirrors that instead of resetting per page.
+                    const idx = shownTxns.indexOf(t);
+                    const ref = rowReference(t);
+                    const ariaLabel = `Menu Thao tác, nhấn Enter để chọn một thao tác cho giao dịchof the `
+                      + `Mã tham chiếu khách hàng:${ref}, at ${formatAriaDate(t.postDate)} ${timeForRow(t.bankRef)}`;
+                    return (
+                      <tr key={t.bankRef} style={{ borderBottom: '1px solid #eee' }}>
+                        <td style={{ padding: '8px 12px' }}>{t.postDate}</td>
+                        <td style={{ padding: '8px 12px' }}>{t.narrative}</td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', color: t.credit ? '#059669' : undefined }}>
+                          {t.credit != null ? t.credit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right', color: t.debit ? '#dc2626' : undefined }}>
+                          {t.debit != null ? t.debit.toLocaleString('en-US', { minimumFractionDigits: 2 }) : ''}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'right' }}>
+                          {t.balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td style={{ padding: '8px 12px', textAlign: 'center', position: 'relative' }}>
+                          <span className="table__restricted-width table__row--clickable">
+                            <div className="table__restricted-width">
+                              <button
+                                id={`transaction_action_button_${idx}`}
+                                aria-expanded={openActionRef === t.bankRef}
+                                aria-label={ariaLabel}
+                                onClick={() => setOpenActionRef((cur) => (cur === t.bankRef ? null : t.bankRef))}
+                                style={{ width: 26, height: 26, border: 'none', background: 'none', cursor: 'pointer', fontSize: 16, color: '#555' }}
+                              >
+                                ···
+                              </button>
+                              {openActionRef === t.bankRef && (
+                                <ul
+                                  id={`transaction-more-dropdown-${idx}`}
+                                  className="user-action__toggle-drop transaction-actions__dropdown"
+                                  style={{ position: 'absolute', right: 8, top: '100%', margin: 0, background: '#fff', border: '1px solid #ddd', borderRadius: 4, listStyle: 'none', padding: '4px 0', minWidth: 180, boxShadow: '0 4px 12px rgba(0,0,0,.12)', zIndex: 60, textAlign: 'left' }}
+                                >
+                                  <li>
+                                    <button
+                                      onClick={() => { setOpenActionRef(null); setDetailRef(t.bankRef); }}
+                                      style={{ display: 'block', width: '100%', padding: '8px 14px', fontSize: 13, background: 'none', border: 'none', textAlign: 'left', cursor: 'pointer', color: '#333' }}
+                                    >
+                                      Xem chi tiết giao dịch
+                                    </button>
+                                  </li>
+                                </ul>
+                              )}
+                            </div>
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
+              </div>
+
+              {/* Pagination — mirrors real HSBC's nav[aria-label="Pagination Navigation"]
+                  structure the worker's automation walks page-by-page to find every
+                  "..." action button, not just the ones on the first page. */}
+              {totalPages > 1 && (
+                <div className="pagination-container" style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  <nav role="navigation" aria-label="Pagination Navigation">
+                    <ul className="pagination" style={{ display: 'flex', gap: 4, listStyle: 'none', margin: 0, padding: 0, alignItems: 'center' }}>
+                      <li className="pagination__item pagination__item">
+                        <a
+                          role="button"
+                          aria-disabled={tablePage === 1}
+                          aria-label="previous page"
+                          className="pagination__link pagination__link--arrow p-1"
+                          onClick={() => tablePage > 1 && setTablePage((p) => p - 1)}
+                          style={{ cursor: tablePage === 1 ? 'default' : 'pointer', padding: '4px 8px', opacity: tablePage === 1 ? 0.4 : 1 }}
+                        >
+                          ‹
+                        </a>
+                      </li>
+                      <li style={{ fontSize: 13, padding: '0 8px' }}>Trang {tablePage} của {totalPages}</li>
+                      <li className="pagination__item pagination__item">
+                        <a
+                          role="button"
+                          aria-disabled={tablePage === totalPages}
+                          aria-label="next page"
+                          className="pagination__link pagination__link--arrow p-3"
+                          onClick={() => tablePage < totalPages && setTablePage((p) => p + 1)}
+                          style={{ cursor: tablePage === totalPages ? 'default' : 'pointer', padding: '4px 8px', opacity: tablePage === totalPages ? 0.4 : 1 }}
+                        >
+                          ›
+                        </a>
+                      </li>
+                    </ul>
+                  </nav>
+                </div>
+              )}
+
+              {/* "Chi tiết giao dịch" popup — mirrors real HSBC's .dialogue-window__TXNDetail,
+                  with an "Export PDF" button that opens the PDF inline in a new tab. */}
+              {detailTxn && (
+                <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }}>
+                  <div className="dialogue-window__TXNDetail" style={{ background: '#fff', borderRadius: 4, width: 560, maxWidth: '90vw', maxHeight: '80vh', overflow: 'auto', padding: 24 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                      <h2 style={{ margin: 0, fontSize: 18 }}>Chi tiết giao dịch - {detailTxn.bankRef}</h2>
+                      <div className="dialogue-window__button-group" style={{ display: 'flex', gap: 8 }}>
+                        <a
+                          role="button"
+                          aria-label="Export PDF"
+                          href={pdfExportHref(detailTxn)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="dialogue-window__button-group__action-btn"
+                          style={{ cursor: 'pointer', fontSize: 18, textDecoration: 'none' }}
+                        >
+                          <span className="dtc-pdf">📄</span>
+                        </a>
+                        <button
+                          role="button"
+                          aria-label="In"
+                          className="dialogue-window__button-group__action-btn"
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}
+                        >
+                          🖨
+                        </button>
+                        <button
+                          role="button"
+                          aria-label="Đóng"
+                          className="dialogue-window__button-group__action-btn dialogue-window__button-group__action-btn--close"
+                          onClick={() => setDetailRef(null)}
+                          style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: 16 }}
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                    <hr style={{ border: 'none', borderTop: '1px solid #ddd', marginBottom: 16 }} />
+                    <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      <Field label="Mã tham chiếu khách hàng" value={rowReference(detailTxn)} />
+                      <Field label="Mã tham chiếu ngân hàng" value={detailTxn.bankRef} />
+                      <Field label="Mã tham chiếu liên quan" value={detailTxn.bankRef} />
+                      <Field label="Chú giải bổ sung" value={detailTxn.narrative} />
+                      <Field label="Ngày hiệu lực" value={detailTxn.postDate} />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Export */}
               <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -296,6 +465,15 @@ export default function MockAccountDetailPage() {
           )}
         </div>
       </main>
+    </div>
+  );
+}
+
+function Field({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', gap: 12 }}>
+      <span style={{ fontWeight: 700, minWidth: 220 }}>{label}</span>
+      <span>{value || 'Không có sẵn'}</span>
     </div>
   );
 }

@@ -1,8 +1,9 @@
 import {
   Controller, Get, Put, Post, Delete, Query,
-  Body, Param, UseGuards, Req, Sse, MessageEvent,
+  Body, Param, UseGuards, Req, Res, Sse, MessageEvent,
 } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { Observable, interval, from } from 'rxjs';
 import { switchMap, takeWhile, map } from 'rxjs/operators';
 import { JwtAuthGuard } from '../auth/jwt.guard';
@@ -12,11 +13,13 @@ import { BankStatementService, BankSyncJobDto } from './bank-statement.service';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
+import { UpsertDriveExportConfigDto } from './dto/drive-export-config.dto';
 import { RetryJobDto } from './dto/retry-job.dto';
 import { TriggerJobDto } from './dto/trigger-job.dto';
 import { CreateAccountNameDto } from './dto/create-account-name.dto';
 import { UpdateAccountNameDto } from './dto/update-account-name.dto';
 import { UpdateAccountSyncDto } from './dto/update-account-sync.dto';
+import { UpdateAccountPdfExportDto } from './dto/update-account-pdf-export.dto';
 
 @ApiTags('Bank Statement')
 @ApiBearerAuth()
@@ -82,6 +85,22 @@ export class BankStatementController {
     return this.service.upsertGsheetConfig(accountCode, body);
   }
 
+  // ─── Drive Export Configs (PDF giao dịch) ───────────────────────────────────
+
+  @Get('settings/drive-export')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Danh sách cấu hình thư mục Google Drive để xuất PDF giao dịch' })
+  listDriveExport() {
+    return this.service.listDriveExportConfigs();
+  }
+
+  @Put('settings/drive-export/:accountCode')
+  @HasPermission('bank_statement:config')
+  @ApiOperation({ summary: 'Tạo / cập nhật cấu hình thư mục Google Drive theo account code' })
+  upsertDriveExport(@Param('accountCode') accountCode: string, @Body() body: UpsertDriveExportConfigDto) {
+    return this.service.upsertDriveExportConfig(accountCode, body);
+  }
+
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
 
   @Get('account-names')
@@ -127,11 +146,37 @@ export class BankStatementController {
     return this.service.updateAccountSyncEnabled(Number(id), body.syncEnabled);
   }
 
+  @Put('accounts/:id/pdf-export')
+  @HasPermission('bank_statement:config')
+  @ApiOperation({ summary: 'Bật/tắt lấy PDF giao dịch cho 1 account number cụ thể' })
+  updateAccountPdfExport(@Param('id') id: string, @Body() body: UpdateAccountPdfExportDto) {
+    return this.service.updateAccountPdfExportEnabled(Number(id), body.pdfExportEnabled);
+  }
+
+  @Get('transactions/:id/pdf')
+  @HasPermission('bank_statement:view')
+  @ApiOperation({ summary: 'Xem/tải PDF của 1 giao dịch đã xuất' })
+  async getTransactionPdf(@Param('id') id: string, @Res({ passthrough: false }) res: Response) {
+    const { stream, filename, contentType } = await this.service.getTransactionPdf(Number(id));
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `inline; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    });
+    stream.pipe(res);
+  }
+
   @Post('jobs/:jobId/accounts/:accountId/resync-sheets')
   @HasPermission('bank_statement:run')
   @ApiOperation({ summary: 'Force resync — đồng bộ lại giao dịch của tài khoản này trong job lên Google Sheets, bỏ qua check đã sync' })
   resyncSheets(@Param('jobId') jobId: string, @Param('accountId') accountId: string, @Req() req: any) {
     return this.service.forceResyncSheets(jobId, Number(accountId), String(req.authUser.id));
+  }
+
+  @Post('jobs/:jobId/accounts/:accountId/resync-drive')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Force resync — đồng bộ lại PDF của tài khoản này trong job lên Google Drive, không cần fetch lại từ HSBC' })
+  resyncDrive(@Param('jobId') jobId: string, @Param('accountId') accountId: string, @Req() req: any) {
+    return this.service.forceResyncDrive(jobId, Number(accountId), String(req.authUser.id));
   }
 
   @Get('metrics')
@@ -220,6 +265,13 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Force resync — đồng bộ lại toàn bộ giao dịch của mọi tài khoản trong job này lên Google Sheets' })
   resyncJobSheets(@Param('id') id: string, @Req() req: any) {
     return this.service.forceResyncSheetsForJob(id, String(req.authUser.id));
+  }
+
+  @Post('jobs/:id/resync-drive')
+  @HasPermission('bank_statement:run')
+  @ApiOperation({ summary: 'Force resync — đồng bộ lại PDF của mọi tài khoản trong job này lên Google Drive' })
+  resyncJobDrive(@Param('id') id: string, @Req() req: any) {
+    return this.service.forceResyncDriveForJob(id, String(req.authUser.id));
   }
 
   @Post('jobs/:id/cancel')

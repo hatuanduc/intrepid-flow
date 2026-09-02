@@ -1,12 +1,27 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient, Prisma } from '@prisma/client';
 import Redis from 'ioredis';
+import * as fs from 'fs/promises';
+import * as os from 'os';
+import * as path from 'path';
 import { JOB_STATUS, FAIL_REASON } from './constants';
-import { PlaywrightService, computeDateRange, type DiscoveredAccount } from './services/playwright.service';
+import { PlaywrightService, computeDateRange, type DiscoveredAccount, type PdfRowKey } from './services/playwright.service';
 import { ExcelService, type TransactionRow } from './services/excel.service';
 import { SheetsService } from './services/sheets.service';
+import { DriveService } from './services/drive.service';
 
-type StepKey = 'bank_sync' | 'sheets_sync';
+// Local-disk cache for a PDF between "secured in S3" and "synced to Drive" — the fast
+// path for both the immediate Drive attempt right after a fetch AND a same-host retry
+// is the file already sitting on disk (no network round trip). S3 is only re-read as a
+// fallback once this file is gone (worker restarted/redeployed, disk cleared, etc) —
+// see readPdfBuffer()/cleanupPdfTempFile() below.
+const PDF_TEMP_DIR = path.join(os.tmpdir(), 'intrepid-bank-pdfs');
+
+function pdfTempPath(bankTransactionId: number): string {
+  return path.join(PDF_TEMP_DIR, `${bankTransactionId}.pdf`);
+}
+
+type StepKey = 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync';
 type StepStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 type JobStep = {
@@ -19,9 +34,25 @@ type JobStep = {
 };
 
 const INITIAL_STEPS: JobStep[] = [
-  { key: 'bank_sync',   label: 'Lấy sao kê',       status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
-  { key: 'sheets_sync', label: 'Đồng bộ GSheets',  status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'bank_sync',   label: 'Lấy sao kê',          status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'pdf_export',  label: 'Xuất PDF giao dịch',  status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'drive_sync',  label: 'Đồng bộ Google Drive', status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'sheets_sync', label: 'Đồng bộ GSheets',     status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
 ];
+
+// HSBC's row action button aria-label embeds "at D MMM YYYY HH:mm" (e.g. "at 28 Aug
+// 2026 10:49") — see playwright.service.ts's ROW_REFERENCE_RE. Only the date part is
+// used here (to bound a BankTransaction lookup to that calendar day); the exact
+// minute isn't needed since customerReference/bankReference already disambiguates
+// same-day transactions.
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function parseAriaDate(dateTimeLabel: string): Date | null {
+  const m = /^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})/.exec(dateTimeLabel.trim());
+  if (!m) return null;
+  const month = MONTH_ABBR.indexOf(m[2]);
+  if (month < 0) return null;
+  return new Date(Date.UTC(Number(m[3]), month, Number(m[1])));
+}
 
 function parseSteps(raw: unknown): JobStep[] {
   if (!Array.isArray(raw) || raw.length === 0) return INITIAL_STEPS.map(s => ({ ...s }));
@@ -54,6 +85,7 @@ export class BankSyncService {
     private readonly playwright: PlaywrightService,
     private readonly excel: ExcelService,
     private readonly sheets: SheetsService,
+    private readonly drive: DriveService,
   ) {}
 
   async run(jobId: number): Promise<void> {
@@ -73,19 +105,104 @@ export class BankSyncService {
 
     const step1Done = steps.find(s => s.key === 'bank_sync')?.status === 'completed';
     const step2Done = steps.find(s => s.key === 'sheets_sync')?.status === 'completed';
+    const step3Done = steps.find(s => s.key === 'pdf_export')?.status === 'completed';
+    const step4Done = steps.find(s => s.key === 'drive_sync')?.status === 'completed';
 
     try {
-      // ── Step 1: Fetch bank statement ────────────────────────────────────────
+      // ── Step 1: Fetch bank statement (+ PDF export, interleaved per-account) ──
+      // PDF export is folded into the SAME per-account loop as bank_sync (it needs
+      // that account's live, already-filtered browser page right after the Excel
+      // download — see runPdfExportForAccount(), called from runBankSync()) rather
+      // than running as a separate step afterward.
+      //
+      // A retry whose Excel fetch already succeeded (step1Done) but whose PDF export
+      // didn't (!step3Done) must NOT redo the Excel download — it already has what it
+      // needs on file. runPdfExportOnly() handles that case by repositioning each
+      // account live on HSBC (account switch + date filter only, via
+      // navigateToAccountAndApplyFilter()) and scanning for PDFs directly, skipping
+      // the Excel export/parse/store entirely.
       let accountRows = new Map<string, TransactionRow[]>();
+      let pdfExportMs = 0;
 
       if (!step1Done) {
         await this.updateStep(jobId, 'bank_sync', { status: 'running', startedAt: new Date().toISOString() });
-        accountRows = await this.runBankSync(jobId);
+        await this.updateStep(jobId, 'pdf_export', { status: 'running', startedAt: new Date().toISOString() });
+        // Drive delivery happens interleaved inside the SAME per-account loop as
+        // pdf_export (see attemptDriveUpload() calls in runPdfExportForAccount()) — it
+        // has no separate execution phase of its own during a normal run, only a
+        // separate STEP so it can be inspected/retried independently afterward. Marked
+        // 'running' alongside pdf_export here; finalized as its own step below once
+        // the loop (and therefore any Drive attempts within it) has actually finished.
+        await this.updateStep(jobId, 'drive_sync', { status: 'running', startedAt: new Date().toISOString() });
+        const bankSyncResult = await this.runBankSync(jobId);
+        accountRows = bankSyncResult.rows;
+        pdfExportMs = bankSyncResult.pdfExportMs;
         await this.updateStep(jobId, 'bank_sync', { status: 'completed', completedAt: new Date().toISOString() });
       } else {
         await this.log(jobId, 'Bank sync already completed — loading transactions from DB.', 'sheets_sync', 'success');
         accountRows = await this.loadTransactionsForJob(jobId);
         await this.log(jobId, `Loaded ${pl(accountRows.size, 'account number')} from DB.`, 'sheets_sync');
+
+        if (!step3Done) {
+          await this.updateStep(jobId, 'pdf_export', { status: 'running', startedAt: new Date().toISOString() });
+          await this.updateStep(jobId, 'drive_sync', { status: 'running', startedAt: new Date().toISOString() });
+          pdfExportMs = await this.runPdfExportOnly(jobId);
+        }
+      }
+
+      // Aggregate PDF outcome across every account touched by this job so far (whether
+      // just fetched above, or already recorded by a prior attempt) — drives both the
+      // pdf_export step's final status and the job-level completion check below. This
+      // is the "PDF fetching counts toward whether the day is done" criterion.
+      const pdfAccounts = await this.prisma.bankSyncJobAccount.findMany({
+        where: { jobId },
+        select: { pdfStatus: true, pdfFailed: true },
+      });
+      const pdfExportFailed = pdfAccounts.some(a => a.pdfStatus === 'failed');
+      const pdfFailedCount = pdfAccounts.reduce((sum, a) => sum + a.pdfFailed, 0);
+      // startedAt is backdated from completedAt by the REAL cumulative time spent
+      // inside runPdfExportForAccount() (pdfExportMs) — not bank_sync's own start —
+      // so a run where every account hit a no-data/already-synced path (pdfExportMs=0)
+      // honestly shows ~0s instead of falsely mirroring bank_sync's whole duration,
+      // which previously made "Export transaction PDFs" look like it did real work
+      // even when it never opened a single live page.
+      const pdfCompletedAt = new Date();
+      const pdfStartedAt = new Date(pdfCompletedAt.getTime() - pdfExportMs);
+      await this.updateStep(jobId, 'pdf_export', {
+        status: pdfExportFailed ? 'failed' : 'completed',
+        startedAt: pdfStartedAt.toISOString(),
+        completedAt: pdfCompletedAt.toISOString(),
+        errorMessage: pdfExportFailed ? `${pdfFailedCount} PDF(s) failed to export` : null,
+      });
+
+      // ── Drive sync — independently retryable, never fails the job ──────────
+      // Two branches: (a) a standalone retry of JUST this step (bank_sync and
+      // pdf_export already completed on an earlier attempt) — actually does new work
+      // via forceResyncDriveForJob(), no Playwright/HSBC needed since the PDF already
+      // sits in S3; (b) the normal pass-through case — Drive attempts (if any) already
+      // ran interleaved inside pdf_export above, this just aggregates their outcome
+      // into the step's own status. Drive failures are reported here for visibility
+      // but deliberately excluded from pdfExportFailed/the job-failure check below —
+      // the PDF itself is already safe in S3, Drive is a best-effort mirror that
+      // retries automatically (or via this same step's retry button) without ever
+      // forcing a re-fetch from HSBC.
+      if (step1Done && step3Done && !step4Done) {
+        await this.updateStep(jobId, 'drive_sync', { status: 'running', startedAt: new Date().toISOString() });
+        const driveRetry = await this.forceResyncDriveForJob(jobId);
+        await this.updateStep(jobId, 'drive_sync', {
+          status: driveRetry.failed > 0 ? 'failed' : 'completed',
+          completedAt: new Date().toISOString(),
+          errorMessage: driveRetry.failed > 0 ? `${driveRetry.failed} PDF(s) still failed to sync to Drive` : null,
+        });
+      } else {
+        const driveRows = await this.prisma.bankTransactionPdf.findMany({ where: { jobId }, select: { driveSyncStatus: true } });
+        const driveFailedCount = driveRows.filter(r => r.driveSyncStatus === 'failed').length;
+        await this.updateStep(jobId, 'drive_sync', {
+          status: driveFailedCount > 0 ? 'failed' : 'completed',
+          startedAt: pdfStartedAt.toISOString(),
+          completedAt: pdfCompletedAt.toISOString(),
+          errorMessage: driveFailedCount > 0 ? `${driveFailedCount} PDF(s) failed to sync to Drive` : null,
+        });
       }
 
       // ── Step 2: Sync to Google Sheets ───────────────────────────────────────
@@ -114,10 +231,18 @@ export class BankSyncService {
         }
       }
 
-      if (sheetsSyncFailed) {
-        await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, 'GSheets sync failed for one or more accounts');
-        await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets.', undefined, 'error');
-        await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', `${sheetsFailedCount} tài khoản lỗi khi đồng bộ Google Sheets.`);
+      if (sheetsSyncFailed || pdfExportFailed) {
+        const errorParts = [
+          sheetsSyncFailed ? `GSheets sync failed for ${sheetsFailedCount} account(s)` : null,
+          pdfExportFailed ? `PDF export failed for ${pdfFailedCount} transaction(s)` : null,
+        ].filter(Boolean);
+        await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, errorParts.join('; '));
+        await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets or export PDFs.', undefined, 'error');
+        const notifyParts = [
+          sheetsSyncFailed ? `${sheetsFailedCount} tài khoản lỗi khi đồng bộ Google Sheets.` : null,
+          pdfExportFailed ? `${pdfFailedCount} giao dịch lỗi khi xuất PDF.` : null,
+        ].filter(Boolean);
+        await this.notify(jobId, 'job_failed', 'Đồng bộ sao kê thất bại', notifyParts.join(' '));
         return;
       }
 
@@ -133,14 +258,17 @@ export class BankSyncService {
 
       const msg = (err as Error).message ?? 'Unknown error';
 
-      // Mark the currently running step as failed/cancelled
+      // Mark every currently running step as failed/cancelled — bank_sync AND
+      // pdf_export are typically BOTH 'running' at once (pdf_export executes nested
+      // inside runBankSync()'s per-account loop, see run() above), so a single
+      // `.find()` would silently leave one of them stuck at 'running' forever.
       const current = await this.prisma.bankSyncJob.findUnique({ where: { id: jobId }, select: { status: true, steps: true } });
       const currentSteps = parseSteps(current?.steps);
-      const runningStep = currentSteps.find(s => s.status === 'running');
+      const runningSteps = currentSteps.filter(s => s.status === 'running');
 
       if (current?.status === JOB_STATUS.CANCELLED || msg === 'JOB_CANCELLED') {
-        if (runningStep) {
-          await this.updateStep(jobId, runningStep.key, {
+        for (const step of runningSteps) {
+          await this.updateStep(jobId, step.key, {
             status: 'failed',
             completedAt: new Date().toISOString(),
             errorMessage: 'Cancelled by user',
@@ -149,8 +277,8 @@ export class BankSyncService {
         return; // Status already set to cancelled by API — don't throw
       }
 
-      if (runningStep) {
-        await this.updateStep(jobId, runningStep.key, {
+      for (const step of runningSteps) {
+        await this.updateStep(jobId, step.key, {
           status: 'failed',
           completedAt: new Date().toISOString(),
           errorMessage: msg,
@@ -267,10 +395,130 @@ export class BankSyncService {
     }
   }
 
+  /** Shared by runBankSync() and runPdfExportOnly() — logs under whichever step is currently 'running'. */
+  private async ensureAuthenticated(jobId: number, logStepKey: StepKey): Promise<void> {
+    const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
+    await this.playwright.init();
+    await this.log(jobId, 'Browser ready — checking session...', logStepKey);
+    await this.updateJob(jobId, JOB_STATUS.CHECKING_SESSION);
+
+    if (!(await this.playwright.isLoggedIn())) {
+      await this.log(jobId, 'Session expired — logging in.', logStepKey);
+      await this.updateJob(jobId, JOB_STATUS.LOGGING_IN);
+      const username = settings?.hsbcnetUsername ?? '';
+      if (!username) {
+        throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
+      }
+      await this.playwright.login(username);
+      await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, logStepKey);
+      await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
+      await this.notify(jobId, 'job_waiting_2fa', 'HSBCnet cần xác nhận đăng nhập', 'Mở app HSBCnet trên điện thoại để xác nhận đăng nhập.');
+      await this.playwright.wait2FA(() => this.isJobCancelled(jobId));
+      await this.log(jobId, '2FA confirmed.', logStepKey, 'success');
+      await this.playwright.saveSession();
+      await this.log(jobId, 'Session saved for reuse.', logStepKey, 'success');
+    } else {
+      await this.log(jobId, 'Session still valid — skipping authentication.', logStepKey, 'success');
+    }
+
+    await this.updateJob(jobId, JOB_STATUS.AUTHENTICATED);
+    await this.log(jobId, 'Authenticated successfully.', logStepKey, 'success');
+  }
+
+  /**
+   * Retry path for a job whose bank_sync (Excel) step already completed but
+   * pdf_export hasn't — reposition each account live on HSBC (account switch + date
+   * filter only, via navigateToAccountAndApplyFilter()) and run the PDF scan
+   * directly, WITHOUT re-downloading Excel it doesn't need again. Used by run()
+   * whenever step1Done && !step3Done — see the branch there.
+   */
+  private async runPdfExportOnly(jobId: number): Promise<number> {
+    let pdfExportMs = 0;
+
+    // Read back the EXACT range the original bank_sync run persisted (see runBankSync()
+    // 1a) rather than recomputing from today's settings — a retry days later must still
+    // reposition each account on the same range it originally fetched, not "yesterday"
+    // as of whenever the retry happens to run.
+    const job = await this.prisma.bankSyncJob.findUnique({
+      where: { id: jobId },
+      select: { dateRangeFrom: true, dateRangeTo: true },
+    });
+    const dateFrom = job?.dateRangeFrom;
+    const dateTo = job?.dateRangeTo;
+    if (!dateFrom || !dateTo) {
+      throw new Error('Job has no persisted date range — cannot reposition accounts for PDF export.');
+    }
+
+    await this.ensureAuthenticated(jobId, 'pdf_export');
+    // Land on account-detail (the "Change account" search + transaction table this
+    // needs) — a fresh login lands on the dashboard, not here, and even a reused
+    // session isn't guaranteed to still be sitting on it from a prior run.
+    await this.playwright.navigateToAccountDetailPage();
+
+    const accounts = await this.prisma.bankAccount.findMany({
+      where: { syncEnabled: true, accountNameRef: { isActive: true } },
+      orderBy: [{ accountName: 'asc' }, { accountNumber: 'asc' }],
+    });
+    const groups = new Map<string, typeof accounts>();
+    for (const account of accounts) {
+      if (!groups.has(account.accountName)) groups.set(account.accountName, []);
+      groups.get(account.accountName)!.push(account);
+    }
+
+    for (const [groupName, groupAccounts] of groups) {
+      await this.log(jobId, `${groupName} (${pl(groupAccounts.length, 'account number')}):`, 'pdf_export');
+
+      for (const account of groupAccounts) {
+        if (await this.isJobCancelled(jobId)) {
+          await this.log(jobId, 'Job cancelled by user.', 'pdf_export', 'warn');
+          throw new Error('JOB_CANCELLED');
+        }
+
+        let hasData: boolean;
+        try {
+          hasData = await this.playwright.navigateToAccountAndApplyFilter(
+            account.accountNumber, dateFrom, dateTo, () => this.isJobCancelled(jobId),
+          );
+        } catch (err) {
+          const msg = (err as Error).message ?? 'Navigation error';
+          if (msg === 'JOB_CANCELLED') throw err;
+          // Same "not listed on HSBC today" carve-out as runBankSync() — an account
+          // absent from today's switcher is expected, not a fetch failure.
+          if (/not found in HSBC's account list/.test(msg)) {
+            await this.log(jobId, `  → ${account.accountNumber}: not listed on HSBC today — no data.`, 'pdf_export', 'warn');
+            await this.upsertJobAccount(jobId, account.id, { pdfStatus: 'no_data', pdfFetched: 0, pdfFailed: 0, pdfError: null });
+            continue;
+          }
+          await this.log(jobId, `  → ${account.accountNumber}: could not reposition for PDF export — ${msg}`, 'pdf_export', 'error');
+          await this.upsertJobAccount(jobId, account.id, { pdfStatus: 'failed', pdfError: msg });
+          continue;
+        }
+
+        if (!hasData) {
+          await this.log(jobId, `  → ${account.accountNumber}: no transactions in range — nothing to export.`, 'pdf_export');
+          await this.upsertJobAccount(jobId, account.id, { pdfStatus: 'no_data', pdfFetched: 0, pdfFailed: 0, pdfError: null });
+          continue;
+        }
+
+        const pdfExportStart = Date.now();
+        await this.runPdfExportForAccount(jobId, account);
+        pdfExportMs += Date.now() - pdfExportStart;
+      }
+    }
+
+    return pdfExportMs;
+  }
+
   // ─── Step 1: Bank sync (login → discover → download → parse → store) ────────
 
-  private async runBankSync(jobId: number): Promise<Map<string, TransactionRow[]>> {
+  private async runBankSync(jobId: number): Promise<{ rows: Map<string, TransactionRow[]>; pdfExportMs: number }> {
     const result = new Map<string, TransactionRow[]>();
+    // Real cumulative time spent actually scanning/exporting PDFs (see the
+    // runPdfExportForAccount() call below) — used by run() to give the pdf_export
+    // step an honest duration instead of reusing bank_sync's whole start/end window,
+    // which would show e.g. "31s" even on a run where every account hit a no-data
+    // path above and PDF export never touched a single live page.
+    let pdfExportMs = 0;
 
     const settings = await this.prisma.bankJobSettings.findUnique({ where: { id: 'default' } });
 
@@ -364,41 +612,29 @@ export class BankSyncService {
         await this.upsertJobAccount(jobId, account.id, {
           status: 'completed',
           sheetsSyncStatus: 'no_data',
+          // No live HSBC page is ever opened on this bail-out path (see comment above:
+          // "skipping HSBC login entirely"), so there's no table to scan for PDFs either —
+          // explicitly 'no_data', not the pdfStatus column's default 'pending', which would
+          // otherwise sit there forever looking like PDF export never got around to this
+          // account rather than correctly reporting "nothing to export this run". Also
+          // reset pdfFetched/pdfFailed/pdfError — upsert's `update` only touches listed
+          // fields, so without this a PREVIOUS run's failure count/message would keep
+          // showing next to a status that now says "nothing to do this run".
+          pdfStatus: 'no_data',
+          pdfFetched: 0,
+          pdfFailed: 0,
+          pdfError: null,
           rowsDownloaded: existingCount,
           rowsInserted: 0,
           rowsDuplicate: existingCount,
         });
         await this.registerJobOwnership(jobId, account.id, dateFrom, dateTo);
       }
-      return result;
+      return { rows: result, pdfExportMs: 0 };
     }
 
     // ── 1c. Browser + auth ────────────────────────────────────────────────────
-    await this.playwright.init();
-    await this.log(jobId, 'Browser ready — checking session...', 'bank_sync');
-    await this.updateJob(jobId, JOB_STATUS.CHECKING_SESSION);
-
-    if (!(await this.playwright.isLoggedIn())) {
-      await this.log(jobId, 'Session expired — logging in.', 'bank_sync');
-      await this.updateJob(jobId, JOB_STATUS.LOGGING_IN);
-      const username = settings?.hsbcnetUsername ?? '';
-      if (!username) {
-        throw new Error('HSBCNET_USERNAME_NOT_CONFIGURED');
-      }
-      await this.playwright.login(username);
-      await this.log(jobId, `Username entered (${username}) — waiting for 2FA on phone...`, 'bank_sync');
-      await this.updateJob(jobId, JOB_STATUS.WAITING_2FA);
-      await this.notify(jobId, 'job_waiting_2fa', 'HSBCnet cần xác nhận đăng nhập', 'Mở app HSBCnet trên điện thoại để xác nhận đăng nhập.');
-      await this.playwright.wait2FA(() => this.isJobCancelled(jobId));
-      await this.log(jobId, '2FA confirmed.', 'bank_sync', 'success');
-      await this.playwright.saveSession();
-      await this.log(jobId, 'Session saved for reuse.', 'bank_sync', 'success');
-    } else {
-      await this.log(jobId, 'Session still valid — skipping authentication.', 'bank_sync', 'success');
-    }
-
-    await this.updateJob(jobId, JOB_STATUS.AUTHENTICATED);
-    await this.log(jobId, 'Authenticated successfully.', 'bank_sync', 'success');
+    await this.ensureAuthenticated(jobId, 'bank_sync');
 
     // ── 1d. Discover accounts from HSBCnet switcher → upsert BankAccount ─────
     await this.updateJob(jobId, JOB_STATUS.DISCOVERING_ACCOUNTS);
@@ -468,6 +704,16 @@ export class BankSyncService {
           await this.upsertJobAccount(jobId, account.id, {
             status: 'completed',
             sheetsSyncStatus: 'no_data',
+            // Same reasoning as the allAlreadyCovered bail-out above — no live page
+            // opened for this account this run, so pdfStatus must be explicit 'no_data',
+            // not left at the column's default 'pending' (which would misleadingly
+            // read as "PDF export still owes this account something" forever). Reset
+            // pdfFetched/pdfFailed/pdfError too, or a previous run's failure lingers
+            // next to a status that now says there's nothing to do.
+            pdfStatus: 'no_data',
+            pdfFetched: 0,
+            pdfFailed: 0,
+            pdfError: null,
             rowsDownloaded: existingCount,
             rowsInserted: 0,
             rowsDuplicate: existingCount,
@@ -505,7 +751,7 @@ export class BankSyncService {
           // range, not as an error, so it doesn't read as something needing action.
           if (/not found in HSBC's account list/.test(msg)) {
             await this.log(jobId, `  → ${account.accountNumber}: not listed on HSBC today — no data.`, 'bank_sync', 'warn');
-            await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
+            await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data', pdfStatus: 'no_data', pdfFetched: 0, pdfFailed: 0, pdfError: null });
             continue;
           }
           await this.log(jobId, `  → ${account.accountNumber}: fetch failed — ${msg} [${FAIL_REASON.DOWNLOAD_ERROR}]`, 'bank_sync', 'error');
@@ -515,7 +761,7 @@ export class BankSyncService {
 
         if (excelBuffer === null) {
           await this.log(jobId, `  → ${account.accountNumber}: no transactions in range.`, 'bank_sync');
-          await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data' });
+          await this.upsertJobAccount(jobId, account.id, { status: 'completed', sheetsSyncStatus: 'no_data', pdfStatus: 'no_data', pdfFetched: 0, pdfFailed: 0, pdfError: null });
           if (dateRangeSettled) await this.markSyncedThrough(account.id, dateFrom, dateTo);
           continue;
         }
@@ -551,6 +797,18 @@ export class BankSyncService {
           rowsDuplicate: duplicates,
         });
         if (dateRangeSettled) await this.markSyncedThrough(account.id, dateFrom, dateTo);
+
+        // PDF export runs HERE — while the page is still on this account's live,
+        // date-filtered transaction table (right before switching to the next
+        // account) — not as a separate step afterward, since it needs that exact
+        // browser state. Skips accounts on the "already synced" path above entirely
+        // (known limitation: an account whose range was marked fully synced by an
+        // earlier run, before this feature existed or before PDF export was enabled
+        // for it, never gets its live table re-opened to backfill those PDFs — same
+        // class of gap forceResyncSheets exists to patch for Sheets).
+        const pdfExportStart = Date.now();
+        await this.runPdfExportForAccount(jobId, account);
+        pdfExportMs += Date.now() - pdfExportStart;
 
         // Include the account even with 0 new rows if it has never been synced to
         // GSheets successfully — otherwise a fixed config/retry would never get a
@@ -592,7 +850,331 @@ export class BankSyncService {
     // Rebuild the row set to sync from DB (same query loadTransactionsForJob() uses
     // for the step2-only retry path) instead of accumulating it during the loop above —
     // see the comment at the `withNew++` site for why.
-    return await this.loadTransactionsForJob(jobId);
+    return { rows: await this.loadTransactionsForJob(jobId), pdfExportMs };
+  }
+
+  // ─── PDF export (nested inside Step 1's per-account loop) ───────────────────
+
+  /**
+   * Scan `account`'s currently-displayed transaction table for rows with a "..."
+   * action button, fetch a PDF via HSBC's "Chi tiết giao dịch" popup for every one
+   * not already fetched (dedup key: BankTransactionPdf.status on the matched
+   * BankTransaction row — see PdfRowKey/exportTransactionPdfs() docstring), and
+   * secure it in S3. Records the aggregate outcome on BankSyncJobAccount.
+   *
+   * Fetch (HSBC → S3) and Drive delivery are two independently-retryable stages —
+   * see BankTransactionPdf.status vs .driveSyncStatus in schema.prisma. `status` alone
+   * gates re-running the Playwright click-through; a Drive outage never forces
+   * re-fetching from HSBC, since the PDF bytes are already sitting in S3 and Drive
+   * upload just re-reads them from there (attemptDriveUpload/syncPendingDriveUploads).
+   *
+   * Must be called right after this account's Excel download + storeTransactions()
+   * succeed, while playwright is still on this account's filtered page.
+   */
+  private async runPdfExportForAccount(
+    jobId: number,
+    account: { id: number; accountCode: string; accountName: string; accountNumber: string; pdfExportEnabled: boolean },
+  ): Promise<void> {
+    const driveConfig = await this.prisma.bankDriveExportConfig.findUnique({ where: { accountCode: account.accountCode } });
+    const enabled = !!driveConfig?.isActive && account.pdfExportEnabled;
+    if (!enabled) {
+      await this.log(jobId, `  → ${account.accountNumber}: PDF export not enabled — skipping.`, 'pdf_export');
+      await this.upsertJobAccount(jobId, account.id, { pdfStatus: 'skipped' });
+      return;
+    }
+
+    // Backfill first — retry Drive delivery for any PDF this account already secured
+    // in S3 on a previous run but never made it to Drive (Drive outage, missing config
+    // at the time, etc). Pure S3→Drive, no Playwright/HSBC involved.
+    await this.syncPendingDriveUploads(jobId, account);
+
+    let driveSynced = 0;
+    let driveFailed = 0;
+
+    // Shared by both callbacks below — re-queried each time rather than cached across
+    // the shouldFetch→onCaptured pair, so there's no shared mutable state to get out
+    // of sync (the extra DB round trip is negligible next to a full PDF export).
+    const findTxn = (reference: string, dateTimeLabel: string) => {
+      const day = parseAriaDate(dateTimeLabel);
+      if (!day) return Promise.resolve(null);
+      const dayStart = day;
+      const dayEnd = new Date(day.getTime() + 24 * 60 * 60 * 1000 - 1);
+      return this.prisma.bankTransaction.findFirst({
+        where: {
+          bankAccountId: account.id,
+          postDate: { gte: dayStart, lte: dayEnd },
+          OR: [{ customerReference: reference }, { bankReference: reference }],
+        },
+        include: { pdf: true },
+      });
+    };
+
+    // Rows the aria-label→BankTransaction match fails for. This is the NORMAL case,
+    // not an error: the transaction table on screen shows rows across many days/pages,
+    // while we've only stored the day(s) this sync run actually fetched — a row from
+    // outside that range simply has nothing to match against yet, and that's expected.
+    // Only a row that DOES match a stored BankTransaction but then fails to actually
+    // fetch/upload its PDF is a real problem (tracked via result.failed below). Kept
+    // here purely for diagnostics (logged at 'info', not counted toward pdfFailed).
+    const unmatched: PdfRowKey[] = [];
+
+    let result: { scanned: number; fetched: number; failed: number; errors: Array<{ reference: string; message: string }> };
+    try {
+      result = await this.playwright.exportTransactionPdfs(
+        account.accountNumber,
+        async (key: PdfRowKey) => {
+          const txn = await findTxn(key.reference, key.dateTimeLabel);
+          if (!txn) {
+            unmatched.push(key);
+            return false;
+          }
+          // Dedup key is the BankTransaction row (via its linked BankTransactionPdf),
+          // NOT the AITRANPRINT export filename — that filename is regenerated with a
+          // fresh timestamp on every export, so it can't identify "already fetched".
+          return txn.pdf?.status !== 'fetched';
+        },
+        async (key: PdfRowKey, pdf: Buffer, fileName: string) => {
+          const txn = await findTxn(key.reference, key.dateTimeLabel);
+          if (!txn) {
+            this.logger.error(`[pdf_export] ${account.accountNumber}: lost match for reference "${key.reference}" between scan and capture`);
+            return;
+          }
+
+          // Keep a local-disk copy before anything else — attemptDriveUpload() below
+          // (and any later same-host retry) reads from here first and only touches S3
+          // once this file is gone, so the immediate Drive attempt right after a fetch
+          // never re-downloads what we're already holding.
+          await this.writePdfTempFile(txn.id, pdf).catch(
+            (err) => this.logger.warn(`[pdf_export] ${account.accountNumber}: failed to write local PDF cache for txn ${txn.id}: ${(err as Error).message}`),
+          );
+
+          // Step 1 — secure the PDF in S3. This alone sets status='fetched', which is
+          // what shouldFetch() above checks to skip re-clicking through HSBC on a later
+          // run. Drive delivery (step 2) is a separate, independently-retryable concern.
+          const s3Result = await this.drive.uploadToS3(account.accountName, account.accountNumber, txn.postDate, pdf, fileName)
+            .catch((err): { skipped: true; reason: string } => ({ skipped: true, reason: (err as Error).message }));
+
+          await this.prisma.bankTransactionPdf.upsert({
+            where: { bankTransactionId: txn.id },
+            create: {
+              bankTransactionId: txn.id,
+              jobId,
+              status: s3Result.skipped ? 'failed' : 'fetched',
+              fileName,
+              s3Key: !s3Result.skipped ? s3Result.s3Key : null,
+              errorMessage: s3Result.skipped ? s3Result.reason : null,
+              fetchedAt: s3Result.skipped ? null : new Date(),
+            },
+            update: {
+              jobId,
+              status: s3Result.skipped ? 'failed' : 'fetched',
+              fileName,
+              s3Key: !s3Result.skipped ? s3Result.s3Key : null,
+              errorMessage: s3Result.skipped ? s3Result.reason : null,
+              fetchedAt: s3Result.skipped ? null : new Date(),
+            },
+          });
+
+          if (s3Result.skipped) throw new Error(s3Result.reason); // counted as 'failed' by exportTransactionPdfs() — S3 is required to consider a PDF "fetched"
+
+          // Step 2 — best-effort Drive delivery right away, reading back the file we
+          // just wrote to disk (not re-downloading from S3). A failure here does NOT
+          // throw (does not count toward this account's pdfFailed) — it's tracked on
+          // driveSyncStatus and retried automatically by the next run's
+          // syncPendingDriveUploads() backfill.
+          const driveOutcome = await this.attemptDriveUpload(txn.id, account, txn.postDate, fileName, s3Result.skipped ? null : s3Result.s3Key);
+          if (driveOutcome.ok) driveSynced++; else driveFailed++;
+        },
+        () => this.isJobCancelled(jobId),
+      );
+    } catch (err) {
+      const msg = (err as Error).message ?? 'PDF export error';
+      if (msg === 'JOB_CANCELLED') throw err; // must stop the whole job, same as a download cancellation
+      await this.log(jobId, `  → ${account.accountNumber}: PDF export failed — ${msg}`, 'pdf_export', 'error');
+      await this.upsertJobAccount(jobId, account.id, { pdfStatus: 'failed', pdfError: msg });
+      return;
+    }
+
+    // Only genuine fetch/upload failures (a row that DOES match a stored BankTransaction
+    // but couldn't be captured) count as real errors — "unmatched" is normal and excluded.
+    const totalFailed = result.failed;
+    const pdfStatus = totalFailed > 0 ? 'failed' : (result.scanned > 0 ? 'completed' : 'no_data');
+    await this.log(
+      jobId,
+      `  → ${account.accountNumber}: PDF scan — ${result.scanned} checked, ${result.fetched} fetched, ${totalFailed} failed` +
+        (unmatched.length > 0 ? `, ${unmatched.length} not found on file (outside this sync's range — normal)` : '') + '.',
+      'pdf_export',
+      totalFailed > 0 ? 'error' : (result.fetched > 0 ? 'success' : 'info'),
+    );
+    // Log each row's actual failure reason — previously only the count made it here
+    // ("1 failed"), with the real reason stranded in the worker's own console
+    // (this.logger.error inside exportTransactionPdfs), invisible to anyone reading
+    // the job's "Show technical details" in the UI.
+    for (const e of result.errors) {
+      await this.log(jobId, `  → ${account.accountNumber}: PDF failed for "${e.reference}" — ${e.message}`, 'pdf_export', 'error');
+    }
+
+    // Drive delivery is reported separately from pdfStatus above — it never blocks or
+    // flips the account's PDF status to 'failed', since the file is already safely in
+    // S3 (what the app itself serves) and Drive is just a mirror synced best-effort.
+    if (driveSynced + driveFailed > 0) {
+      await this.log(
+        jobId,
+        `  → ${account.accountNumber}: Drive delivery — ${driveSynced} synced, ${driveFailed} pending retry (will retry automatically next run, no HSBC re-fetch needed).`,
+        'pdf_export',
+        driveFailed > 0 ? 'info' : 'success',
+      );
+    }
+
+    // Unmatched rows — brief info line only in the job's visible log (not having synced
+    // a given row yet is the normal case, not a failure). Full candidate dump (which
+    // on-file refs exist that day, for spotting a genuine mismatch) still goes to
+    // this.logger — console/CloudWatch only — so it doesn't clutter what the user sees.
+    for (const key of unmatched) {
+      await this.log(jobId, `  → ${account.accountNumber}: PDF not found for "${key.reference}" (${key.dateTimeLabel}).`, 'pdf_export', 'info');
+
+      const day = parseAriaDate(key.dateTimeLabel);
+      if (day) {
+        const dayEnd = new Date(day.getTime() + 24 * 60 * 60 * 1000 - 1);
+        const candidates = await this.prisma.bankTransaction.findMany({
+          where: { bankAccountId: account.id, postDate: { gte: day, lte: dayEnd } },
+          select: { customerReference: true, bankReference: true, postDate: true },
+        });
+        const candidatesDesc = candidates.length === 0
+          ? 'no BankTransaction rows on file for that account+day at all'
+          : `on-file refs that day: ${candidates.map(c => `customerRef="${c.customerReference ?? ''}" bankRef="${c.bankReference ?? ''}"`).join(', ')}`;
+        this.logger.log(`[pdf_export] ${account.accountNumber}: unmatched "${key.reference}" @ ${key.dateTimeLabel} — ${candidatesDesc}`);
+      }
+    }
+
+    const pdfErrorSummary = result.errors.map(e => `${e.reference}: ${e.message}`).join('; ') || null;
+    await this.upsertJobAccount(jobId, account.id, {
+      pdfStatus,
+      pdfFetched: result.fetched,
+      pdfFailed: totalFailed,
+      pdfError: pdfErrorSummary,
+    });
+  }
+
+  /**
+   * Write the fetched PDF to a local scratch file — the durable-enough working copy
+   * that both the immediate Drive attempt and any later same-host retry read from,
+   * so neither has to go back to S3 for bytes we already have sitting on this host.
+   */
+  private async writePdfTempFile(bankTransactionId: number, buffer: Buffer): Promise<void> {
+    await fs.mkdir(PDF_TEMP_DIR, { recursive: true });
+    await fs.writeFile(pdfTempPath(bankTransactionId), buffer);
+  }
+
+  /**
+   * Local disk first, S3 only as the fallback once the local copy is gone (worker
+   * restarted/redeployed since the fetch, disk cleared, etc) — this is the only place
+   * a Drive attempt ever touches S3, and only when it has to.
+   */
+  private async readPdfBuffer(bankTransactionId: number, s3Key: string | null): Promise<Buffer> {
+    try {
+      return await fs.readFile(pdfTempPath(bankTransactionId));
+    } catch {
+      if (!s3Key) throw new Error('PDF missing from both local disk and S3 (no s3Key on file)');
+      return this.drive.downloadFromS3(s3Key);
+    }
+  }
+
+  /** Both S3 and Drive are confirmed done — the local scratch copy has served its purpose. */
+  private async cleanupPdfTempFile(bankTransactionId: number): Promise<void> {
+    await fs.unlink(pdfTempPath(bankTransactionId)).catch(() => {});
+  }
+
+  /**
+   * Push one already-fetched PDF to Drive (reading it via readPdfBuffer — local disk
+   * first, S3 fallback) and record the outcome on driveSyncStatus/driveError —
+   * completely independent of BankTransactionPdf.status/errorMessage, which track the
+   * HSBC→S3 fetch only. Used both for the immediate attempt right after a fresh fetch
+   * and for retrying a previously-failed Drive upload out of syncPendingDriveUploads().
+   * On success, removes the local scratch file — both copies (S3 + Drive) are secured.
+   */
+  private async attemptDriveUpload(
+    bankTransactionId: number,
+    account: { accountCode: string; accountName: string; accountNumber: string },
+    postDate: Date,
+    fileName: string,
+    s3Key: string | null,
+  ): Promise<{ ok: boolean; reason?: string }> {
+    let pdf: Buffer;
+    try {
+      pdf = await this.readPdfBuffer(bankTransactionId, s3Key);
+    } catch (err) {
+      const reason = (err as Error).message;
+      await this.prisma.bankTransactionPdf.update({
+        where: { bankTransactionId },
+        data: { driveSyncStatus: 'failed', driveError: reason },
+      }).catch(() => {});
+      return { ok: false, reason };
+    }
+
+    const driveResult = await this.drive.uploadPdf(account.accountCode, account.accountName, account.accountNumber, postDate, pdf, fileName)
+      .catch((err): { skipped: true; reason: string } => ({ skipped: true, reason: (err as Error).message }));
+
+    if (driveResult.skipped) {
+      await this.prisma.bankTransactionPdf.update({
+        where: { bankTransactionId },
+        data: { driveSyncStatus: 'failed', driveError: driveResult.reason },
+      });
+      return { ok: false, reason: driveResult.reason };
+    }
+
+    await this.prisma.bankTransactionPdf.update({
+      where: { bankTransactionId },
+      data: {
+        driveSyncStatus: 'synced',
+        driveError: null,
+        driveFileId: driveResult.driveFileId,
+        driveFileUrl: driveResult.driveFileUrl,
+        driveSyncedAt: new Date(),
+      },
+    });
+    await this.cleanupPdfTempFile(bankTransactionId);
+    return { ok: true };
+  }
+
+  /**
+   * Retry Drive delivery for every PDF this account already secured in S3 on a
+   * previous run but never synced to Drive (Drive outage, config only just added,
+   * etc). attemptDriveUpload()'s readPdfBuffer() checks local disk first — if this
+   * host still has the scratch file from the original fetch, no network call to S3
+   * is needed at all; S3 only comes into play once that file is gone.
+   */
+  private async syncPendingDriveUploads(
+    jobId: number,
+    account: { id: number; accountCode: string; accountName: string; accountNumber: string },
+  ): Promise<void> {
+    const pending = await this.prisma.bankTransactionPdf.findMany({
+      where: {
+        status: 'fetched',
+        driveSyncStatus: { not: 'synced' },
+        s3Key: { not: null },
+        bankTransaction: { bankAccountId: account.id },
+      },
+      include: { bankTransaction: { select: { postDate: true } } },
+    });
+    if (pending.length === 0) return;
+
+    await this.log(jobId, `  → ${account.accountNumber}: retrying Drive upload for ${pending.length} already-fetched PDF(s).`, 'pdf_export');
+
+    let synced = 0;
+    let stillFailed = 0;
+    for (const row of pending) {
+      const fileName = row.fileName ?? `transaction-${row.bankTransactionId}.pdf`;
+      const outcome = await this.attemptDriveUpload(row.bankTransactionId, account, row.bankTransaction.postDate, fileName, row.s3Key);
+      if (outcome.ok) synced++; else stillFailed++;
+    }
+
+    await this.log(
+      jobId,
+      `  → ${account.accountNumber}: Drive retry — ${synced} synced, ${stillFailed} still failing.`,
+      'pdf_export',
+      stillFailed > 0 ? 'info' : 'success',
+    );
   }
 
   // ─── Step 2: Sheets sync (read DB → push GSheets) ───────────────────────────
@@ -762,6 +1344,10 @@ export class BankSyncService {
       rowsSynced: number;
       sheetsSyncStatus: string;
       sheetsSyncError: string | null;
+      pdfStatus: string;
+      pdfFetched: number;
+      pdfFailed: number;
+      pdfError: string | null;
     }>,
   ): Promise<void> {
     await this.prisma.bankSyncJobAccount.upsert({
@@ -987,6 +1573,79 @@ export class BankSyncService {
       await this.log(jobId, `Force resync — ${label}: failed — ${msg}`, 'sheets_sync', 'error');
       await this.upsertJobAccount(jobId, bankAccountId, { sheetsSyncStatus: 'failed', sheetsSyncError: msg });
       throw err;
+    }
+  }
+
+  // ─── Force resync Drive (user-triggered, from the job detail page) ──────────
+  // Mirrors forceResyncSheets above but for Drive delivery — no Playwright/HSBC
+  // involved at all, since the PDF already sits in S3 (attemptDriveUpload just
+  // re-reads it and re-uploads). Scoped to what THIS job actually fetched
+  // (BankTransactionPdf.jobId) — same per-job scoping as pdfFetched/pdfFailed on
+  // BankSyncJobAccount, so a row on the summary table only ever offers to retry
+  // what it's showing as failed/pending for that specific job, not this account's
+  // entire cross-job history.
+  async forceResyncDrive(bankAccountId: number, jobId: number): Promise<{ accountNumber: string; synced: number; failed: number; skipped: boolean }> {
+    const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    if (!account) throw new Error('BANK_ACCOUNT_NOT_FOUND');
+
+    const pending = await this.prisma.bankTransactionPdf.findMany({
+      where: {
+        status: 'fetched',
+        driveSyncStatus: { not: 'synced' },
+        s3Key: { not: null },
+        bankTransaction: { bankAccountId },
+        jobId,
+      },
+      include: { bankTransaction: { select: { postDate: true } } },
+    });
+    if (pending.length === 0) return { accountNumber: account.accountNumber, synced: 0, failed: 0, skipped: true };
+
+    let synced = 0;
+    let failed = 0;
+    for (const row of pending) {
+      const fileName = row.fileName ?? `transaction-${row.bankTransactionId}.pdf`;
+      const outcome = await this.attemptDriveUpload(row.bankTransactionId, account, row.bankTransaction.postDate, fileName, row.s3Key);
+      if (outcome.ok) synced++; else failed++;
+    }
+
+    await this.log(
+      jobId,
+      `Force resync Drive — ${account.accountName} (${account.accountNumber}): ${synced} synced, ${failed} failed.`,
+      'drive_sync',
+      failed > 0 ? 'error' : 'success',
+    );
+    await this.maybeHealDriveStep(jobId);
+    return { accountNumber: account.accountNumber, synced, failed, skipped: false };
+  }
+
+  // Bulk variant — every account this job has its own BankSyncJobAccount row for.
+  // Used both by the job detail page's "retry all" header action and by run()'s
+  // standalone drive_sync-step retry (bank_sync/pdf_export already completed on an
+  // earlier attempt — see the run() branch above).
+  async forceResyncDriveForJob(jobId: number): Promise<{ synced: number; failed: number; accountsRetried: number }> {
+    const jobAccounts = await this.prisma.bankSyncJobAccount.findMany({ where: { jobId }, select: { bankAccountId: true } });
+    let synced = 0;
+    let failed = 0;
+    let accountsRetried = 0;
+    for (const ja of jobAccounts) {
+      const res = await this.forceResyncDrive(ja.bankAccountId, jobId);
+      if (!res.skipped) accountsRetried++;
+      synced += res.synced;
+      failed += res.failed;
+    }
+    return { synced, failed, accountsRetried };
+  }
+
+  // Mirrors maybeHealJobStatus's spirit but scoped to just the drive_sync step — once
+  // every Drive delivery this job is responsible for is confirmed synced, flip the
+  // step (if it was sitting 'failed') back to 'completed' so the timeline stops
+  // reading "failed" forever after the user has actually repaired it via force resync.
+  private async maybeHealDriveStep(jobId: number): Promise<void> {
+    const remaining = await this.prisma.bankTransactionPdf.count({
+      where: { jobId, status: 'fetched', driveSyncStatus: 'failed' },
+    });
+    if (remaining === 0) {
+      await this.updateStep(jobId, 'drive_sync', { status: 'completed', completedAt: new Date().toISOString(), errorMessage: null });
     }
   }
 

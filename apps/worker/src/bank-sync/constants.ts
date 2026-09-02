@@ -9,6 +9,7 @@ export const JOB_STATUS = {
   DISCOVERING_ACCOUNTS: 'discovering_accounts',
   DOWNLOADING: 'downloading',
   STORING: 'storing',
+  EXPORTING_PDF: 'exporting_pdf',
   SYNCING_SHEETS: 'syncing_sheets',
   COMPLETED: 'completed',
   FAILED: 'failed',

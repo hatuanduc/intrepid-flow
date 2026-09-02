@@ -147,6 +147,46 @@ export function parseDMY(s: string): Date {
   return new Date(y, m - 1, d);
 }
 
+// ── PDF-export test support ─────────────────────────────────────────────────
+// Real HSBCnet's per-row "..." action button embeds a customer reference + exact
+// timestamp directly in its aria-label (confirmed via DevTools screenshot:
+// `aria-label="Menu Thao tác, ... Mã tham chiếu khách hàng:INTREPID301097, at 28
+// Aug 2026 10:49"`) — the worker's Playwright automation parses that string to
+// match a table row back to its BankTransaction DB row, rather than reading
+// several separate <td> cells. These two helpers let the mock page render the
+// exact same shape so the automation can be tested end-to-end against it.
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** dd/mm/yyyy → "D MMM YYYY" (e.g. "28 Aug 2026") — matches HSBC's aria-label date format. */
+export function formatAriaDate(postDateDMY: string): string {
+  const d = parseDMY(postDateDMY);
+  return `${d.getDate()} ${MONTH_ABBR[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+// No real "post time" field exists in the underlying data (HSBC's Excel export
+// only has a date, not a time) — derive a stable HH:mm per row from its bank
+// reference so the same transaction always renders the same time across reloads,
+// without needing to add a new field to every literal row above.
+export function timeForRow(bankRef: string): string {
+  let hash = 0;
+  for (let i = 0; i < bankRef.length; i++) hash = (hash * 31 + bankRef.charCodeAt(i)) >>> 0;
+  const hh = String(7 + (hash % 11)).padStart(2, '0');   // 07..17
+  // `>>` is a SIGNED 32-bit shift — hash can exceed 2^31-1 (it's >>> 0'd to unsigned
+  // above), so `>>` on a large value wraps negative, and `% 60` on a negative number
+  // stays negative in JS (produced "17:-58" instead of a real time). `>>>` keeps it
+  // unsigned throughout.
+  const mm = String((hash >>> 4) % 60).padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
+/** The identifying reference shown in the row's action-button aria-label and used
+ * by the worker to match this row back to a BankTransaction — customerRef when
+ * present, else bankRef (mirrors how a real transaction can lack a customer ref). */
+export function rowReference(t: Pick<TxRow, 'customerRef' | 'bankRef'>): string {
+  return t.customerRef ?? t.bankRef;
+}
+
 // Group accounts by countryLabel for the accounts list page
 export type AccountGroup = { label: string; accounts: MockAccount[] };
 export function groupAccounts(): AccountGroup[] {

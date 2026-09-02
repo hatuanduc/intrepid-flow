@@ -294,10 +294,32 @@ export async function upsertBankGsheet(accountCode: string, input: {
   });
 }
 
+export type BankDriveExportConfig = {
+  id: number;
+  accountCode: string;
+  rootFolderId: string;
+  rootFolderUrl: string | null;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export async function listBankDriveExportConfigs() {
+  return request<BankDriveExportConfig[]>('/management/bank-statement/settings/drive-export', { auth: true });
+}
+
+export async function upsertBankDriveExportConfig(accountCode: string, input: {
+  rootFolderId: string;
+  isActive?: boolean;
+}) {
+  return request<BankDriveExportConfig>(`/management/bank-statement/settings/drive-export/${accountCode}`, {
+    method: 'PUT', auth: true, body: JSON.stringify(input),
+  });
+}
+
 // --- Bank Sync Jobs ---
 
 export type JobStep = {
-  key: 'bank_sync' | 'sheets_sync';
+  key: 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync';
   label: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
   startedAt: string | null;
@@ -317,6 +339,8 @@ export type JobStats = {
   totalRowsDownloaded: number;
   totalRowsInserted: number;
   totalRowsSynced: number;
+  pdfFetched: number;
+  pdfFailed: number;
 };
 
 export type BankSyncJob = {
@@ -352,7 +376,7 @@ export async function getBankJob(id: string) {
   return request<BankSyncJob>(`/management/bank-statement/jobs/${id}`, { auth: true });
 }
 
-export async function retryBankJob(id: string, stepKey?: 'bank_sync' | 'sheets_sync') {
+export async function retryBankJob(id: string, stepKey?: 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync') {
   return request<BankSyncJob>(`/management/bank-statement/jobs/${id}/retry`, {
     method: 'POST', auth: true,
     body: JSON.stringify({ stepKey }),
@@ -380,6 +404,7 @@ export type BankAccount = {
   accountCode: string;
   isActive: boolean;
   syncEnabled: boolean;
+  pdfExportEnabled: boolean;
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
 };
@@ -430,6 +455,14 @@ export async function updateBankAccountSync(id: number, syncEnabled: boolean) {
   });
 }
 
+export async function updateBankAccountPdfExport(id: number, pdfExportEnabled: boolean) {
+  return request<BankAccount>(`/management/bank-statement/accounts/${id}/pdf-export`, {
+    method: 'PUT',
+    auth: true,
+    body: JSON.stringify({ pdfExportEnabled }),
+  });
+}
+
 
 export type DailyMetricsRow = {
   date: string;
@@ -463,6 +496,15 @@ export type JobAccountSummary = {
   downloadError: string | null;
   sheetsSyncStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data' | 'not_attempted';
   sheetsSyncError: string | null;
+  pdfStatus: 'pending' | 'completed' | 'failed' | 'skipped' | 'no_data' | 'not_attempted';
+  pdfFetched: number;
+  pdfFailed: number;
+  pdfError: string | null;
+  // Computed on the fly server-side (no persisted rollup column, unlike pdfStatus
+  // above) — see bank-statement.service.ts's getJobSummary().
+  driveStatus: 'pending' | 'completed' | 'failed' | 'not_attempted';
+  driveSynced: number;
+  driveFailed: number;
 };
 
 export async function listBankAccounts() {
@@ -478,6 +520,20 @@ export async function resyncBankAccountSheets(jobPublicId: string, bankAccountId
 
 export async function resyncBankJobSheets(jobPublicId: string) {
   return request<{ ok: boolean; count: number; skipped: number }>(`/management/bank-statement/jobs/${jobPublicId}/resync-sheets`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function resyncBankAccountDrive(jobPublicId: string, bankAccountId: number) {
+  return request<{ ok: boolean; alreadyQueued: boolean }>(`/management/bank-statement/jobs/${jobPublicId}/accounts/${bankAccountId}/resync-drive`, {
+    method: 'POST',
+    auth: true,
+  });
+}
+
+export async function resyncBankJobDrive(jobPublicId: string) {
+  return request<{ ok: boolean; count: number; skipped: number }>(`/management/bank-statement/jobs/${jobPublicId}/resync-drive`, {
     method: 'POST',
     auth: true,
   });
@@ -530,6 +586,8 @@ export type JobTransaction = {
   debitAmount: number | null;
   balance: number | null;
   fetchedAt: string;
+  hasPdf: boolean;
+  pdfDriveUrl: string | null;
 };
 
 export async function getJobAccountTransactions(jobId: string, accountId: number) {
@@ -869,6 +927,27 @@ export async function downloadReconcileResult(jobId: string): Promise<{ blob: Bl
 
   const blob = await res.blob();
   const filename = filenameFromContentDisposition(res.headers.get('content-disposition'), 'service_invoices_merged.xlsx');
+  return { blob, filename };
+}
+
+// Mirrors downloadReconcileResult() above — the PDF endpoint also requires the Bearer
+// auth header, which a plain <a href> navigation can't send, so it has to go through
+// an authenticated fetch + Blob URL instead of a direct link.
+export async function downloadTransactionPdf(transactionId: number): Promise<{ blob: Blob; filename: string }> {
+  let baseUrl = getApiBaseUrl();
+  if (!baseUrl || typeof baseUrl !== 'string' || !baseUrl.trim()) baseUrl = 'http://localhost:4000';
+
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set('authorization', `Bearer ${token}`);
+
+  const res = await checkRawResponse(await fetch(`${baseUrl}/management/bank-statement/transactions/${transactionId}/pdf`, {
+    headers,
+    cache: 'no-store',
+  }));
+
+  const blob = await res.blob();
+  const filename = filenameFromContentDisposition(res.headers.get('content-disposition'), `transaction-${transactionId}.pdf`);
   return { blob, filename };
 }
 

@@ -89,6 +89,7 @@ services:
       AWS_REGION: ${AWS_REGION}
       RECONCILE_BUCKET: ${RECONCILE_BUCKET}
       RECONCILE_LAMBDA_NAME: ${RECONCILE_LAMBDA_NAME}
+      BANK_STATEMENT_PDF_BUCKET: ${BANK_STATEMENT_PDF_BUCKET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       # CloudWatch doesn't render ANSI color codes — Nest's ConsoleLogger colorizes by default.
       NO_COLOR: "1"
@@ -144,6 +145,11 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       APP_URL: ${APP_URL}
+      # For DriveService's S3 mirror upload (see s3-bank-statement-pdfs.tf) — the worker
+      # itself never touched AWS before this feature, api's block above is the only
+      # precedent for these two vars.
+      AWS_REGION: ${AWS_REGION}
+      BANK_STATEMENT_PDF_BUCKET: ${BANK_STATEMENT_PDF_BUCKET}
       # Headed Chrome (via Xvfb, see worker Dockerfile) avoids Akamai's headless-Chromium
       # fingerprint check on HSBCnet's login page — plain headless gets served a
       # "Service Unavailable" WAF block page instead of the real login form.

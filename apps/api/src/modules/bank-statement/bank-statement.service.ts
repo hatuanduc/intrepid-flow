@@ -4,13 +4,16 @@ import { Queue } from 'bullmq';
 import { JobSchedulerService } from '../../common/job-scheduler.service';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import type { Readable } from 'stream';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
 import { UpsertGsheetConfigDto } from './dto/gsheet-config.dto';
+import { UpsertDriveExportConfigDto } from './dto/drive-export-config.dto';
 
 const SETTINGS_ID = 'default';
 
-export type StepKey = 'bank_sync' | 'sheets_sync';
+export type StepKey = 'bank_sync' | 'sheets_sync' | 'pdf_export' | 'drive_sync';
 export type StepStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 export type JobStep = {
@@ -23,9 +26,23 @@ export type JobStep = {
 };
 
 const INITIAL_STEPS: JobStep[] = [
-  { key: 'bank_sync',    label: 'Lấy sao kê',        status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
-  { key: 'sheets_sync',  label: 'Đồng bộ GSheets',   status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'bank_sync',    label: 'Lấy sao kê',           status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'pdf_export',   label: 'Xuất PDF giao dịch',   status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'drive_sync',   label: 'Đồng bộ Google Drive', status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
+  { key: 'sheets_sync',  label: 'Đồng bộ GSheets',      status: 'pending', startedAt: null, completedAt: null, errorMessage: null },
 ];
+
+// Retrying a step must also reset whatever DEPENDS ON it (so it re-runs against fresh
+// input), but nothing else — bank_sync feeds both pdf_export and sheets_sync, while
+// drive_sync only depends on pdf_export. A plain "reset this step + everything after it
+// in array order" (the old behavior) would wrongly cascade a pdf_export/drive_sync retry
+// into resetting the unrelated sheets_sync step too, just because of array position.
+const STEP_DEPENDENTS: Record<StepKey, StepKey[]> = {
+  bank_sync:   ['pdf_export', 'drive_sync', 'sheets_sync'],
+  pdf_export:  ['drive_sync'],
+  drive_sync:  [],
+  sheets_sync: [],
+};
 
 function parseSteps(raw: unknown): JobStep[] {
   if (!Array.isArray(raw) || raw.length === 0) return INITIAL_STEPS.map(s => ({ ...s }));
@@ -48,6 +65,8 @@ export type JobStatsDto = {
   totalRowsDownloaded: number;
   totalRowsInserted: number;
   totalRowsSynced: number;
+  pdfFetched: number;
+  pdfFailed: number;
 };
 
 export type BankSyncJobDto = {
@@ -70,7 +89,15 @@ export type BankSyncJobDto = {
   dateRangeTo: Date | null;
 };
 
-type JobAccountRow = { status: string; sheetsSyncStatus: string; rowsDownloaded: number; rowsInserted: number; rowsSynced: number };
+type JobAccountRow = {
+  status: string;
+  sheetsSyncStatus: string;
+  rowsDownloaded: number;
+  rowsInserted: number;
+  rowsSynced: number;
+  pdfFetched: number;
+  pdfFailed: number;
+};
 
 function computeJobStats(accounts: JobAccountRow[]): JobStatsDto | null {
   if (accounts.length === 0) return null;
@@ -86,6 +113,8 @@ function computeJobStats(accounts: JobAccountRow[]): JobStatsDto | null {
     totalRowsDownloaded: accounts.reduce((s, a) => s + a.rowsDownloaded, 0),
     totalRowsInserted: accounts.reduce((s, a) => s + a.rowsInserted, 0),
     totalRowsSynced: accounts.reduce((s, a) => s + a.rowsSynced, 0),
+    pdfFetched: accounts.reduce((s, a) => s + a.pdfFetched, 0),
+    pdfFailed: accounts.reduce((s, a) => s + a.pdfFailed, 0),
   };
 }
 
@@ -141,6 +170,11 @@ function toDto(job: {
 
 @Injectable()
 export class BankStatementService implements OnModuleInit {
+  // Reads the PDF mirror uploaded by the worker's DriveService.uploadToS3() — same
+  // bucket/key scheme, see apps/worker/src/bank-sync/services/drive.service.ts.
+  private readonly s3 = new S3Client({});
+  private readonly pdfBucket = process.env.BANK_STATEMENT_PDF_BUCKET as string | undefined;
+
   constructor(
     private prisma: PrismaService,
     @InjectQueue('bank-sync') private readonly queue: Queue,
@@ -211,6 +245,24 @@ export class BankStatementService implements OnModuleInit {
     });
   }
 
+  // ─── Drive Export Configs ────────────────────────────────────────────────────
+  // Mirrors GSheet Configs above exactly — one row per accountCode (country/company),
+  // pointing at the root Drive folder the worker files PDFs under (see
+  // apps/worker/src/bank-sync/services/drive.service.ts for the folder hierarchy it
+  // creates on demand beneath this root).
+
+  async listDriveExportConfigs() {
+    return this.prisma.bankDriveExportConfig.findMany({ orderBy: { accountCode: 'asc' } });
+  }
+
+  async upsertDriveExportConfig(accountCode: string, dto: UpsertDriveExportConfigDto) {
+    return this.prisma.bankDriveExportConfig.upsert({
+      where: { accountCode },
+      create: { accountCode, ...dto },
+      update: dto,
+    });
+  }
+
   // ─── Accounts & Metrics ─────────────────────────────────────────────────────
 
   // includeDisabled: the Settings page needs to see + re-toggle disabled names, while
@@ -242,6 +294,7 @@ export class BankStatementService implements OnModuleInit {
       accountCode: a.accountCode,
       isActive: a.isActive,
       syncEnabled: a.syncEnabled,
+      pdfExportEnabled: a.pdfExportEnabled,
       lastSyncAt: a.syncJobAccounts[0]?.job?.completedAt ?? null,
       lastSyncStatus: a.syncJobAccounts[0]?.status ?? null,
     }));
@@ -312,6 +365,14 @@ export class BankStatementService implements OnModuleInit {
     return this.prisma.bankAccount.update({ where: { id }, data: { syncEnabled } });
   }
 
+  // Per-account override for PDF export, layered under BankDriveExportConfig's
+  // country-level isActive (see drive.service.ts's enable check: BOTH must be true).
+  async updateAccountPdfExportEnabled(id: number, pdfExportEnabled: boolean) {
+    const account = await this.prisma.bankAccount.findUnique({ where: { id } });
+    if (!account) throw new NotFoundException('BANK_ACCOUNT_NOT_FOUND');
+    return this.prisma.bankAccount.update({ where: { id }, data: { pdfExportEnabled } });
+  }
+
   // Repairs a Sheet that got manually deleted/corrupted — the normal sync only re-pushes
   // when a fresh HSBC download inserts a new DB row, so a since-broken sheet is never
   // retried on its own. Runs as its own queue job (not a full bank_sync_jobs record —
@@ -357,11 +418,49 @@ export class BankStatementService implements OnModuleInit {
   // the first is still waiting/running would duplicate every row a second time. Check
   // the live queue itself (not a DB flag, which could go stale across worker restarts
   // or crashes) for an already-pending job for this exact account before adding another.
-  private async hasQueuedResync(bankAccountId: number): Promise<boolean> {
+  // Shared by both resync-sheets and resync-drive — `queueName` picks which.
+  private async hasQueuedResync(bankAccountId: number, queueName: 'resync-sheets' | 'resync-drive' = 'resync-sheets'): Promise<boolean> {
     const pending = await this.queue.getJobs(['waiting', 'active', 'delayed']);
     return pending.some(
-      j => j.name === 'resync-sheets' && (j.data as { bankAccountId?: number }).bankAccountId === bankAccountId,
+      j => j.name === queueName && (j.data as { bankAccountId?: number }).bankAccountId === bankAccountId,
     );
+  }
+
+  // Drive delivery equivalent of forceResyncSheets — re-uploads whatever PDFs this
+  // account already has secured in S3 (for this job) but never made it to Drive. No
+  // Playwright/HSBC session needed (unlike the Sheets pair above, which also has no
+  // browser dependency — Drive similarly just re-reads bytes already on file), so this
+  // is always safe to fire on demand regardless of whether HSBC is reachable right now.
+  async forceResyncDrive(jobPublicId: string, bankAccountId: number, triggeredBy: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId: jobPublicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+    const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    if (!account) throw new NotFoundException('BANK_ACCOUNT_NOT_FOUND');
+
+    if (await this.hasQueuedResync(bankAccountId, 'resync-drive')) {
+      return { ok: true, alreadyQueued: true };
+    }
+    await this.queue.add('resync-drive', { bankAccountId, jobId: job.id, triggeredBy });
+    return { ok: true, alreadyQueued: false };
+  }
+
+  // Bulk variant — force-resyncs Drive delivery for every account in this job.
+  async forceResyncDriveForJob(publicId: string, triggeredBy: string) {
+    const job = await this.prisma.bankSyncJob.findUnique({ where: { publicId } });
+    if (!job) throw new NotFoundException('JOB_NOT_FOUND');
+
+    const accounts = await this.prisma.bankSyncJobAccount.findMany({
+      where: { jobId: job.id },
+      select: { bankAccountId: true },
+    });
+    const toQueue: number[] = [];
+    for (const a of accounts) {
+      if (!(await this.hasQueuedResync(a.bankAccountId, 'resync-drive'))) toQueue.push(a.bankAccountId);
+    }
+    await Promise.all(
+      toQueue.map(bankAccountId => this.queue.add('resync-drive', { bankAccountId, jobId: job.id, triggeredBy })),
+    );
+    return { ok: true, count: toQueue.length, skipped: accounts.length - toQueue.length };
   }
 
   async getMetrics(from: Date, to: Date, accountCode?: string, accountId?: number) {
@@ -563,6 +662,7 @@ export class BankStatementService implements OnModuleInit {
         debitAmount: true,
         balance: true,
         createdAt: true,
+        pdf: { select: { status: true, driveFileUrl: true } },
       },
     });
     return txns.map(t => ({
@@ -574,6 +674,8 @@ export class BankStatementService implements OnModuleInit {
       debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
       balance: t.balance != null ? Number(t.balance) : null,
       fetchedAt: t.createdAt,
+      hasPdf: t.pdf?.status === 'fetched',
+      pdfDriveUrl: t.pdf?.driveFileUrl ?? null,
     }));
   }
 
@@ -594,6 +696,7 @@ export class BankStatementService implements OnModuleInit {
         debitAmount: true,
         balance: true,
         createdAt: true,
+        pdf: { select: { status: true, driveFileUrl: true } },
       },
     });
 
@@ -606,7 +709,31 @@ export class BankStatementService implements OnModuleInit {
       debitAmount: t.debitAmount != null ? Number(t.debitAmount) : null,
       balance: t.balance != null ? Number(t.balance) : null,
       fetchedAt: t.createdAt,
+      hasPdf: t.pdf?.status === 'fetched',
+      pdfDriveUrl: t.pdf?.driveFileUrl ?? null,
     }));
+  }
+
+  // Streams the S3 mirror of a transaction's PDF (see DriveService.uploadToS3) —
+  // mirrors reconcile.service.ts's downloadFilterMergeResult() pattern exactly
+  // (GetObjectCommand + pipe the returned stream straight through, no presigned URL).
+  async getTransactionPdf(transactionId: number): Promise<{ stream: Readable; filename: string; contentType: string }> {
+    const pdf = await this.prisma.bankTransactionPdf.findUnique({ where: { bankTransactionId: transactionId } });
+    if (!pdf || pdf.status !== 'fetched' || !pdf.s3Key) throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
+    if (!this.pdfBucket) throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
+
+    let res;
+    try {
+      res = await this.s3.send(new GetObjectCommand({ Bucket: this.pdfBucket, Key: pdf.s3Key }));
+    } catch {
+      throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
+    }
+
+    return {
+      stream: res.Body as Readable,
+      filename: pdf.fileName ?? `transaction-${transactionId}.pdf`,
+      contentType: res.ContentType ?? 'application/pdf',
+    };
   }
 
   async getJobStats(jobPublicId: string): Promise<JobStatsDto> {
@@ -618,6 +745,7 @@ export class BankStatementService implements OnModuleInit {
       totalAccounts: 0, downloaded: 0, downloadFailed: 0, synced: 0,
       syncFailed: 0, syncSkipped: 0, syncPending: 0, syncNoData: 0,
       totalRowsDownloaded: 0, totalRowsInserted: 0, totalRowsSynced: 0,
+      pdfFetched: 0, pdfFailed: 0,
     };
   }
 
@@ -672,9 +800,34 @@ export class BankStatementService implements OnModuleInit {
     });
     const txByAccount = Object.fromEntries(grouped.map(g => [g.bankAccountId, g]));
 
+    // Drive-sync rollup, computed on the fly (no persisted BankSyncJobAccount column
+    // for it, unlike pdfStatus/pdfFetched/pdfFailed above) — scoped to PDFs THIS job
+    // fetched (BankTransactionPdf.jobId), same per-job scoping as pdfFetched/pdfFailed.
+    // bankAccountId only lives on the related BankTransaction, not on
+    // BankTransactionPdf itself, so this can't be a Prisma groupBy — reduced in JS
+    // instead, same shape as txByAccount above.
+    const pdfDriveRows = await this.prisma.bankTransactionPdf.findMany({
+      where: { jobId: job.id },
+      select: { driveSyncStatus: true, bankTransaction: { select: { bankAccountId: true } } },
+    });
+    const driveByAccount = new Map<number, { synced: number; failed: number; pending: number }>();
+    for (const row of pdfDriveRows) {
+      const accId = row.bankTransaction.bankAccountId;
+      const bucket = driveByAccount.get(accId) ?? { synced: 0, failed: 0, pending: 0 };
+      if (row.driveSyncStatus === 'synced') bucket.synced++;
+      else if (row.driveSyncStatus === 'failed') bucket.failed++;
+      else bucket.pending++;
+      driveByAccount.set(accId, bucket);
+    }
+
     return allAccounts.map(a => {
       const ja = attemptedById.get(a.id);
       const tx = txByAccount[a.id];
+      const drive = driveByAccount.get(a.id);
+      const driveStatus = !drive ? 'not_attempted'
+        : drive.failed > 0 ? 'failed'
+        : drive.pending > 0 ? 'pending'
+        : 'completed';
       return {
         accountId: a.id,
         accountNumber: a.accountNumber,
@@ -689,6 +842,13 @@ export class BankStatementService implements OnModuleInit {
         downloadError: ja?.errorMessage ?? null,
         sheetsSyncStatus: ja?.sheetsSyncStatus ?? 'not_attempted',
         sheetsSyncError: ja?.sheetsSyncError ?? null,
+        pdfStatus: ja?.pdfStatus ?? 'not_attempted',
+        pdfFetched: ja?.pdfFetched ?? 0,
+        pdfFailed: ja?.pdfFailed ?? 0,
+        pdfError: ja?.pdfError ?? null,
+        driveStatus,
+        driveSynced: drive?.synced ?? 0,
+        driveFailed: drive?.failed ?? 0,
       };
     });
   }
@@ -774,19 +934,32 @@ export class BankStatementService implements OnModuleInit {
 
     const steps = parseSteps(job.steps);
 
-    // Find index to reset from — default to first non-completed step
-    let startIdx = 0;
-    if (stepKey) {
-      startIdx = steps.findIndex(s => s.key === stepKey);
-      if (startIdx < 0) throw new NotFoundException('STEP_NOT_FOUND');
-    } else {
-      const firstIncomplete = steps.findIndex(s => s.status !== 'completed');
-      startIdx = firstIncomplete >= 0 ? firstIncomplete : 0;
+    // Reset the target step (or, with no stepKey, every not-yet-completed step) plus
+    // whatever DEPENDS ON each reset step (STEP_DEPENDENTS) — not "every step after it
+    // in array order". Dependencies branch (bank_sync feeds pdf_export/drive_sync AND
+    // sheets_sync independently; drive_sync depends only on pdf_export), so array
+    // position alone would wrongly reset sheets_sync just because it happens to sit
+    // after pdf_export/drive_sync in the display order.
+    const keysToReset = new Set<StepKey>();
+    function markForReset(key: StepKey) {
+      if (keysToReset.has(key)) return;
+      keysToReset.add(key);
+      for (const dependent of STEP_DEPENDENTS[key]) markForReset(dependent);
     }
 
-    // Reset target step and all subsequent ones
-    for (let i = startIdx; i < steps.length; i++) {
-      steps[i] = { ...steps[i], status: 'pending', startedAt: null, completedAt: null, errorMessage: null };
+    if (stepKey) {
+      if (!steps.some(s => s.key === stepKey)) throw new NotFoundException('STEP_NOT_FOUND');
+      markForReset(stepKey);
+    } else {
+      for (const s of steps) {
+        if (s.status !== 'completed') markForReset(s.key);
+      }
+    }
+
+    for (let i = 0; i < steps.length; i++) {
+      if (keysToReset.has(steps[i].key)) {
+        steps[i] = { ...steps[i], status: 'pending', startedAt: null, completedAt: null, errorMessage: null };
+      }
     }
 
     const prevLogs = Array.isArray(job.logs) ? job.logs : [];

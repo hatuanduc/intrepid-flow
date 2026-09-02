@@ -41,7 +41,32 @@ const SELECTORS = {
   // Export dropdown
   exportTrigger: 'button#export-dropdown-trigger',
   excelOption:   '.user-action__drop-option--clickable',
+
+  // Per-row "..." action button + "Chi tiết giao dịch" popup (PDF export) — verified
+  // from DevTools screenshots. Only Transfer (ủy nhiệm chi) rows render this button at
+  // all — confirmed against the real site: a credit/RT PYMT row has no such element in
+  // its DOM. Scoped inside .account-transactions-table (also confirmed via DevTools —
+  // see the CSS rule ".account-transactions-table .table-wrapper .table__body tr td
+  // .showLastCellBorder button") specifically to avoid matching a stale button left over
+  // from a PREVIOUS account's table after switching accounts — production logs showed
+  // the exact same id (transaction_action_button_0) "found" across 13 different real
+  // accounts in a row, which is the signature of a leftover DOM node, not a fresh one.
+  rowActionBtn:      '.account-transactions-table button[id^="transaction_action_button_"]',
+  rowActionDropdown: (idSuffix: string) => `#transaction-more-dropdown-${idSuffix}`,
+  detailModal:       '.dialogue-window__TXNDetail',
+  detailPdfBtn:      '.dialogue-window__button-group__action-btn[aria-label="Export PDF"]',
+  detailCloseBtn:    '.dialogue-window__button-group__action-btn--close',
+  paginationNextBtn: 'a.pagination__link--arrow[aria-label="next page"]',
 } as const;
+
+// The row action button's aria-label embeds the customer reference + exact post
+// timestamp directly (confirmed via DevTools screenshot: `aria-label="Menu Thao tác,
+// ... cho giao dịchof the Mã tham chiếu khách hàng:INTREPID301097, at 28 Aug 2026
+// 10:49"`) — parsing this one string is more robust than reading several <td> cells
+// in a fixed column order, since it doesn't depend on the table's column layout.
+const ROW_REFERENCE_RE = /Mã tham chiếu khách hàng:([^,]+), at (.+)$/;
+
+export type PdfRowKey = { reference: string; dateTimeLabel: string };
 
 export type DiscoveredAccount = {
   companyName: string;
@@ -382,11 +407,47 @@ export class PlaywrightService {
     return accounts;
   }
 
+  /**
+   * Land on the account-detail page (where "Change account" search + the transaction
+   * table live) via the Accounts list → first row click — the same navigation
+   * discoverAccounts() Step 1-2 above does, extracted standalone for the PDF-only
+   * retry path (runPdfExportOnly() in bank-sync.service.ts), which needs this exact
+   * starting point WITHOUT running a full account discovery/sync. A fresh login (or
+   * a reused session that happens to still be sitting on account-detail from a prior
+   * run) both end up here; navigateToAccountAndApplyFilter() assumes it.
+   */
+  async navigateToAccountDetailPage(): Promise<void> {
+    const page = this.requirePage();
+
+    const alreadyThere = await page.$(SELECTORS.changeAccountInput);
+    if (alreadyThere) return;
+
+    this.logger.log(`[nav] Current URL before nav to account-detail: ${page.url()}`);
+    await page.evaluate(() => { window.location.hash = '/accounts'; });
+    await page.waitForURL(/#\/accounts/, { timeout: 15_000 }).catch(() => {});
+
+    const firstRow = await page.waitForSelector('.table__row--clickable', { timeout: 10_000 }).catch(() => null);
+    if (!firstRow) throw new Error('No clickable account rows found on the Accounts list page.');
+
+    await Promise.all([
+      page.waitForNavigation({ waitUntil: 'load', timeout: 20_000 }).catch(() => {}),
+      firstRow.click(),
+    ]);
+
+    await page.waitForSelector(SELECTORS.changeAccountInput, { timeout: 20_000 });
+  }
+
   // ─── Statement Download ─────────────────────────────────────────────────────
 
   /**
    * Switch to the given account via "Change account", apply date range filter,
    * and download the Excel export. Returns null if no transactions found.
+   *
+   * Thin wrapper over navigateToAccountAndApplyFilter() + exportExcel() — split out
+   * so a retry whose Excel fetch already succeeded for this job (bank_sync step
+   * already 'completed') can reuse just the navigate+filter half to reposition the
+   * live page for PDF export, without re-downloading Excel it doesn't need again.
+   * See bank-sync.service.ts's runPdfExportOnly().
    */
   async downloadStatement(
     accountNumber: string,
@@ -394,8 +455,25 @@ export class PlaywrightService {
     dateTo: Date,
     shouldCancel?: () => Promise<boolean>,
   ): Promise<Buffer | null> {
+    const hasData = await this.navigateToAccountAndApplyFilter(accountNumber, dateFrom, dateTo, shouldCancel);
+    if (!hasData) return null;
+    return this.exportExcel(accountNumber, shouldCancel);
+  }
+
+  /**
+   * Switch to `accountNumber` via "Change account" and apply the date range filter —
+   * everything downloadStatement() needs BEFORE the actual Excel export click. Returns
+   * false if HSBC reports no transactions for the range (caller should not attempt an
+   * Excel export or a PDF scan in that case), true once the live table is positioned
+   * and ready to read (whether for Excel export or exportTransactionPdfs() below).
+   */
+  async navigateToAccountAndApplyFilter(
+    accountNumber: string,
+    dateFrom: Date,
+    dateTo: Date,
+    shouldCancel?: () => Promise<boolean>,
+  ): Promise<boolean> {
     const page = this.requirePage();
-    const ctx = this.requireContext();
 
     // downloadStatement() itself can take 30-60+ seconds across its several steps —
     // the caller's own cancellation check only runs BETWEEN accounts, so without this,
@@ -502,12 +580,27 @@ export class PlaywrightService {
     if (noTxnEl) {
       const msg = (await noTxnEl.textContent())?.trim() ?? 'No transactions';
       this.logger.log(`${accountNumber}: ${msg}`);
-      return null;
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * Click Export → Excel and download the file. Assumes the page is already sitting
+   * on the right account's date-filtered table — call navigateToAccountAndApplyFilter()
+   * first (downloadStatement() does both; a PDF-only retry pass calls just that half).
+   */
+  async exportExcel(accountNumber: string, shouldCancel?: () => Promise<boolean>): Promise<Buffer> {
+    const page = this.requirePage();
+    const ctx = this.requireContext();
+    async function checkCancelled() {
+      if (shouldCancel && await shouldCancel()) throw new Error('JOB_CANCELLED');
     }
 
     await checkCancelled();
 
-    // ── Step 7: Export → Excel ────────────────────────────────────────────────
+    // ── Export → Excel ────────────────────────────────────────────────────────
     // The Export button also toggles a dropdown open/closed (aria-haspopup="listbox",
     // aria-expanded) — same failure mode as "Specify date range": clickWithRetry()
     // blindly retrying on any Playwright-level click timeout can close a dropdown
@@ -560,6 +653,226 @@ export class PlaywrightService {
     await download.page().close().catch(() => {});
     this.logger.log(`${accountNumber}: downloaded ${(buffer.length / 1024).toFixed(1)} KB`);
     return buffer;
+  }
+
+  // ─── Transaction PDF export ─────────────────────────────────────────────────
+
+  /**
+   * Walk every page of the CURRENTLY DISPLAYED (already date-filtered) transaction
+   * table for `accountNumber`, and for every row that has a "..." action button,
+   * fetch its "Chi tiết giao dịch" PDF via HSBC's own detail popup — but only for
+   * rows `shouldFetch` says are worth it (dedup decision lives in the DB, on the
+   * caller's side, not here).
+   *
+   * Must be called right after downloadStatement() succeeds for this account, while
+   * the page is still sitting on that account's filtered table — this method does
+   * NOT re-select the account or re-apply the date filter itself.
+   */
+  async exportTransactionPdfs(
+    accountNumber: string,
+    shouldFetch: (key: PdfRowKey) => Promise<boolean>,
+    onCaptured: (key: PdfRowKey, pdf: Buffer, fileName: string) => Promise<void>,
+    shouldCancel?: () => Promise<boolean>,
+  ): Promise<{ scanned: number; fetched: number; failed: number; errors: Array<{ reference: string; message: string }> }> {
+    const page = this.requirePage();
+    const ctx = this.requireContext();
+
+    async function checkCancelled() {
+      if (shouldCancel && await shouldCancel()) throw new Error('JOB_CANCELLED');
+    }
+
+    let scanned = 0;
+    let fetched = 0;
+    let failed = 0;
+    let pageNum = 1;
+    // Short, per-row failure reasons for the caller to surface into the job's visible
+    // log (see bank-sync.service.ts's runPdfExportForAccount) — full Playwright detail
+    // still goes to this.logger.error() below (console/CloudWatch only), same split
+    // as downloadStatement() elsewhere in this file: technical trace → app log,
+    // short first-line message → what the user actually sees.
+    const errors: Array<{ reference: string; message: string }> = [];
+
+    for (;;) {
+      await checkCancelled();
+
+      // Snapshot id + aria-label up front for every row action button currently on
+      // screen — re-querying a fresh Locator by id at click time below (not reusing
+      // a handle from here) is what actually protects against the table re-rendering
+      // between rows (e.g. after closing a modal).
+      //
+      // offsetParent !== null is a cheap "actually laid out and rendered" check (false
+      // for display:none and detached nodes) — belt-and-suspenders on top of the
+      // .account-transactions-table scope above against matching a leftover element
+      // HSBC's SPA didn't clean up when switching accounts.
+      const rows = await page.locator(SELECTORS.rowActionBtn).evaluateAll((els) =>
+        els
+          .filter((el) => (el as HTMLElement).offsetParent !== null)
+          .map((el) => ({ id: el.id, ariaLabel: el.getAttribute('aria-label') ?? '' })),
+      );
+
+      for (const row of rows) {
+        await checkCancelled();
+
+        const match = ROW_REFERENCE_RE.exec(row.ariaLabel);
+        if (!match) {
+          this.logger.warn(`[${accountNumber}] Could not parse reference from action button aria-label: "${row.ariaLabel}"`);
+          continue;
+        }
+        const key: PdfRowKey = { reference: match[1].trim(), dateTimeLabel: match[2].trim() };
+
+        // `scanned` counts only rows we actually decided to attempt (shouldFetch
+        // returned true) — NOT every row visible on the page. The table normally
+        // shows rows from many days/pages beyond whatever this sync run stored, so
+        // most rows legitimately have no matching BankTransaction; that's expected,
+        // not something worth counting toward this account's PDF scan total. See
+        // bank-sync.service.ts's runPdfExportForAccount for the shouldFetch/unmatched
+        // split this feeds into.
+        if (!(await shouldFetch(key))) continue;
+        scanned++;
+
+        try {
+          // NOT /_(\w+)$/ — \w includes underscore, so that pattern greedily matches
+          // from the FIRST underscore ("transaction_action_button_15" -> captures
+          // "action_button_15" instead of "15"), producing a dropdown selector that can
+          // never match anything real. [^_]+ forces matching only the LAST underscore-
+          // delimited segment. Confirmed via a standalone mock-hsbc test: this alone
+          // reproduced every "Action menu did not open" failure seen in production,
+          // independent of the earlier stale-button/hover fixes.
+          const idxMatch = /_([^_]+)$/.exec(row.id);
+          if (!idxMatch) throw new Error(`Unexpected action button id format: "${row.id}"`);
+          const suffix = idxMatch[1];
+
+          // Retry-with-verification, same pattern as the Export button / Date range
+          // chevron in downloadStatement() above — a single click + single waitFor was
+          // observed to time out consistently in production (locator.waitFor: Timeout
+          // 5000ms exceeded) even though DevTools confirms the dropdown's real id/class
+          // match exactly. Checking the actual outcome (dropdown visible) between
+          // attempts, rather than trusting one click, is what those two call sites
+          // needed for this exact class of flakiness on this same HSBC UI.
+          const rowBtn = page.locator(`#${row.id}`);
+          const dropdown = page.locator(SELECTORS.rowActionDropdown(suffix));
+          // The "..." button is almost certainly opacity:0-until-hover, same convention
+          // this app's own MoreMenu buttons use (tr:hover .moreBtn) — a very common
+          // hover-reveal row-action pattern. force:true click bypasses Playwright's own
+          // actionability checks and dispatches a raw click at the element's bounding
+          // box, but that alone never fires the mouseenter/mouseover events a real mouse
+          // movement would — if HSBC's own JS only wires up (or CSS only reveals) the
+          // button on hover, a click with no prior hover can silently land on nothing.
+          // Real .hover() dispatches genuine mouse-move events first.
+          await rowBtn.hover({ force: true }).catch(() => {});
+          let dropdownOpen = false;
+          for (let attempt = 1; attempt <= 3 && !dropdownOpen; attempt++) {
+            await checkCancelled();
+            try {
+              await rowBtn.hover({ force: true }).catch(() => {});
+              await rowBtn.click({ timeout: 5_000, force: true });
+            } catch (err) {
+              this.logger.warn(`[${accountNumber}] "..." button click failed (attempt ${attempt}/3) — ${(err as Error).message.split('\n')[0]}`);
+            }
+            dropdownOpen = await dropdown.waitFor({ state: 'visible', timeout: 2_500 }).then(() => true).catch(() => false);
+          }
+          if (!dropdownOpen) {
+            throw new Error(`Action menu did not open after 3 attempts (button #${row.id})`);
+          }
+
+          const detailOption = dropdown.getByText('Xem chi tiết giao dịch').first();
+          const modal = page.locator(SELECTORS.detailModal);
+          let modalOpen = false;
+          for (let attempt = 1; attempt <= 3 && !modalOpen; attempt++) {
+            await checkCancelled();
+            try {
+              await detailOption.click({ timeout: 5_000, force: true });
+            } catch (err) {
+              this.logger.warn(`[${accountNumber}] "Xem chi tiết giao dịch" click failed (attempt ${attempt}/3) — ${(err as Error).message.split('\n')[0]}`);
+            }
+            modalOpen = await modal.waitFor({ state: 'visible', timeout: 3_000 }).then(() => true).catch(() => false);
+          }
+          if (!modalOpen) {
+            throw new Error('Detail popup did not open after 3 attempts');
+          }
+
+          // Set up the PDF listener BEFORE clicking — same race-avoidance reasoning as
+          // the Excel download in downloadStatement() above. Two distinct outcomes are
+          // possible here depending on Chrome's PDF-viewer availability: headed Chrome
+          // renders the PDF in a new tab (a plain 'response' with content-type
+          // application/pdf), while headless Chrome has no PDF viewer and instead
+          // triggers an actual file 'download' (same tab or new tab) — confirmed via
+          // production: identical flow, headless:false → response; headless:true →
+          // download, every single row. Racing both, like downloadStatement() already
+          // does for Excel, makes this robust across both.
+          type Resp = import('playwright').Response;
+          type PW = import('playwright').Page;
+          type DL = import('playwright').Download;
+          type PdfCapture = { kind: 'response'; resp: Resp; newPage: PW } | { kind: 'download'; download: DL };
+          const pdfPromise = new Promise<PdfCapture>((resolve, reject) => {
+            const tid = setTimeout(() => reject(new Error('PDF response timeout 20s')), 20_000);
+            const resolveOnce = (val: PdfCapture) => { clearTimeout(tid); resolve(val); };
+            page.once('download', (dl) => resolveOnce({ kind: 'download', download: dl })); // case: same tab
+            ctx.once('page', (newPage) => {
+              newPage.once('download', (dl) => resolveOnce({ kind: 'download', download: dl })); // case: new tab
+              newPage.on('response', (resp) => {
+                const contentType = resp.headers()['content-type'] ?? '';
+                if (contentType.includes('application/pdf')) resolveOnce({ kind: 'response', resp, newPage });
+              });
+            });
+          });
+
+          await modal.locator(SELECTORS.detailPdfBtn).click();
+          const capture = await pdfPromise;
+
+          let buffer: Buffer;
+          let fileName: string;
+          let openedPage: PW | null = null;
+          if (capture.kind === 'download') {
+            const tmpPath = await capture.download.path();
+            if (!tmpPath) throw new Error('PDF download path was null');
+            buffer = await fs.promises.readFile(tmpPath);
+            fileName = capture.download.suggestedFilename() || 'transaction.pdf';
+            openedPage = capture.download.page();
+          } else {
+            buffer = await capture.resp.body();
+            fileName = extractPdfFileName(capture.resp) ?? await capture.newPage.title().catch(() => 'transaction.pdf');
+            openedPage = capture.newPage;
+          }
+          // openedPage === page itself for a same-tab download — never close the main page.
+          if (openedPage && openedPage !== page) await openedPage.close().catch(() => {});
+
+          await modal.locator(SELECTORS.detailCloseBtn).click().catch(() => {});
+
+          await onCaptured(key, buffer, fileName);
+          fetched++;
+        } catch (err) {
+          failed++;
+          const fullMsg = (err as Error).message ?? 'Unknown error';
+          this.logger.error(`[${accountNumber}] PDF export failed for "${key.reference}" — ${fullMsg}`);
+          // First line only — Playwright errors often carry a multi-line actionability
+          // call log (dozens of lines) that's useful in the app log above but meaningless
+          // noise in the job's user-facing technical details.
+          errors.push({ reference: key.reference, message: fullMsg.split('\n')[0] });
+          // Best-effort cleanup — a failure on one row (e.g. PDF response timeout)
+          // must not leave the modal open and block every row after it on this page.
+          await page.locator(SELECTORS.detailCloseBtn).click({ timeout: 2_000 }).catch(() => {});
+          await page.keyboard.press('Escape').catch(() => {});
+        }
+      }
+
+      const nextBtn = page.locator(SELECTORS.paginationNextBtn);
+      if (await nextBtn.count() === 0) break; // single page — no pagination control at all
+      const nextDisabled = await nextBtn.getAttribute('aria-disabled').catch(() => 'true');
+      if (nextDisabled === 'true') break; // last page
+
+      await nextBtn.click({ force: true });
+      await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
+      pageNum++;
+      // Safety valve — a selector/layout regression that made aria-disabled never
+      // read "true" would otherwise loop forever instead of failing loudly.
+      if (pageNum > 200) {
+        this.logger.warn(`[${accountNumber}] PDF export pagination exceeded 200 pages — stopping (selector may be broken).`);
+        break;
+      }
+    }
+
+    return { scanned, fetched, failed, errors };
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
@@ -711,6 +1024,27 @@ export class PlaywrightService {
     if (!this.context) throw new Error('PlaywrightService not initialised — call init() first');
     return this.context;
   }
+}
+
+/**
+ * Best-effort filename for a captured PDF response — tries Content-Disposition first
+ * (what a real "inline; filename=..." response sends), then the URL's own path segment.
+ * Returns null if neither yields anything usable, letting the caller fall back to the
+ * new tab's document title (real HSBC's AITRANPRINT... filename is also its page title).
+ */
+function extractPdfFileName(resp: import('playwright').Response): string | null {
+  const disposition = resp.headers()['content-disposition'];
+  if (disposition) {
+    const match = /filename="?([^";]+)"?/i.exec(disposition);
+    if (match?.[1]) return match[1];
+  }
+  try {
+    const last = new URL(resp.url()).pathname.split('/').filter(Boolean).pop();
+    if (last && last.length > 0) return decodeURIComponent(last);
+  } catch {
+    // fall through
+  }
+  return null;
 }
 
 /** Format a Date as DD/MM/YYYY (HSBCnet input format). */

@@ -12,12 +12,14 @@
     "emoji-picker-react": "^4.19.1",
     "exceljs": "^4.4.0",
     "next": "16.2.3",
+    "pdfkit": "^0.20.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^3.9.1"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

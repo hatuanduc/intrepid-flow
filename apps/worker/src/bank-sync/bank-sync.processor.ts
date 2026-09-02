@@ -15,6 +15,14 @@ export type ResyncSheetsJobData = {
   triggeredBy: string;  // user_id
 };
 
+// Same shape as ResyncSheetsJobData — Drive delivery never needs Playwright/HSBC (the
+// PDF already sits in S3), so this is just a re-upload attempt, not a real sync run.
+export type ResyncDriveJobData = {
+  bankAccountId: number;
+  jobId: number;
+  triggeredBy: string;
+};
+
 @Processor(BANK_SYNC_QUEUE)
 export class BankSyncProcessor extends WorkerHost {
   private readonly logger = new Logger(BankSyncProcessor.name);
@@ -23,11 +31,18 @@ export class BankSyncProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<BankSyncJobData | ResyncSheetsJobData>): Promise<void> {
+  async process(job: Job<BankSyncJobData | ResyncSheetsJobData | ResyncDriveJobData>): Promise<void> {
     if (job.name === 'resync-sheets') {
       const { bankAccountId, jobId: syncJobId } = job.data as ResyncSheetsJobData;
       this.logger.log(`Processing resync-sheets for account ${bankAccountId} (job ${syncJobId})`);
       await this.bankSyncService.forceResyncSheets(bankAccountId, syncJobId);
+      return;
+    }
+
+    if (job.name === 'resync-drive') {
+      const { bankAccountId, jobId: syncJobId } = job.data as ResyncDriveJobData;
+      this.logger.log(`Processing resync-drive for account ${bankAccountId} (job ${syncJobId})`);
+      await this.bankSyncService.forceResyncDrive(bankAccountId, syncJobId);
       return;
     }
 
