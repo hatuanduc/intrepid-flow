@@ -70,17 +70,30 @@ systemctl start nginx
 # update-dns.sh (từ repo, /app/infra/...) mỗi lần boot để PATCH lại A record.
 # Chỉ cần cài + enable 1 lần ở đây — systemd tự chạy lại ở mọi lần boot sau,
 # kể cả khi EventBridge Scheduler start instance (không liên quan user_data).
-# Lần boot đầu tiên này /app chưa có code (chưa deploy) nên service sẽ fail —
-# vô hại, chạy đúng từ lần start kế tiếp (sau lần deploy đầu tiên).
+#
+# Lần boot đầu tiên (instance vừa được Terraform tạo/replace) /app chưa có
+# code — CI/CD deploy job chỉ upload code sau khi `terraform apply` xong, có
+# thể mất vài phút. Trước đây service fail 1 lần rồi thôi (không tự retry),
+# nên nếu deploy job chậm hơn dự kiến hoặc không có lần start/reboot nào tiếp
+# theo để systemd chạy lại — DNS record kẹt ở IP cũ vô thời hạn (đã xảy ra
+# thật trên dev 2026-09-03: instance bị replace do AMI drift, service fail
+# ngay lúc boot vì /app rỗng, và không ai/gì kích hoạt lại nó cho tới khi phát
+# hiện + chạy tay `systemctl restart`). Restart=on-failure + RestartSec để
+# service tự thử lại mỗi 10s trong tối đa 10 phút — đủ thời gian cho deploy
+# job hoàn tất population /app.
 cat > /etc/systemd/system/intrepid-dns-update.service <<'UNIT'
 [Unit]
 Description=Update Cloudflare DNS A record with this instance's current public IP
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=60
 
 [Service]
 Type=oneshot
 ExecStart=/bin/bash /app/infra/aws/scripts/update-dns.sh
+Restart=on-failure
+RestartSec=10
 
 [Install]
 WantedBy=multi-user.target
