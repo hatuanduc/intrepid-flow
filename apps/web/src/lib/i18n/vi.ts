@@ -546,6 +546,7 @@ export const vi: Translations = {
     pdfExportByAccountDesc: 'Danh sách lấy từ tab Tài khoản. Bật để lấy PDF cho mỗi giao dịch ủy nhiệm chi và upload lên thư mục Drive bên dưới.',
     pdfExportActiveTitle: 'Đang lấy PDF — nhấn để tắt',
     pdfExportInactiveTitle: 'Đang tắt — nhấn để bật',
+    pdfExportNoFolderTitle: 'Chưa cấu hình thư mục Drive — vào tab PDF Export để thiết lập trước',
     folderIdLabel: 'Drive folder ID hoặc link',
     folderIdTooltip: 'Dán ID của thư mục Drive hoặc dán nguyên link thư mục đều được.',
     folderIdPlaceholder: 'ID hoặc link đầy đủ https://drive.google.com/drive/folders/...',

@@ -120,10 +120,19 @@ export default function BankStatementSettingsPage() {
         <AccountsTab
           accountNames={accountNames}
           bankAccounts={bankAccounts}
+          driveConfigs={driveConfigs}
           canConfig={canConfig}
+          toast={toast}
           onNameToggled={(id, isActive) => setAccountNames(prev => prev.map(n => (n.id === id ? { ...n, isActive } : n)))}
           onAccountToggled={(id, syncEnabled) => setBankAccounts(prev => prev.map(a => (a.id === id ? { ...a, syncEnabled } : a)))}
           onAccountPdfToggled={(id, pdfExportEnabled) => setBankAccounts(prev => prev.map(a => (a.id === id ? { ...a, pdfExportEnabled } : a)))}
+          onDriveConfigSaved={(config) => setDriveConfigs(prev => {
+            const idx = prev.findIndex(c => c.accountCode === config.accountCode);
+            if (idx < 0) return [...prev, config];
+            const next = [...prev];
+            next[idx] = config;
+            return next;
+          })}
           onDataChanged={refreshAccounts}
         />
       )}
@@ -653,18 +662,22 @@ function AccountNamePanel({
 }
 
 function AccountsTab({
-  accountNames, bankAccounts, canConfig, onNameToggled, onAccountToggled, onAccountPdfToggled, onDataChanged,
+  accountNames, bankAccounts, driveConfigs, canConfig, toast,
+  onNameToggled, onAccountToggled, onAccountPdfToggled, onDriveConfigSaved, onDataChanged,
 }: {
   accountNames: BankAccountNameItem[];
   bankAccounts: BankAccount[];
+  driveConfigs: BankDriveExportConfig[];
   canConfig: boolean;
+  toast: ReturnType<typeof useToast>;
   onNameToggled: (id: number, isActive: boolean) => void;
   onAccountToggled: (id: number, syncEnabled: boolean) => void;
   onAccountPdfToggled: (id: number, pdfExportEnabled: boolean) => void;
+  onDriveConfigSaved: (config: BankDriveExportConfig) => void;
   onDataChanged: () => void;
 }) {
   const { t } = useT();
-  const toast = useToast();
+  const driveConfigMap = Object.fromEntries(driveConfigs.map(c => [c.accountCode, c]));
   const [detailName, setDetailName] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<number | null>(null);
   const [panelTarget, setPanelTarget] = useState<BankAccountNameItem | 'new' | null>(null);
@@ -673,6 +686,25 @@ function AccountsTab({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const detailAccounts = detailName ? bankAccounts.filter(a => a.accountName === detailName) : [];
+
+  async function toggleGroupPdfExport(e: React.MouseEvent, c: BankAccountNameItem) {
+    e.stopPropagation();
+    const config = driveConfigMap[c.accountCode];
+    // No Drive folder configured yet — nothing to toggle on. Guided by the tooltip below
+    // (title) rather than silently no-op-ing; DriveCountryCard on the PDF Export tab is
+    // where the folder ID actually gets set.
+    if (!config?.rootFolderId || !canConfig || savingId === c.id) return;
+    setSavingId(c.id);
+    const next = !config.isActive;
+    try {
+      const updated = await upsertBankDriveExportConfig(c.accountCode, { rootFolderId: config.rootFolderId, isActive: next });
+      onDriveConfigSaved(updated);
+    } catch {
+      toast.error(t('bankSettings.updateFailed'));
+    } finally {
+      setSavingId(null);
+    }
+  }
 
   async function toggleNameStatus(e: React.MouseEvent, c: BankAccountNameItem) {
     e.stopPropagation();
@@ -754,12 +786,13 @@ function AccountsTab({
               <th className={s.th} style={{ width: 130 }}>{t('bankSettings.colAccountCode')}</th>
               <th className={s.th} style={{ width: 110 }}>{t('bankSettings.colAccounts')}</th>
               <th className={s.th} style={{ width: 80 }}>{t('bankSettings.colSync')}</th>
+              <th className={s.th} style={{ width: 80 }}>{t('bankSettings.colPdfExport')}</th>
               {canConfig && <th className={s.th} style={{ width: 40 }} />}
             </tr>
           </thead>
           <tbody>
             {accountNames.length === 0 && (
-              <tr><td className={s.td} colSpan={canConfig ? 5 : 4}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
+              <tr><td className={s.td} colSpan={canConfig ? 6 : 5}><span className={s.empty}>{t('bankSettings.noData')}</span></td></tr>
             )}
             {accountNames.map(c => {
               const count = bankAccounts.filter(a => a.accountName === c.name).length;
@@ -784,6 +817,32 @@ function AccountsTab({
                         {c.isActive ? t('bankSettings.syncActiveTitle') : t('bankSettings.syncInactiveTitle')}
                       </span>
                     )}
+                  </td>
+                  <td className={s.td}>
+                    {(() => {
+                      const driveConfig = driveConfigMap[c.accountCode];
+                      const active = !!driveConfig?.isActive;
+                      if (canConfig) {
+                        return (
+                          <button
+                            type="button"
+                            className={`${s.toggle} ${active ? s.toggleOn : ''}`}
+                            onClick={e => toggleGroupPdfExport(e, c)}
+                            disabled={savingId === c.id || !driveConfig?.rootFolderId}
+                            title={
+                              !driveConfig?.rootFolderId
+                                ? t('bankSettings.pdfExportNoFolderTitle')
+                                : active ? t('bankSettings.pdfExportActiveTitle') : t('bankSettings.pdfExportInactiveTitle')
+                            }
+                          />
+                        );
+                      }
+                      return (
+                        <span className={active ? s.syncDate : s.syncNever}>
+                          {active ? t('bankSettings.pdfExportActiveTitle') : t('bankSettings.pdfExportInactiveTitle')}
+                        </span>
+                      );
+                    })()}
                   </td>
                   {canConfig && (
                     <td className={s.td}>

@@ -875,8 +875,14 @@ export class BankSyncService {
     jobId: number,
     account: { id: number; accountCode: string; accountName: string; accountNumber: string; pdfExportEnabled: boolean },
   ): Promise<void> {
-    const driveConfig = await this.prisma.bankDriveExportConfig.findUnique({ where: { accountCode: account.accountCode } });
-    const enabled = !!driveConfig?.isActive && account.pdfExportEnabled;
+    // Drive being configured is NOT a precondition for fetching — see syncPendingDriveUploads()
+    // below and its docstring: fetch (HSBC → S3) and Drive delivery are independently-retryable
+    // stages by design, so PDFs still get fetched into S3 even before Drive is set up, and
+    // attemptDriveUpload()/drive.service.ts's own uploadPdf() already checks isActive/rootFolderId
+    // to skip just the upload step. Gating the whole fetch on driveConfig.isActive here was a bug —
+    // it silently skipped every PDF fetch for a group until someone remembered to also flip the
+    // Drive toggle on the separate PDF Export tab.
+    const enabled = account.pdfExportEnabled;
     if (!enabled) {
       await this.log(jobId, `  → ${account.accountNumber}: PDF export not enabled — skipping.`, 'pdf_export');
       await this.upsertJobAccount(jobId, account.id, { pdfStatus: 'skipped' });
