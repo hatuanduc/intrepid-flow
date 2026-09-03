@@ -1,5 +1,24 @@
 # Project Guidelines
 
+## ⚠️ AWS Infra — KHÔNG tự ý thực thi thao tác có thể xoá EBS/EC2 instance
+
+**Bất kỳ hành động nào có khả năng xoá/replace EC2 instance hoặc EBS volume của `aws_instance.app` (`infra/aws/modules/app/ec2.tf`) — kể cả khi trông vô hại — PHẢI cảnh báo rõ ràng cho user và chờ xác nhận trước khi chạy. Không được tự ý thực thi.**
+
+**Lý do:** Postgres chạy trong Docker named volume (`postgres_data`), nằm ngay trên root EBS volume của instance — **không có volume dữ liệu tách riêng, không phải RDS**. Instance/volume bị xoá = mất toàn bộ DB (users, bank_transactions, bank_accounts, mọi bảng...) và **không thể khôi phục** nếu không có snapshot từ trước.
+
+**Sự cố thật đã xảy ra (2026-09-02):** `data.aws_ami.ubuntu_arm` (`most_recent = true`) khiến một `terraform apply` bình thường (mục đích chỉ để sửa lịch start/stop EC2) vô tình pick up AMI mới → Terraform coi `ami` đã đổi → âm thầm terminate + tạo lại instance → `delete_on_termination = true` xoá theo volume cũ → mất sạch DB, không có backup để phục hồi. Phải re-sync lại data từ HSBCNet.
+
+**Đã fix một phần** (không có nghĩa là an toàn tuyệt đối):
+- `lifecycle { ignore_changes = [ami] }` trong `ec2.tf` — chặn đúng nguyên nhân này tái diễn.
+- DLM lifecycle policy (`infra/aws/modules/app/backup.tf`) — snapshot volume mỗi ngày, giữ 3 bản gần nhất.
+
+**Trước khi chạy bất kỳ lệnh nào sau đây — LUÔN dừng lại, giải thích rủi ro mất DB, và chờ user xác nhận rõ ràng:**
+- `terraform apply` / `terraform destroy` có đụng tới `aws_instance.app`, `root_block_device`, hoặc bất kỳ attribute nào có thể force-replace instance
+- `aws ec2 terminate-instances` (hoặc bất kỳ API tương đương)
+- Đổi `delete_on_termination`, `root_volume_size`, AMI, hay config khác có thể khiến Terraform replace instance
+- `docker compose down -v`, `docker volume rm` liên quan `postgres_data`/`redis_data` trên EC2
+- Bất kỳ thao tác nào khác có khả năng xoá/ghi đè volume gắn với instance `intrepid-flow-{env}`
+
 ## Tech Stack & Project Structure
 
 Monorepo (**pnpm workspaces**, xem `pnpm-workspace.yaml`):
