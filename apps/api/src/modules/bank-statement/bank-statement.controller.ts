@@ -19,7 +19,6 @@ import { TriggerJobDto } from './dto/trigger-job.dto';
 import { CreateAccountNameDto } from './dto/create-account-name.dto';
 import { UpdateAccountNameDto } from './dto/update-account-name.dto';
 import { UpdateAccountSyncDto } from './dto/update-account-sync.dto';
-import { UpdateAccountPdfExportDto } from './dto/update-account-pdf-export.dto';
 
 @ApiTags('Bank Statement')
 @ApiBearerAuth()
@@ -144,13 +143,6 @@ export class BankStatementController {
   @ApiOperation({ summary: 'Bật/tắt đồng bộ cho 1 account number cụ thể' })
   updateAccountSync(@Param('id') id: string, @Body() body: UpdateAccountSyncDto) {
     return this.service.updateAccountSyncEnabled(Number(id), body.syncEnabled);
-  }
-
-  @Put('accounts/:id/pdf-export')
-  @HasPermission('bank_statement:config')
-  @ApiOperation({ summary: 'Bật/tắt lấy PDF giao dịch cho 1 account number cụ thể' })
-  updateAccountPdfExport(@Param('id') id: string, @Body() body: UpdateAccountPdfExportDto) {
-    return this.service.updateAccountPdfExportEnabled(Number(id), body.pdfExportEnabled);
   }
 
   @Get('transactions/:id/pdf')

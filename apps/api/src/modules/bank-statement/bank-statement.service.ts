@@ -294,7 +294,6 @@ export class BankStatementService implements OnModuleInit {
       accountCode: a.accountCode,
       isActive: a.isActive,
       syncEnabled: a.syncEnabled,
-      pdfExportEnabled: a.pdfExportEnabled,
       lastSyncAt: a.syncJobAccounts[0]?.job?.completedAt ?? null,
       lastSyncStatus: a.syncJobAccounts[0]?.status ?? null,
     }));
@@ -365,15 +364,7 @@ export class BankStatementService implements OnModuleInit {
     return this.prisma.bankAccount.update({ where: { id }, data: { syncEnabled } });
   }
 
-  // Per-account override for PDF export, layered under BankDriveExportConfig's
-  // country-level isActive (see drive.service.ts's enable check: BOTH must be true).
-  async updateAccountPdfExportEnabled(id: number, pdfExportEnabled: boolean) {
-    const account = await this.prisma.bankAccount.findUnique({ where: { id } });
-    if (!account) throw new NotFoundException('BANK_ACCOUNT_NOT_FOUND');
-    return this.prisma.bankAccount.update({ where: { id }, data: { pdfExportEnabled } });
-  }
-
-  // Repairs a Sheet that got manually deleted/corrupted — the normal sync only re-pushes
+// Repairs a Sheet that got manually deleted/corrupted — the normal sync only re-pushes
   // when a fresh HSBC download inserts a new DB row, so a since-broken sheet is never
   // retried on its own. Runs as its own queue job (not a full bank_sync_jobs record —
   // there's no download step, just SheetsService.sync() re-sending every stored row).

@@ -404,7 +404,6 @@ export type BankAccount = {
   accountCode: string;
   isActive: boolean;
   syncEnabled: boolean;
-  pdfExportEnabled: boolean;
   lastSyncAt: string | null;
   lastSyncStatus: string | null;
 };
@@ -452,14 +451,6 @@ export async function updateBankAccountSync(id: number, syncEnabled: boolean) {
     method: 'PUT',
     auth: true,
     body: JSON.stringify({ syncEnabled }),
-  });
-}
-
-export async function updateBankAccountPdfExport(id: number, pdfExportEnabled: boolean) {
-  return request<BankAccount>(`/management/bank-statement/accounts/${id}/pdf-export`, {
-    method: 'PUT',
-    auth: true,
-    body: JSON.stringify({ pdfExportEnabled }),
   });
 }
 
