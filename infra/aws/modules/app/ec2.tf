@@ -32,6 +32,20 @@ resource "aws_instance" "app" {
     delete_on_termination = true
   }
 
+  # data.aws_ami.ubuntu_arm re-resolves to whatever Canonical's latest build is on every
+  # plan. Without this, a routine `terraform apply` picks up a newer AMI id, `ami` is a
+  # force-new attribute on aws_instance, and Terraform silently terminates this instance
+  # and boots a fresh one — destroying the root volume (delete_on_termination = true above)
+  # and with it the only copy of Postgres's data (postgres_data is a Docker named volume
+  # living on that same root volume, not a separate persistent EBS volume). That's exactly
+  # what happened on 2026-09-03: an apply picked up a new AMI, replaced the dev instance,
+  # and wiped the entire database with no backup to restore from.
+  # Bump the AMI deliberately by removing this ignore (or tainting the resource) when you
+  # actually want to rebuild the instance on a newer base image.
+  lifecycle {
+    ignore_changes = [ami]
+  }
+
   # AWS defaults IMDSv2's hop limit to 1 — enough for processes running directly on the host, but
   # the api container's AWS SDK calls (S3 + Lambda invoke for reconcile) go through Docker's bridge
   # network, which adds a hop. Without this, those SDK calls fail to fetch instance-role credentials

@@ -113,6 +113,34 @@ resource "aws_iam_role_policy" "infra_manager_scheduler" {
   })
 }
 
+# Needed to manage the DLM lifecycle policy in modules/app/backup.tf (EBS snapshots of
+# the app instance's root volume — TagResource in particular, since the aws provider's
+# default_tags trigger a tag call on every resource it creates, DLM included).
+resource "aws_iam_role_policy" "infra_manager_dlm" {
+  name = "infra-manager-dlm"
+  role = aws_iam_role.infra_manager.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dlm:CreateLifecyclePolicy",
+          "dlm:UpdateLifecyclePolicy",
+          "dlm:DeleteLifecyclePolicy",
+          "dlm:GetLifecyclePolicy",
+          "dlm:GetLifecyclePolicies",
+          "dlm:TagResource",
+          "dlm:UntagResource",
+          "dlm:ListTagsForResource",
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 output "infra_manager_role_arn" {
   description = "Set làm AWS_INFRA_ROLE_ARN trong GitHub Actions (dùng cho infra job)"
   value       = aws_iam_role.infra_manager.arn
