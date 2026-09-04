@@ -52,10 +52,12 @@ function SheetsSyncBadge({
   error: string | null;
   t: ReturnType<typeof useT>['t'];
 }) {
-  const cls = status === 'completed' ? s.badgeSuccess
-    : status === 'failed'  ? s.badgeError
-    : status === 'skipped' ? s.badgeWarn
-    : s.badgeDefault;
+  // Same reasoning as PdfSyncBadge below — only 'completed'/'failed' are worth a badge.
+  if (status !== 'completed' && status !== 'failed') {
+    return <span className={s.summaryNoValue}>—</span>;
+  }
+
+  const cls = status === 'completed' ? s.badgeSuccess : s.badgeError;
   const label = t(`bankJob.sheetsSync_${status}`);
   return (
     <span
@@ -79,10 +81,15 @@ function PdfSyncBadge({
   error: string | null;
   t: ReturnType<typeof useT>['t'];
 }) {
-  const cls = status === 'completed' ? s.badgeSuccess
-    : status === 'failed'  ? s.badgeError
-    : status === 'skipped' ? s.badgeWarn
-    : s.badgeDefault;
+  // Only 'completed' (there's a PDF to look at) and 'failed' (needs attention) earn a
+  // full badge — 'no_data'/'pending'/'skipped'/'not_attempted' are all "nothing to see
+  // here" states that, spelled out as a pill on every single row, drowned out the rows
+  // that actually matter. A plain dash reads as "nothing" at a glance instead.
+  if (status !== 'completed' && status !== 'failed') {
+    return <span className={s.summaryNoValue}>—</span>;
+  }
+
+  const cls = status === 'completed' ? s.badgeSuccess : s.badgeError;
   const label = status === 'completed' && fetched > 0
     ? t('bankJob.pdfSync_completedCount', { n: fetched })
     : t(`bankJob.pdfSync_${status}`);

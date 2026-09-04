@@ -630,6 +630,19 @@ export class PlaywrightService {
     // Set up the download listener BEFORE clicking to avoid a race condition (localhost returns the file very fast).
     // Handles both cases: download on the current tab (same-tab) or in a new tab (target="_blank").
     type DL = import('playwright').Download;
+    type PW = import('playwright').Page;
+
+    // Track EVERY tab HSBC opens during this attempt, not just the one that ends up
+    // carrying the download — ctx.once('page', ...) below only learns a new tab exists
+    // once it actually fires 'download', so a tab that opens but then the download
+    // never arrives (the 30s timeout below) was never closed: silently leaked for the
+    // rest of the browser session. That leftover tab is the prime suspect behind
+    // "account search box not found" cascades on later accounts in the same job after
+    // one account's export times out — this ctx.on() catches it regardless of outcome.
+    const openedPages: PW[] = [];
+    const trackNewPage = (p: PW) => openedPages.push(p);
+    ctx.on('page', trackNewPage);
+
     const downloadPromise = new Promise<DL>((resolve, reject) => {
       const tid = setTimeout(() => reject(new Error('Download timeout 30s')), 30_000);
       const done = (dl: DL) => { clearTimeout(tid); resolve(dl); };
@@ -644,15 +657,20 @@ export class PlaywrightService {
       throw new Error(`Could not find or click the Excel export option for ${accountNumber} on the HSBC page.`);
     }
 
-    const download = await downloadPromise;
-    const tmpPath = await download.path();
-    if (!tmpPath) throw new Error(`Download path null for ${accountNumber}`);
+    try {
+      const download = await downloadPromise;
+      const tmpPath = await download.path();
+      if (!tmpPath) throw new Error(`Download path null for ${accountNumber}`);
 
-    const buffer = await fs.promises.readFile(tmpPath);
-    // Close the extra tab if one was opened (ignore if none)
-    await download.page().close().catch(() => {});
-    this.logger.log(`${accountNumber}: downloaded ${(buffer.length / 1024).toFixed(1)} KB`);
-    return buffer;
+      const buffer = await fs.promises.readFile(tmpPath);
+      this.logger.log(`${accountNumber}: downloaded ${(buffer.length / 1024).toFixed(1)} KB`);
+      return buffer;
+    } finally {
+      ctx.off('page', trackNewPage);
+      for (const p of openedPages) {
+        if (p !== page && !p.isClosed()) await p.close().catch(() => {});
+      }
+    }
   }
 
   // ─── Transaction PDF export ─────────────────────────────────────────────────
@@ -804,6 +822,17 @@ export class PlaywrightService {
           type PW = import('playwright').Page;
           type DL = import('playwright').Download;
           type PdfCapture = { kind: 'response'; resp: Resp; newPage: PW } | { kind: 'download'; download: DL };
+
+          // Same leak as exportExcel() above: ctx.once('page', ...) inside pdfPromise only
+          // learns a new tab exists once it actually delivers, so a tab HSBC opens right
+          // before the 20s timeout fires below was never closed — orphaned for the rest of
+          // the browser session, and a likely trigger for "account search box not found" on
+          // later rows/accounts. Track every tab opened during this attempt and sweep up
+          // anything left over in the finally below, regardless of outcome.
+          const openedPages: PW[] = [];
+          const trackNewPage = (p: PW) => openedPages.push(p);
+          ctx.on('page', trackNewPage);
+
           const pdfPromise = new Promise<PdfCapture>((resolve, reject) => {
             const tid = setTimeout(() => reject(new Error('PDF response timeout 20s')), 20_000);
             const resolveOnce = (val: PdfCapture) => { clearTimeout(tid); resolve(val); };
@@ -817,30 +846,32 @@ export class PlaywrightService {
             });
           });
 
-          await modal.locator(SELECTORS.detailPdfBtn).click();
-          const capture = await pdfPromise;
+          try {
+            await modal.locator(SELECTORS.detailPdfBtn).click();
+            const capture = await pdfPromise;
 
-          let buffer: Buffer;
-          let fileName: string;
-          let openedPage: PW | null = null;
-          if (capture.kind === 'download') {
-            const tmpPath = await capture.download.path();
-            if (!tmpPath) throw new Error('PDF download path was null');
-            buffer = await fs.promises.readFile(tmpPath);
-            fileName = capture.download.suggestedFilename() || 'transaction.pdf';
-            openedPage = capture.download.page();
-          } else {
-            buffer = await capture.resp.body();
-            fileName = extractPdfFileName(capture.resp) ?? await capture.newPage.title().catch(() => 'transaction.pdf');
-            openedPage = capture.newPage;
+            let buffer: Buffer;
+            let fileName: string;
+            if (capture.kind === 'download') {
+              const tmpPath = await capture.download.path();
+              if (!tmpPath) throw new Error('PDF download path was null');
+              buffer = await fs.promises.readFile(tmpPath);
+              fileName = capture.download.suggestedFilename() || 'transaction.pdf';
+            } else {
+              buffer = await capture.resp.body();
+              fileName = extractPdfFileName(capture.resp) ?? await capture.newPage.title().catch(() => 'transaction.pdf');
+            }
+
+            await modal.locator(SELECTORS.detailCloseBtn).click().catch(() => {});
+
+            await onCaptured(key, buffer, fileName);
+            fetched++;
+          } finally {
+            ctx.off('page', trackNewPage);
+            for (const p of openedPages) {
+              if (p !== page && !p.isClosed()) await p.close().catch(() => {});
+            }
           }
-          // openedPage === page itself for a same-tab download — never close the main page.
-          if (openedPage && openedPage !== page) await openedPage.close().catch(() => {});
-
-          await modal.locator(SELECTORS.detailCloseBtn).click().catch(() => {});
-
-          await onCaptured(key, buffer, fileName);
-          fetched++;
         } catch (err) {
           failed++;
           const fullMsg = (err as Error).message ?? 'Unknown error';

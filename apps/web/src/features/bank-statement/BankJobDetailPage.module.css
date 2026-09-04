@@ -168,6 +168,7 @@
 .summaryCredit  { font-size: 12px; font-weight: 600; color: #059669; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .summaryDebit   { font-size: 12px; font-weight: 600; color: #df1b41; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .summarySyncBadge { justify-self: start; width: fit-content; }
+.summaryNoValue { justify-self: start; color: var(--color-subtle); font-size: 12px; }
 .summaryArrow   { color: var(--color-subtle); justify-self: center; }
 
 /* GSheet/PDF column cell — badge + its own inline retry icon, replacing the old
