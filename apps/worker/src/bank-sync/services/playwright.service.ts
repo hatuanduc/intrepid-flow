@@ -494,8 +494,23 @@ export class PlaywrightService {
     // session dropped, HSBC layout changed) — fail loudly instead of papering over
     // it with a speculative page.goto() reload, which was liable to land somewhere
     // unexpected and retrigger HSBC's post-navigation "LastLogin" popup tab.
-    const inputVisible = await page.waitForSelector(SELECTORS.changeAccountInput, { state: 'visible', timeout: 8_000 })
+    let inputVisible = await page.waitForSelector(SELECTORS.changeAccountInput, { state: 'visible', timeout: 8_000 })
       .then(() => true).catch(() => false);
+    if (!inputVisible) {
+      // A stuck HSBC overlay left over from the PREVIOUS account — e.g. an Export
+      // "preparing your file" panel that never resolved after that account's download
+      // timed out — can hide this input without ever navigating away from the page.
+      // Escape dismisses that class of transient overlay/dropdown without the
+      // page.goto() reload deliberately avoided above. Cheap to try once before
+      // failing outright, and confirmed against production logs: a download timeout
+      // on one account was consistently followed by every subsequent account in the
+      // same job failing here with the exact same stuck URL until this was added.
+      this.logger.warn(`[${accountNumber}] changeAccountInput not visible on first check — attempting Escape recovery`);
+      await page.keyboard.press('Escape').catch(() => {});
+      await page.keyboard.press('Escape').catch(() => {});
+      inputVisible = await page.waitForSelector(SELECTORS.changeAccountInput, { state: 'visible', timeout: 5_000 })
+        .then(() => true).catch(() => false);
+    }
     if (!inputVisible) {
       // Full technical detail → app log (console/CloudWatch). The thrown message is
       // what ends up in the user-facing job log, so keep it short and non-technical.
@@ -644,7 +659,12 @@ export class PlaywrightService {
     ctx.on('page', trackNewPage);
 
     const downloadPromise = new Promise<DL>((resolve, reject) => {
-      const tid = setTimeout(() => reject(new Error('Download timeout 30s')), 30_000);
+      // Production logs show normal downloads (these are small, a few KB) completing
+      // in 5-8s consistently — 45s is a safety margin for an off day, not an
+      // expectation that HSBC is ever really this slow. A download that still hasn't
+      // fired by then is genuinely stuck, not "almost done" — see the Escape recovery
+      // in navigateToAccountAndApplyFilter() above for what actually handles that.
+      const tid = setTimeout(() => reject(new Error('Download timeout 45s')), 45_000);
       const done = (dl: DL) => { clearTimeout(tid); resolve(dl); };
       page.once('download', done);                          // case: same tab
       ctx.once('page', (newPage) => newPage.once('download', done)); // case: new tab
