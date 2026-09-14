@@ -64,7 +64,14 @@ const SELECTORS = {
 // ... cho giao dịchof the Mã tham chiếu khách hàng:INTREPID301097, at 28 Aug 2026
 // 10:49"`) — parsing this one string is more robust than reading several <td> cells
 // in a fixed column order, since it doesn't depend on the table's column layout.
-const ROW_REFERENCE_RE = /Mã tham chiếu khách hàng:([^,]+), at (.+)$/;
+//
+// HSBCnet renders this label in whatever language the logged-in user's own profile
+// is set to, not a fixed one — an English-profile session reads "...of the Customer
+// reference:X, at Y" instead. Matching only the Vietnamese label silently dropped
+// every row (no match → warn + skip) for any English-profile account, with nothing
+// in the job log to explain why pdf_export always fetched 0 — confirmed live against
+// a real English-profile HSBCnet session.
+const ROW_REFERENCE_RE = /(?:Mã tham chiếu khách hàng|Customer reference):([^,]+), at (.+)$/;
 
 export type PdfRowKey = { reference: string; dateTimeLabel: string };
 
@@ -742,11 +749,28 @@ export class PlaywrightService {
       // for display:none and detached nodes) — belt-and-suspenders on top of the
       // .account-transactions-table scope above against matching a leftover element
       // HSBC's SPA didn't clean up when switching accounts.
-      const rows = await page.locator(SELECTORS.rowActionBtn).evaluateAll((els) =>
+      const scanRows = () => page.locator(SELECTORS.rowActionBtn).evaluateAll((els) =>
         els
           .filter((el) => (el as HTMLElement).offsetParent !== null)
           .map((el) => ({ id: el.id, ariaLabel: el.getAttribute('aria-label') ?? '' })),
       );
+      let rows = await scanRows();
+
+      // On the very first page, 0 rows is ambiguous — either this table genuinely has
+      // none, or the table just hasn't finished rendering the "..." buttons yet. Matters
+      // specifically for the PDF-only retry path (runPdfExportOnly() in
+      // bank-sync.service.ts): it jumps straight from navigateToAccountAndApplyFilter()
+      // into this scan with no interleaved Excel download beforehand to naturally
+      // absorb render time the way a normal bank_sync run does — observed live
+      // returning 0 rows on the first pass for a table that clearly had buttons
+      // moments later on manual inspection. Retry a few times, re-querying the real
+      // DOM each time, before accepting "0 rows" as final.
+      if (pageNum === 1 && rows.length === 0) {
+        for (let attempt = 1; attempt <= 4 && rows.length === 0; attempt++) {
+          await page.waitForTimeout(1_500);
+          rows = await scanRows();
+        }
+      }
 
       for (const row of rows) {
         await checkCancelled();
@@ -813,7 +837,11 @@ export class PlaywrightService {
             throw new Error(`Action menu did not open after 3 attempts (button #${row.id})`);
           }
 
-          const detailOption = dropdown.getByText('Xem chi tiết giao dịch').first();
+          // Same language-dependent-label issue as ROW_REFERENCE_RE above — an
+          // English-profile HSBCnet session renders this dropdown item as "View
+          // transaction details" instead of the Vietnamese text, confirmed live via
+          // DevTools. Match either.
+          const detailOption = dropdown.getByText(/Xem chi tiết giao dịch|View transaction details/).first();
           const modal = page.locator(SELECTORS.detailModal);
           let modalOpen = false;
           for (let attempt = 1; attempt <= 3 && !modalOpen; attempt++) {

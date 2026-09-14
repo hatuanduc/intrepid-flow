@@ -1026,13 +1026,12 @@ export class BankSyncService {
       );
     }
 
-    // Unmatched rows — brief info line only in the job's visible log (not having synced
-    // a given row yet is the normal case, not a failure). Full candidate dump (which
-    // on-file refs exist that day, for spotting a genuine mismatch) still goes to
+    // Unmatched rows are the normal case (not having synced a given row yet), already
+    // summarized in the "PDF scan — ... not found on file" line above — a per-row line
+    // here too would just duplicate that count across many lines. Full candidate dump
+    // (which on-file refs exist that day, for spotting a genuine mismatch) goes to
     // this.logger — console/CloudWatch only — so it doesn't clutter what the user sees.
     for (const key of unmatched) {
-      await this.log(jobId, `  → ${account.accountNumber}: PDF not found for "${key.reference}" (${key.dateTimeLabel}).`, 'pdf_export', 'info');
-
       const day = parseAriaDate(key.dateTimeLabel);
       if (day) {
         const dayEnd = new Date(day.getTime() + 24 * 60 * 60 * 1000 - 1);
