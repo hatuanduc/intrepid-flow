@@ -123,6 +123,8 @@ export class BankSyncService {
       // the Excel export/parse/store entirely.
       let accountRows = new Map<string, TransactionRow[]>();
       let pdfExportMs = 0;
+      let bankSyncFailed = false;
+      let bankSyncFailedCount = 0;
 
       if (!step1Done) {
         await this.updateStep(jobId, 'bank_sync', { status: 'running', startedAt: new Date().toISOString() });
@@ -137,7 +139,27 @@ export class BankSyncService {
         const bankSyncResult = await this.runBankSync(jobId);
         accountRows = bankSyncResult.rows;
         pdfExportMs = bankSyncResult.pdfExportMs;
-        await this.updateStep(jobId, 'bank_sync', { status: 'completed', completedAt: new Date().toISOString() });
+
+        // A per-account download failure inside runBankSync() is caught and recorded
+        // there, not thrown — the loop keeps going so one bad account doesn't stop the
+        // rest. But that means marking this step 'completed' unconditionally, like
+        // before, was a lie whenever ANY account failed: step1Done would then read true
+        // forever after, and nothing in this function ever calls runBankSync() again —
+        // there was no way for a retry (all-steps or bank_sync-specific) to re-attempt
+        // those specific accounts, only to skip straight past them into PDF/Sheets/
+        // Drive using whatever partial data happened to download. Check the real
+        // per-account outcome instead, same pattern sheets_sync/pdf_export already use.
+        const bankSyncAccounts = await this.prisma.bankSyncJobAccount.findMany({
+          where: { jobId },
+          select: { status: true },
+        });
+        bankSyncFailedCount = bankSyncAccounts.filter(a => a.status === 'failed').length;
+        bankSyncFailed = bankSyncFailedCount > 0;
+        await this.updateStep(jobId, 'bank_sync', {
+          status: bankSyncFailed ? 'failed' : 'completed',
+          completedAt: new Date().toISOString(),
+          errorMessage: bankSyncFailed ? `${bankSyncFailedCount} account(s) failed to download` : null,
+        });
       } else {
         await this.log(jobId, 'Bank sync already completed — loading transactions from DB.', 'sheets_sync', 'success');
         accountRows = await this.loadTransactionsForJob(jobId);
@@ -231,14 +253,16 @@ export class BankSyncService {
         }
       }
 
-      if (sheetsSyncFailed || pdfExportFailed) {
+      if (bankSyncFailed || sheetsSyncFailed || pdfExportFailed) {
         const errorParts = [
+          bankSyncFailed ? `Bank statement download failed for ${bankSyncFailedCount} account(s)` : null,
           sheetsSyncFailed ? `GSheets sync failed for ${sheetsFailedCount} account(s)` : null,
           pdfExportFailed ? `PDF export failed for ${pdfFailedCount} transaction(s)` : null,
         ].filter(Boolean);
         await this.updateJob(jobId, JOB_STATUS.FAILED, undefined, errorParts.join('; '));
-        await this.log(jobId, 'Job failed — one or more accounts failed to sync to Google Sheets or export PDFs.', undefined, 'error');
+        await this.log(jobId, 'Job failed — one or more accounts failed to download, sync to Google Sheets, or export PDFs.', undefined, 'error');
         const notifyParts = [
+          bankSyncFailed ? `${bankSyncFailedCount} tài khoản lỗi khi tải sao kê.` : null,
           sheetsSyncFailed ? `${sheetsFailedCount} tài khoản lỗi khi đồng bộ Google Sheets.` : null,
           pdfExportFailed ? `${pdfFailedCount} giao dịch lỗi khi xuất PDF.` : null,
         ].filter(Boolean);
