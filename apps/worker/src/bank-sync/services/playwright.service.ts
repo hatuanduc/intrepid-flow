@@ -716,6 +716,12 @@ export class PlaywrightService {
     const dateRangeChevron = filtersPanel.locator(SELECTORS.dateRangeChevron).first();
     const fromFieldLoc = page.locator(SELECTORS.dateFromInput);
     let panelOpen = await fromFieldLoc.waitFor({ state: 'visible', timeout: 500 }).then(() => true).catch(() => false);
+    // Buffered, not written yet — see capturePreActionSnapshot()'s docstring. This
+    // failure happens in isolation (doesn't cascade into later accounts the way the
+    // Export-click stall did), so there's no live evidence yet for what's actually
+    // blocking the chevron on the rare account/run where 3 attempts isn't enough —
+    // capture it the same way so the next occurrence is diagnosable instead of guessed.
+    const preChevronSnapshot = !panelOpen ? await this.capturePreActionSnapshot(page) : null;
     for (let attempt = 1; attempt <= 3 && !panelOpen; attempt++) {
       await checkCancelled();
       try {
@@ -726,7 +732,11 @@ export class PlaywrightService {
       panelOpen = await fromFieldLoc.waitFor({ state: 'visible', timeout: 2_500 }).then(() => true).catch(() => false);
     }
     if (!panelOpen) {
-      this.logger.error(`[${accountNumber}] "Date range" did not open after 3 attempts — URL: ${page.url()}`);
+      const [before, after] = await Promise.all([
+        preChevronSnapshot ? this.persistPreActionSnapshot(`${accountNumber}-before-date-range-chevron`, preChevronSnapshot) : Promise.resolve(''),
+        this.captureDebugSnapshot(page, `${accountNumber}-date-range-not-open`),
+      ]);
+      this.logger.error(`[${accountNumber}] "Date range" did not open after 3 attempts — URL: ${page.url()}${before ? `, before: [${before}]` : ''}${after ? `, after: [${after}]` : ''}`);
       throw new Error('Could not find the date range option on the HSBC page.');
     }
 
