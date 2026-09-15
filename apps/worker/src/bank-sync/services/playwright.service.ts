@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { HSBCNET_URL, SESSION_FILE, TWO_FA_TIMEOUT_MS } from '../constants';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { HSBCNET_URL, SESSION_FILE, TWO_FA_TIMEOUT_MS, DEBUG_SCREENSHOT_DIR } from '../constants';
 
 // ─── HSBCnet UI selectors (verified from DevTools screenshots) ────────────────
 const SELECTORS = {
@@ -86,10 +87,46 @@ export type DiscoveredAccount = {
 export class PlaywrightService {
   private readonly logger = new Logger(PlaywrightService.name);
   private readonly sessionPath = path.join(process.cwd(), SESSION_FILE);
+  private readonly screenshotDir = path.join(process.cwd(), DEBUG_SCREENSHOT_DIR);
+  // Same bucket PDFs go to (see drive.service.ts's uploadToS3) — a "debug-screenshots/"
+  // prefix keeps these out of the accountName/accountNumber/... key layout PDFs use,
+  // no separate bucket needed just for this.
+  private readonly s3 = new S3Client({});
+  private readonly s3Bucket = process.env.BANK_STATEMENT_PDF_BUCKET as string | undefined;
 
   private browser: import('playwright').Browser | null = null;
   private context: import('playwright').BrowserContext | null = null;
   private page: import('playwright').Page | null = null;
+
+  // Best-effort diagnostic capture for hard-to-reproduce navigation failures — never
+  // lets a screenshot problem mask the real error that triggered it. Saved locally
+  // first (EC2's disk survives an instance stop/start, pullable via SSM regardless of
+  // S3 outcome) then, if the same bucket PDFs use is configured, mirrored to S3 too —
+  // the local file alone means a screenshot on the AWS box previously needed an SSM
+  // session just to retrieve; S3 makes it a normal download link instead.
+  private async captureDebugScreenshot(page: import('playwright').Page, label: string): Promise<string | null> {
+    let filePath: string;
+    try {
+      await fs.promises.mkdir(this.screenshotDir, { recursive: true });
+      filePath = path.join(this.screenshotDir, `${label}-${Date.now()}.png`);
+      await page.screenshot({ path: filePath, fullPage: true });
+    } catch (err) {
+      this.logger.warn(`Failed to capture debug screenshot for "${label}" — ${(err as Error).message}`);
+      return null;
+    }
+
+    if (this.s3Bucket) {
+      try {
+        const buffer = await fs.promises.readFile(filePath);
+        const key = `debug-screenshots/${path.basename(filePath)}`;
+        await this.s3.send(new PutObjectCommand({ Bucket: this.s3Bucket, Key: key, Body: buffer, ContentType: 'image/png' }));
+        return `s3://${this.s3Bucket}/${key} (local: ${filePath})`;
+      } catch (err) {
+        this.logger.warn(`Failed to upload debug screenshot to S3 — ${(err as Error).message}`);
+      }
+    }
+    return filePath;
+  }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
 
@@ -109,7 +146,13 @@ export class PlaywrightService {
 
     const { chromium } = await import('playwright');
     const headless = process.env.PLAYWRIGHT_HEADLESS !== 'false';
-    const slowMo = Number(process.env.PLAYWRIGHT_SLOW_MO ?? (headless ? 0 : 600));
+    // A small delay even in headless mode is a cheap hedge against HSBC's WAF/backend
+    // treating a burst of instant, back-to-back actions as bot-like — production logs
+    // showed a stalled Export/Download cascading through the rest of a job, something
+    // never reproduced locally in headed mode (which already paces itself via the
+    // 600ms default below). Not proven to be the cause, but low-risk to try; override
+    // with PLAYWRIGHT_SLOW_MO=0 if it turns out to just add latency for no benefit.
+    const slowMo = Number(process.env.PLAYWRIGHT_SLOW_MO ?? (headless ? 250 : 600));
     // --disable-blink-features=AutomationControlled + a non-headless UA/viewport below —
     // HSBCnet's WAF (F5 BIG-IP ASM) intermittently fingerprints vanilla headless Chromium
     // (navigator.webdriver=true, "HeadlessChrome" UA string, 800x600 default viewport) and
@@ -410,6 +453,17 @@ export class PlaywrightService {
 
     // Close the switcher dropdown
     await page.keyboard.press('Escape');
+
+    // Give the page a moment to settle after the discovery scan (fresh login + 2FA +
+    // searching the switcher once per company name) before the very first real
+    // account fetch fires an Export/Download click straight after. Production logs
+    // showed the account processed FIRST after discovery hitting a stalled download
+    // that then cascaded through the rest of the job — plausibly the page/session
+    // still catching up right at that transition. Cheap and harmless if it wasn't
+    // actually needed; local testing (headed, slowMo between actions) never hit this,
+    // only headless production, another sign this is a timing-sensitive edge.
+    await page.waitForLoadState('networkidle', { timeout: 5_000 }).catch(() => {});
+
     this.logger.log(`Discovered ${accounts.length} accounts across ${companyNames.length} company name(s)`);
     return accounts;
   }
@@ -519,9 +573,30 @@ export class PlaywrightService {
         .then(() => true).catch(() => false);
     }
     if (!inputVisible) {
+      // Escape alone wasn't enough — production logs show this happening too (URL
+      // stuck on the SAME account for the rest of the job, Escape making no
+      // difference), meaning whatever's blocking the input isn't a simple dismissible
+      // dropdown. navigateToAccountDetailPage() re-enters via the Accounts list using
+      // an in-SPA hash change (window.location.hash = '/accounts'), not a real
+      // page.goto() reload — same mechanism the PDF-only retry path already relies on
+      // to (re)land on account-detail, so it carries no more "LastLogin" popup risk
+      // than that existing call site already does. Worth trying before failing the
+      // rest of the job outright.
+      this.logger.warn(`[${accountNumber}] Escape recovery didn't restore changeAccountInput — attempting full re-navigation via Accounts list`);
+      await this.navigateToAccountDetailPage().catch((err) => {
+        this.logger.warn(`[${accountNumber}] Re-navigation attempt failed — ${(err as Error).message.split('\n')[0]}`);
+      });
+      inputVisible = await page.waitForSelector(SELECTORS.changeAccountInput, { state: 'visible', timeout: 5_000 })
+        .then(() => true).catch(() => false);
+    }
+    if (!inputVisible) {
       // Full technical detail → app log (console/CloudWatch). The thrown message is
       // what ends up in the user-facing job log, so keep it short and non-technical.
-      this.logger.error(`[${accountNumber}] changeAccountInput not visible — URL: ${page.url()}, title: "${await page.title().catch(() => '')}"`);
+      // Screenshot the actual stuck page — every prior investigation of this exact
+      // error required the user to manually reproduce it and inspect DevTools live;
+      // capturing it here means the next occurrence is diagnosable from the file alone.
+      const screenshotPath = await this.captureDebugScreenshot(page, `${accountNumber}-search-box-not-found`);
+      this.logger.error(`[${accountNumber}] changeAccountInput not visible — URL: ${page.url()}, title: "${await page.title().catch(() => '')}"${screenshotPath ? `, screenshot: ${screenshotPath}` : ''}`);
       throw new Error('Could not find the account search box on the HSBC page.');
     }
 

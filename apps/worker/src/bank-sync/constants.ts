@@ -29,6 +29,11 @@ export const FAIL_REASON = {
 
 export const HSBCNET_URL = process.env.HSBCNET_URL ?? 'https://www1.secure.hsbcnet.com';
 export const SESSION_FILE = 'sessions/hsbcnet.json';
+// Screenshots captured on hard-to-reproduce navigation failures (e.g. "account search
+// box not found") — same idea as SESSION_FILE, a plain relative dir under the worker's
+// cwd so it lands wherever the app already runs from (local checkout or the EC2 /app
+// deploy dir), pullable via the same SSM/SCP path either way.
+export const DEBUG_SCREENSHOT_DIR = 'debug-screenshots';
 
 // Safety net — in case neither the dashboard nor the error selector shows up
 export const TWO_FA_TIMEOUT_MS = 5 * 60_000; // 5 minutes
