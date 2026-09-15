@@ -38,6 +38,15 @@ const SELECTORS = {
   dateToInput:         '#dateFieldTo-field',
   dateRangeChevron:    '[data-testid="ChevronDownIcon"]',
   noTransactions:      'p.table__error-message',
+  // Confirmed via a captured "before export click" debug snapshot (see
+  // captureDebugSnapshot() call sites): the table is still showing this spinner —
+  // <div class="spinner" role="loader" aria-describedby="Loading"> inside
+  // .account-transactions-table — at the exact moment the date-range networkidle wait
+  // below was satisfied. networkidle only means the NETWORK settled, not that the
+  // table finished re-rendering afterward; clicking Export while this spinner is still
+  // up is the prime suspect for the stuck-page crash a "Download timeout" then cascades
+  // into for every account after it in the same job.
+  transactionsLoadingSpinner: '.account-transactions-table .spinner[role="loader"]',
 
   // Export dropdown
   exportTrigger: 'button#export-dropdown-trigger',
@@ -728,6 +737,19 @@ export class PlaywrightService {
     // Typing the "to" date fires HSBC's own search — no separate Apply click needed
     // (verified: the console script never clicks anything else and the table updates).
     await page.waitForLoadState('networkidle', { timeout: 8_000 }).catch(() => {});
+
+    // networkidle above only means the NETWORK request(s) the date-range search fired
+    // have settled — HSBC's own table can still be showing its loading spinner for a
+    // bit after that (client-side re-render lagging the response). A debug snapshot
+    // captured live in production caught this exact gap: the spinner was still up when
+    // this function returned and the caller went straight into Export → Excel — the
+    // export then hung until the 30/45s download timeout and left the page in a
+    // permanently broken state for every account after it in the same job. Explicitly
+    // wait for the spinner to clear (it may never have appeared at all for a fast
+    // response, hence the short initial timeout) before treating the table as ready.
+    await page.waitForSelector(SELECTORS.transactionsLoadingSpinner, { state: 'visible', timeout: 1_000 })
+      .then(() => page.waitForSelector(SELECTORS.transactionsLoadingSpinner, { state: 'hidden', timeout: 20_000 }))
+      .catch(() => {});
 
     // ── Step 6: Check for empty results ──────────────────────────────────────
     const noTxnEl = await page.$(SELECTORS.noTransactions);
