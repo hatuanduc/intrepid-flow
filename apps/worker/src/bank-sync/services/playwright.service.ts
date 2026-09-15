@@ -708,6 +708,12 @@ export class PlaywrightService {
       this.logger.error(`[${accountNumber}] "Filter / search" panel did not open — URL: ${page.url()}`);
       throw new Error('Could not find the filter panel on the HSBC page.');
     }
+    // Same class of gap the transactions-table spinner fix below addresses: the panel
+    // CONTAINER being visible doesn't mean its contents (the chevron Step 3 is about to
+    // click) have finished rendering/becoming interactive yet. Cheap settle wait before
+    // the very first chevron attempt, on the same theory — give it a moment rather than
+    // immediately racing a click against whatever's still mounting.
+    await page.waitForLoadState('networkidle', { timeout: 3_000 }).catch(() => {});
 
     // ── Step 3: Open "Date range" (chevron scoped inside the filters panel) ───
     // "Date range" is the first field in the filter row (before Transaction type),
@@ -729,7 +735,7 @@ export class PlaywrightService {
       } catch (err) {
         this.logger.warn(`"Date range" chevron click failed (attempt ${attempt}/3) — ${(err as Error).message.split('\n')[0]}`);
       }
-      panelOpen = await fromFieldLoc.waitFor({ state: 'visible', timeout: 2_500 }).then(() => true).catch(() => false);
+      panelOpen = await fromFieldLoc.waitFor({ state: 'visible', timeout: 4_000 }).then(() => true).catch(() => false);
     }
     if (!panelOpen) {
       const [before, after] = await Promise.all([
