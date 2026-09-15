@@ -154,9 +154,17 @@ services:
       # fingerprint check on HSBCnet's login page — plain headless gets served a
       # "Service Unavailable" WAF block page instead of the real login form.
       PLAYWRIGHT_HEADLESS: "false"
-      # headless:false defaults slowMo to 600ms (meant for a human watching locally) —
-      # nothing watches the Xvfb virtual display on EC2, so keep it off.
-      PLAYWRIGHT_SLOW_MO: "0"
+      # Was "0" ("nothing watches the Xvfb virtual display, so keep it off") — but
+      # production logs traced two separate stuck-page failures (Export click, date-
+      # range chevron) to the same root cause: Playwright clicking the instant an
+      # element becomes actionable, before HSBC's own client-side render has actually
+      # caught up (networkidle only confirms the NETWORK settled, not the UI). Both
+      # known spots now have their own explicit wait for the real DOM state instead of
+      # guessing a delay — this is a blanket hedge on top of that for every OTHER click
+      # in the flow that doesn't have one yet, pacing actions closer to a real user
+      # instead of "as fast as physically possible". Adds real time to every job (~a
+      # few minutes over a full run); revisit if that cost stops being worth it.
+      PLAYWRIGHT_SLOW_MO: "300"
       # CloudWatch doesn't render ANSI color codes — Nest's ConsoleLogger colorizes by default.
       NO_COLOR: "1"
     depends_on:
