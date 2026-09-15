@@ -99,33 +99,86 @@ export class PlaywrightService {
   private page: import('playwright').Page | null = null;
 
   // Best-effort diagnostic capture for hard-to-reproduce navigation failures — never
-  // lets a screenshot problem mask the real error that triggered it. Saved locally
-  // first (EC2's disk survives an instance stop/start, pullable via SSM regardless of
-  // S3 outcome) then, if the same bucket PDFs use is configured, mirrored to S3 too —
-  // the local file alone means a screenshot on the AWS box previously needed an SSM
+  // lets a capture problem mask the real error that triggered it. Saved locally first
+  // (EC2's disk survives an instance stop/start, pullable via SSM regardless of S3
+  // outcome) then, if the same bucket PDFs use is configured, mirrored to S3 too — the
+  // local file alone means a screenshot on the AWS box previously needed an SSM
   // session just to retrieve; S3 makes it a normal download link instead.
-  private async captureDebugScreenshot(page: import('playwright').Page, label: string): Promise<string | null> {
+  private async saveDebugArtifact(buffer: Buffer, filenameStem: string, ext: string, contentType: string): Promise<string | null> {
     let filePath: string;
     try {
       await fs.promises.mkdir(this.screenshotDir, { recursive: true });
-      filePath = path.join(this.screenshotDir, `${label}-${Date.now()}.png`);
-      await page.screenshot({ path: filePath, fullPage: true });
+      filePath = path.join(this.screenshotDir, `${filenameStem}.${ext}`);
+      await fs.promises.writeFile(filePath, buffer);
     } catch (err) {
-      this.logger.warn(`Failed to capture debug screenshot for "${label}" — ${(err as Error).message}`);
+      this.logger.warn(`Failed to save debug artifact "${filenameStem}.${ext}" — ${(err as Error).message}`);
       return null;
     }
 
     if (this.s3Bucket) {
       try {
-        const buffer = await fs.promises.readFile(filePath);
         const key = `debug-screenshots/${path.basename(filePath)}`;
-        await this.s3.send(new PutObjectCommand({ Bucket: this.s3Bucket, Key: key, Body: buffer, ContentType: 'image/png' }));
+        await this.s3.send(new PutObjectCommand({ Bucket: this.s3Bucket, Key: key, Body: buffer, ContentType: contentType }));
         return `s3://${this.s3Bucket}/${key} (local: ${filePath})`;
       } catch (err) {
-        this.logger.warn(`Failed to upload debug screenshot to S3 — ${(err as Error).message}`);
+        this.logger.warn(`Failed to upload debug artifact to S3 — ${(err as Error).message}`);
       }
     }
     return filePath;
+  }
+
+  // Screenshot + full HTML together, as one labeled snapshot — a screenshot alone
+  // shows WHAT the page looks like, the HTML is what actually lets you tell WHY (an
+  // error boundary's fallback markup, a stale/detached component, an empty root div).
+  private async captureDebugSnapshot(page: import('playwright').Page, label: string): Promise<string> {
+    const timestamp = Date.now();
+    const [screenshotBuf, htmlStr] = await Promise.all([
+      page.screenshot({ fullPage: true }).catch((err) => {
+        this.logger.warn(`Failed to capture debug screenshot for "${label}" — ${(err as Error).message}`);
+        return null;
+      }),
+      page.content().catch((err) => {
+        this.logger.warn(`Failed to capture debug HTML for "${label}" — ${(err as Error).message}`);
+        return null;
+      }),
+    ]);
+    const parts: string[] = [];
+    if (screenshotBuf) {
+      const p = await this.saveDebugArtifact(screenshotBuf, `${label}-${timestamp}`, 'png', 'image/png');
+      if (p) parts.push(`screenshot: ${p}`);
+    }
+    if (htmlStr) {
+      const p = await this.saveDebugArtifact(Buffer.from(htmlStr, 'utf-8'), `${label}-${timestamp}`, 'html', 'text/html');
+      if (p) parts.push(`html: ${p}`);
+    }
+    return parts.join(', ');
+  }
+
+  // Buffered, in-memory version of the above — captured BEFORE a risky action (e.g.
+  // the Excel export click) without writing anything yet. Call persistPreActionSnapshot()
+  // after to actually save it, but only when that action turned out to fail — the vast
+  // majority of accounts succeed, and writing a "before" snapshot for every single one
+  // of them regardless would flood local disk/S3 with nothing but noise.
+  private async capturePreActionSnapshot(page: import('playwright').Page): Promise<{ screenshot: Buffer | null; html: string | null }> {
+    const [screenshot, html] = await Promise.all([
+      page.screenshot({ fullPage: true }).catch(() => null),
+      page.content().catch(() => null),
+    ]);
+    return { screenshot, html };
+  }
+
+  private async persistPreActionSnapshot(label: string, snapshot: { screenshot: Buffer | null; html: string | null }): Promise<string> {
+    const timestamp = Date.now();
+    const parts: string[] = [];
+    if (snapshot.screenshot) {
+      const p = await this.saveDebugArtifact(snapshot.screenshot, `${label}-${timestamp}`, 'png', 'image/png');
+      if (p) parts.push(`screenshot: ${p}`);
+    }
+    if (snapshot.html) {
+      const p = await this.saveDebugArtifact(Buffer.from(snapshot.html, 'utf-8'), `${label}-${timestamp}`, 'html', 'text/html');
+      if (p) parts.push(`html: ${p}`);
+    }
+    return parts.join(', ');
   }
 
   // ─── Lifecycle ──────────────────────────────────────────────────────────────
@@ -596,11 +649,11 @@ export class PlaywrightService {
     if (!inputVisible) {
       // Full technical detail → app log (console/CloudWatch). The thrown message is
       // what ends up in the user-facing job log, so keep it short and non-technical.
-      // Screenshot the actual stuck page — every prior investigation of this exact
+      // Snapshot the actual stuck page — every prior investigation of this exact
       // error required the user to manually reproduce it and inspect DevTools live;
-      // capturing it here means the next occurrence is diagnosable from the file alone.
-      const screenshotPath = await this.captureDebugScreenshot(page, `${accountNumber}-search-box-not-found`);
-      this.logger.error(`[${accountNumber}] changeAccountInput not visible — URL: ${page.url()}, title: "${await page.title().catch(() => '')}"${screenshotPath ? `, screenshot: ${screenshotPath}` : ''}`);
+      // capturing it here means the next occurrence is diagnosable from the files alone.
+      const snapshot = await this.captureDebugSnapshot(page, `${accountNumber}-search-box-not-found`);
+      this.logger.error(`[${accountNumber}] changeAccountInput not visible — URL: ${page.url()}, title: "${await page.title().catch(() => '')}"${snapshot ? `, ${snapshot}` : ''}`);
       throw new Error('Could not find the account search box on the HSBC page.');
     }
 
@@ -756,6 +809,13 @@ export class PlaywrightService {
       ctx.once('page', (newPage) => newPage.once('download', done)); // case: new tab
     });
 
+    // Buffered in memory, not written yet — see capturePreActionSnapshot()'s docstring.
+    // Taken right before the click that can trigger a stuck download, so if it does
+    // time out below we have BOTH what the page looked like right before things went
+    // wrong AND right after, instead of only ever seeing the aftermath several
+    // accounts later once the whole job has already cascaded.
+    const preClickSnapshot = await this.capturePreActionSnapshot(page);
+
     try {
       await this.clickWithRetry(excelBtn, 'Excel export option', 3, 5_000, shouldCancel);
     } catch (err) {
@@ -771,6 +831,15 @@ export class PlaywrightService {
       const buffer = await fs.promises.readFile(tmpPath);
       this.logger.log(`${accountNumber}: downloaded ${(buffer.length / 1024).toFixed(1)} KB`);
       return buffer;
+    } catch (err) {
+      if ((err as Error).message.startsWith('Download timeout')) {
+        const [before, after] = await Promise.all([
+          this.persistPreActionSnapshot(`${accountNumber}-before-export-click`, preClickSnapshot),
+          this.captureDebugSnapshot(page, `${accountNumber}-download-timeout`),
+        ]);
+        this.logger.error(`[${accountNumber}] Download timed out — before click: [${before}], after timeout: [${after}]`);
+      }
+      throw err;
     } finally {
       ctx.off('page', trackNewPage);
       for (const p of openedPages) {
