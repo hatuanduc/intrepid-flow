@@ -6,7 +6,11 @@
       "Bash(cd /d/github-private/intrepid-flow/apps/worker && cat tsconfig.json)",
       "Read(//d/d/github-private/intrepid-flow/apps/worker/**)",
       "Bash(pnpm prisma *)",
-      "Bash(npx prisma *)"
+      "Bash(npx prisma *)",
+      "Bash(pnpm --filter @intrepid/worker exec tsc -p tsconfig.json --noEmit)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
