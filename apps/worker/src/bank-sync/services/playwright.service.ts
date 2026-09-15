@@ -160,7 +160,11 @@ export class PlaywrightService {
     this.browser = await chromium.launch({
       headless,
       slowMo,
-      args: ['--disable-blink-features=AutomationControlled'],
+      // --disable-gpu: production runs headed (see comment above) against Xvfb on EC2,
+      // which has no real GPU — Chromium's hardware compositor falling back badly in
+      // that setup is a well-known cause of solid-black screenshots/renders in headed-
+      // via-Xvfb Docker setups. Forces the software rasterizer instead.
+      args: ['--disable-blink-features=AutomationControlled', '--disable-gpu'],
     });
     this.logger.log(`Browser launched (headless=${headless}, slowMo=${slowMo}ms)`);
 
