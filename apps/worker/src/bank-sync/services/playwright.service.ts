@@ -730,16 +730,28 @@ export class PlaywrightService {
       this.logger.error(`"Filter / search" trigger not found — selector: "${SELECTORS.filtersPanelTrigger}", URL: ${page.url()}`);
       throw new Error('Could not find the filter panel on the HSBC page.');
     }
-    const filterAlreadyOpen = await filterTrigger.getAttribute('aria-expanded').catch(() => null);
     // Buffered, not written yet — see capturePreActionSnapshot()'s docstring. No live
     // evidence yet for this specific failure (unlike the chevron/spinner ones, both
     // nailed down this same way) — capture it so the next occurrence is diagnosable.
     const preFilterClickSnapshot = await this.capturePreActionSnapshot(page);
-    if (filterAlreadyOpen !== 'true') {
-      await filterTrigger.click({ force: true }).catch(() => {});
-    }
+    // Retry-with-verification, same pattern as the Date range chevron below and the
+    // Export button in exportExcel() — a single click + single wait previously gave
+    // this step no second chance at all if the click landed a moment before HSBC's UI
+    // was actually ready for it, unlike every other click in this flow.
     const filtersPanel = page.locator(SELECTORS.filtersPanel);
-    const filtersPanelVisible = await filtersPanel.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
+    let filtersPanelVisible = await filtersPanel.waitFor({ state: 'visible', timeout: 500 }).then(() => true).catch(() => false);
+    for (let attempt = 1; attempt <= 3 && !filtersPanelVisible; attempt++) {
+      await checkCancelled();
+      const filterAlreadyOpen = await filterTrigger.getAttribute('aria-expanded').catch(() => null);
+      if (filterAlreadyOpen !== 'true') {
+        try {
+          await filterTrigger.click({ timeout: 5_000, force: true });
+        } catch (err) {
+          this.logger.warn(`"Filter / search" trigger click failed (attempt ${attempt}/3) — ${(err as Error).message.split('\n')[0]}`);
+        }
+      }
+      filtersPanelVisible = await filtersPanel.waitFor({ state: 'visible', timeout: 4_000 }).then(() => true).catch(() => false);
+    }
     if (!filtersPanelVisible) {
       const [before, after] = await Promise.all([
         this.persistPreActionSnapshot(`${accountNumber}-before-filter-panel-click`, preFilterClickSnapshot),
