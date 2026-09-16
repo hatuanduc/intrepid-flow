@@ -731,13 +731,21 @@ export class PlaywrightService {
       throw new Error('Could not find the filter panel on the HSBC page.');
     }
     const filterAlreadyOpen = await filterTrigger.getAttribute('aria-expanded').catch(() => null);
+    // Buffered, not written yet — see capturePreActionSnapshot()'s docstring. No live
+    // evidence yet for this specific failure (unlike the chevron/spinner ones, both
+    // nailed down this same way) — capture it so the next occurrence is diagnosable.
+    const preFilterClickSnapshot = await this.capturePreActionSnapshot(page);
     if (filterAlreadyOpen !== 'true') {
       await filterTrigger.click({ force: true }).catch(() => {});
     }
     const filtersPanel = page.locator(SELECTORS.filtersPanel);
     const filtersPanelVisible = await filtersPanel.waitFor({ state: 'visible', timeout: 5_000 }).then(() => true).catch(() => false);
     if (!filtersPanelVisible) {
-      this.logger.error(`[${accountNumber}] "Filter / search" panel did not open — URL: ${page.url()}`);
+      const [before, after] = await Promise.all([
+        this.persistPreActionSnapshot(`${accountNumber}-before-filter-panel-click`, preFilterClickSnapshot),
+        this.captureDebugSnapshot(page, `${accountNumber}-filter-panel-not-open`),
+      ]);
+      this.logger.error(`[${accountNumber}] "Filter / search" panel did not open — URL: ${page.url()}, before: [${before}], after: [${after}]`);
       throw new Error('Could not find the filter panel on the HSBC page.');
     }
     // Same class of gap the transactions-table spinner fix below addresses: the panel
