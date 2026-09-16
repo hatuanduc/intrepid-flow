@@ -47,6 +47,17 @@ const SELECTORS = {
   // up is the prime suspect for the stuck-page crash a "Download timeout" then cascades
   // into for every account after it in the same job.
   transactionsLoadingSpinner: '.account-transactions-table .spinner[role="loader"]',
+  // Confirmed via a captured debug snapshot on a real, active account (444 stored
+  // transactions, most recent posted yesterday — not a dormant/empty one): right after
+  // switching to it, HSBC can momentarily show "Transaction details are only available
+  // for the previous 365 days. Please adjust your dates." in place of the normal
+  // filter row, with the "Date range" chevron this flow needs nowhere in the DOM —
+  // hence "Could not find the date range option" for an account that plainly isn't
+  // actually restricted. Same class of transient not-ready-yet state the transactions
+  // spinner above covers, just a different placeholder. "Clear all" sits right next to
+  // this message and is the same recovery a human would reach for.
+  retentionErrorMessage: '.table__retention-error-message',
+  clearAllFiltersLink:   'a.table-filters__link',
 
   // Export dropdown
   exportTrigger: 'button#export-dropdown-trigger',
@@ -687,6 +698,27 @@ export class PlaywrightService {
     await firstResult.click();
     this.logger.log(`${accountNumber}: switcher item clicked — waiting for page to update`);
     await checkCancelled();
+
+    // A transient "previous 365 days" retention message can briefly stand in for the
+    // normal filter row right after switching accounts (see retentionErrorMessage's
+    // comment) — wait it out first, same idea as the transactions-spinner wait later
+    // in this function, since chasing the normal "Filter / search" flow while it's up
+    // is what produces "Could not find the date range option" for an account that has
+    // nothing actually wrong with it. Only acted on if it's actually showing — the
+    // common case (message never appears) costs nothing beyond the 1s initial check.
+    const retentionMsg = page.locator(SELECTORS.retentionErrorMessage);
+    const retentionMsgShowing = await retentionMsg.waitFor({ state: 'visible', timeout: 1_000 }).then(() => true).catch(() => false);
+    if (retentionMsgShowing) {
+      this.logger.warn(`[${accountNumber}] "365 days" retention message showing right after account switch — waiting for it to clear`);
+      const cleared = await retentionMsg.waitFor({ state: 'hidden', timeout: 15_000 }).then(() => true).catch(() => false);
+      if (!cleared) {
+        // Still up after a real wait — try the same recovery a human would: "Clear
+        // all" sits right next to this message in the DOM (see the selector comment).
+        this.logger.warn(`[${accountNumber}] Retention message still showing after 15s — trying "Clear all"`);
+        await page.locator(SELECTORS.clearAllFiltersLink).filter({ hasText: 'Clear all' }).first().click({ force: true }).catch(() => {});
+        await retentionMsg.waitFor({ state: 'hidden', timeout: 10_000 }).catch(() => {});
+      }
+    }
 
     // ── Step 2: Open "Filter / search" panel (only if not already open) ──────
     // Verified end-to-end against the real page via a console script run repeatedly:
