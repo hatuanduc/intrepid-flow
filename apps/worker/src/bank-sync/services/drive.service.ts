@@ -64,6 +64,7 @@ export class DriveService {
       requestBody: { name: fileName, parents: [parentId] },
       media: { mimeType: 'application/pdf', body: Readable.from(buffer) },
       fields: 'id,webViewLink',
+      supportsAllDrives: true,
     });
 
     const driveFileId = created.data.id;
@@ -136,6 +137,9 @@ async function ensureFolder(drive: drive_v3.Drive, name: string, parentId: strin
     q: `name='${escaped}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`,
     fields: 'files(id)',
     spaces: 'drive',
+    supportsAllDrives: true,
+    includeItemsFromAllDrives: true,
+    corpora: 'allDrives',
   });
   const existing = found.data.files?.[0]?.id;
   if (existing) return existing;
@@ -143,6 +147,7 @@ async function ensureFolder(drive: drive_v3.Drive, name: string, parentId: strin
   const created = await drive.files.create({
     requestBody: { name, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] },
     fields: 'id',
+    supportsAllDrives: true,
   });
   const id = created.data.id;
   if (!id) throw new Error(`Drive did not return a folder id after creating "${name}"`);
