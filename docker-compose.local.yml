@@ -1,0 +1,181 @@
+name: intrepid
+
+# Runs the whole app purely on local Docker — no AWS. Both `image:` and `build:` are given
+# for api/web/worker, Compose's standard dual-mode pattern:
+#   - `docker compose -f docker-compose.local.yml build` builds from local source and tags
+#     it as the `image:` name below — what you want on THIS machine while still iterating
+#     (e.g. no public domain yet, just http://localhost:3000/4000).
+#   - `docker compose -f docker-compose.local.yml pull` instead pulls the same tag pre-built
+#     from GHCR (built by .github/workflows/pipeline.yml) — what a fresh machine with no
+#     repo checkout at all would run, once images are actually being distributed that way.
+#
+# Every service uses `restart: unless-stopped` so the whole stack self-heals after a
+# machine reboot or a Docker Desktop restart — the only manual step left is making sure
+# Docker Desktop itself comes up without a login (see README: enable Windows auto-login +
+# "Start Docker Desktop when you log in").
+
+services:
+  db:
+    image: postgres:16-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: intrepid
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: intrepid
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U intrepid"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    image: ghcr.io/hatuanduc/intrepid-api:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    # No migration history exists yet in this project (local dev has always used
+    # `db push`) — mirror that here instead of `migrate deploy`, which is a no-op
+    # without migration files and left prod/dev with an empty schema.
+    # The backfill after db:push is a one-time-effect, idempotent data fix (see the
+    # .sql file) folded into the normal deploy so it never needs a manual DB step.
+    command: ["sh", "-c", "pnpm db:push && npx prisma db execute --schema=prisma/schema.prisma --file=prisma/backfill-job-ids.sql"]
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
+      # SEED_ADMIN_PASSWORD chỉ cần khi chạy seed thủ công (`docker compose run --rm migrate pnpm db:seed`)
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    image: ghcr.io/hatuanduc/intrepid-api:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
+      JWT_SECRET: ${JWT_SECRET}
+      PORT: 4000
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM: ${SMTP_FROM}
+      APP_URL: ${APP_URL}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      # Shared Docker volume with `worker` — replaces the S3 mirror this used on AWS (see
+      # drive.service.ts / bank-statement.service.ts). RECONCILE_BUCKET/RECONCILE_LAMBDA_NAME
+      # are intentionally left unset here — ReconcileService.assertEnabled() turns that into
+      # a clean 503 instead of the feature trying (and failing) to reach AWS.
+      BANK_STATEMENT_PDF_DIR: /data/bank-statement-pdfs
+    volumes:
+      - bank_statement_pdfs:/data/bank-statement-pdfs
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:4000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/hatuanduc/intrepid-web:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        # Only matters for a local `compose build` — the GHCR image already has these
+        # baked in from pipeline.yml's hardcoded values. Default to localhost here so
+        # `up` works before a real domain/Cloudflare Tunnel exists (see .env).
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:4000}
+        NEXT_PUBLIC_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+    ports:
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    restart: unless-stopped
+
+  worker:
+    image: ghcr.io/hatuanduc/intrepid-worker:${IMAGE_TAG:-latest}
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      DATABASE_URL: postgresql://intrepid:${DB_PASSWORD}@db:5432/intrepid
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_URL: ${APP_URL}
+      BANK_STATEMENT_PDF_DIR: /data/bank-statement-pdfs
+      # Headed Chrome (via Xvfb, see worker Dockerfile) avoids Akamai's headless-Chromium
+      # fingerprint check on HSBCnet's login page — plain headless gets served a
+      # "Service Unavailable" WAF block page instead of the real login form.
+      PLAYWRIGHT_HEADLESS: "false"
+      PLAYWRIGHT_SLOW_MO: "300"
+    volumes:
+      - bank_statement_pdfs:/data/bank-statement-pdfs
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    restart: unless-stopped
+
+  # Domain/Cloudflare Tunnel deferred for now — app runs on http://localhost:3000 (web) /
+  # http://localhost:4000 (api) in the meantime via the ports: mappings above, no tunnel
+  # needed for that. Uncomment once CLOUDFLARE_TUNNEL_TOKEN is set in .env (see its comment
+  # there for how to create the tunnel) to expose web/api under a real domain without
+  # port-forwarding — public hostname → local service mapping (e.g. app.yourdomain.vn →
+  # web:3000) is configured in the Cloudflare Zero Trust dashboard (Networks → Tunnels),
+  # not here.
+  # cloudflared:
+  #   image: cloudflare/cloudflared:latest
+  #   command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+  #   depends_on:
+  #     web:
+  #       condition: service_healthy
+  #     api:
+  #       condition: service_healthy
+  #   restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+  bank_statement_pdfs:

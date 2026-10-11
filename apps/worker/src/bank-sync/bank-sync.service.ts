@@ -964,18 +964,19 @@ export class BankSyncService {
             return;
           }
 
-          // Keep a local-disk copy before anything else — attemptDriveUpload() below
-          // (and any later same-host retry) reads from here first and only touches S3
-          // once this file is gone, so the immediate Drive attempt right after a fetch
-          // never re-downloads what we're already holding.
+          // Keep a local-disk scratch copy before anything else — attemptDriveUpload()
+          // below (and any later same-host retry) reads from here first and only touches
+          // the durable PDF store (DriveService.storePdfLocally) once this file is gone,
+          // so the immediate Drive attempt right after a fetch never re-reads it.
           await this.writePdfTempFile(txn.id, pdf).catch(
             (err) => this.logger.warn(`[pdf_export] ${account.accountNumber}: failed to write local PDF cache for txn ${txn.id}: ${(err as Error).message}`),
           );
 
-          // Step 1 — secure the PDF in S3. This alone sets status='fetched', which is
-          // what shouldFetch() above checks to skip re-clicking through HSBC on a later
-          // run. Drive delivery (step 2) is a separate, independently-retryable concern.
-          const s3Result = await this.drive.uploadToS3(account.accountName, account.accountNumber, txn.postDate, pdf, fileName)
+          // Step 1 — secure the PDF in the durable local store (BANK_STATEMENT_PDF_DIR).
+          // This alone sets status='fetched', which is what shouldFetch() above checks
+          // to skip re-clicking through HSBC on a later run. Drive delivery (step 2) is a
+          // separate, independently-retryable concern.
+          const s3Result = await this.drive.storePdfLocally(account.accountName, account.accountNumber, txn.postDate, pdf, fileName)
             .catch((err): { skipped: true; reason: string } => ({ skipped: true, reason: (err as Error).message }));
 
           await this.prisma.bankTransactionPdf.upsert({
@@ -999,7 +1000,7 @@ export class BankSyncService {
             },
           });
 
-          if (s3Result.skipped) throw new Error(s3Result.reason); // counted as 'failed' by exportTransactionPdfs() — S3 is required to consider a PDF "fetched"
+          if (s3Result.skipped) throw new Error(s3Result.reason); // counted as 'failed' by exportTransactionPdfs() — the durable local store is required to consider a PDF "fetched"
 
           // Step 2 — best-effort Drive delivery right away, reading back the file we
           // just wrote to disk (not re-downloading from S3). A failure here does NOT
@@ -1080,9 +1081,10 @@ export class BankSyncService {
   }
 
   /**
-   * Write the fetched PDF to a local scratch file — the durable-enough working copy
-   * that both the immediate Drive attempt and any later same-host retry read from,
-   * so neither has to go back to S3 for bytes we already have sitting on this host.
+   * Write the fetched PDF to a local scratch file (PDF_TEMP_DIR) — the fast working copy
+   * that both the immediate Drive attempt and any later same-host retry read from, so
+   * neither has to go back to the durable PDF store (BANK_STATEMENT_PDF_DIR) for bytes
+   * we already have sitting on this host.
    */
   private async writePdfTempFile(bankTransactionId: number, buffer: Buffer): Promise<void> {
     await fs.mkdir(PDF_TEMP_DIR, { recursive: true });
@@ -1090,20 +1092,20 @@ export class BankSyncService {
   }
 
   /**
-   * Local disk first, S3 only as the fallback once the local copy is gone (worker
-   * restarted/redeployed since the fetch, disk cleared, etc) — this is the only place
-   * a Drive attempt ever touches S3, and only when it has to.
+   * Scratch file first, the durable PDF store only as the fallback once the scratch copy
+   * is gone (worker restarted since the fetch, /tmp cleared, etc) — this is the only
+   * place a Drive attempt ever reads from BANK_STATEMENT_PDF_DIR, and only when it has to.
    */
   private async readPdfBuffer(bankTransactionId: number, s3Key: string | null): Promise<Buffer> {
     try {
       return await fs.readFile(pdfTempPath(bankTransactionId));
     } catch {
-      if (!s3Key) throw new Error('PDF missing from both local disk and S3 (no s3Key on file)');
-      return this.drive.downloadFromS3(s3Key);
+      if (!s3Key) throw new Error('PDF missing from both local scratch disk and the durable PDF store (no s3Key on file)');
+      return this.drive.readPdfLocally(s3Key);
     }
   }
 
-  /** Both S3 and Drive are confirmed done — the local scratch copy has served its purpose. */
+  /** Both the durable store and Drive are confirmed done — the local scratch copy has served its purpose. */
   private async cleanupPdfTempFile(bankTransactionId: number): Promise<void> {
     await fs.unlink(pdfTempPath(bankTransactionId)).catch(() => {});
   }

@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { HSBCNET_URL, SESSION_FILE, TWO_FA_TIMEOUT_MS, DEBUG_SCREENSHOT_DIR } from '../constants';
 
 // ─── HSBCnet UI selectors (verified from DevTools screenshots) ────────────────
@@ -108,43 +107,25 @@ export class PlaywrightService {
   private readonly logger = new Logger(PlaywrightService.name);
   private readonly sessionPath = path.join(process.cwd(), SESSION_FILE);
   private readonly screenshotDir = path.join(process.cwd(), DEBUG_SCREENSHOT_DIR);
-  // Same bucket PDFs go to (see drive.service.ts's uploadToS3) — a "debug-screenshots/"
-  // prefix keeps these out of the accountName/accountNumber/... key layout PDFs use,
-  // no separate bucket needed just for this.
-  private readonly s3 = new S3Client({});
-  private readonly s3Bucket = process.env.BANK_STATEMENT_PDF_BUCKET as string | undefined;
 
   private browser: import('playwright').Browser | null = null;
   private context: import('playwright').BrowserContext | null = null;
   private page: import('playwright').Page | null = null;
 
   // Best-effort diagnostic capture for hard-to-reproduce navigation failures — never
-  // lets a capture problem mask the real error that triggered it. Saved locally first
-  // (EC2's disk survives an instance stop/start, pullable via SSM regardless of S3
-  // outcome) then, if the same bucket PDFs use is configured, mirrored to S3 too — the
-  // local file alone means a screenshot on the AWS box previously needed an SSM
-  // session just to retrieve; S3 makes it a normal download link instead.
-  private async saveDebugArtifact(buffer: Buffer, filenameStem: string, ext: string, contentType: string): Promise<string | null> {
-    let filePath: string;
+  // lets a capture problem mask the real error that triggered it. Local-disk-only: the
+  // worker container is the only consumer of these (debugging, not served to users), so
+  // it doesn't need the durable cross-container store bank statement PDFs use.
+  private async saveDebugArtifact(buffer: Buffer, filenameStem: string, ext: string): Promise<string | null> {
     try {
       await fs.promises.mkdir(this.screenshotDir, { recursive: true });
-      filePath = path.join(this.screenshotDir, `${filenameStem}.${ext}`);
+      const filePath = path.join(this.screenshotDir, `${filenameStem}.${ext}`);
       await fs.promises.writeFile(filePath, buffer);
+      return filePath;
     } catch (err) {
       this.logger.warn(`Failed to save debug artifact "${filenameStem}.${ext}" — ${(err as Error).message}`);
       return null;
     }
-
-    if (this.s3Bucket) {
-      try {
-        const key = `debug-screenshots/${path.basename(filePath)}`;
-        await this.s3.send(new PutObjectCommand({ Bucket: this.s3Bucket, Key: key, Body: buffer, ContentType: contentType }));
-        return `s3://${this.s3Bucket}/${key} (local: ${filePath})`;
-      } catch (err) {
-        this.logger.warn(`Failed to upload debug artifact to S3 — ${(err as Error).message}`);
-      }
-    }
-    return filePath;
   }
 
   // Screenshot + full HTML together, as one labeled snapshot — a screenshot alone
@@ -164,11 +145,11 @@ export class PlaywrightService {
     ]);
     const parts: string[] = [];
     if (screenshotBuf) {
-      const p = await this.saveDebugArtifact(screenshotBuf, `${label}-${timestamp}`, 'png', 'image/png');
+      const p = await this.saveDebugArtifact(screenshotBuf, `${label}-${timestamp}`, 'png');
       if (p) parts.push(`screenshot: ${p}`);
     }
     if (htmlStr) {
-      const p = await this.saveDebugArtifact(Buffer.from(htmlStr, 'utf-8'), `${label}-${timestamp}`, 'html', 'text/html');
+      const p = await this.saveDebugArtifact(Buffer.from(htmlStr, 'utf-8'), `${label}-${timestamp}`, 'html');
       if (p) parts.push(`html: ${p}`);
     }
     return parts.join(', ');
@@ -191,11 +172,11 @@ export class PlaywrightService {
     const timestamp = Date.now();
     const parts: string[] = [];
     if (snapshot.screenshot) {
-      const p = await this.saveDebugArtifact(snapshot.screenshot, `${label}-${timestamp}`, 'png', 'image/png');
+      const p = await this.saveDebugArtifact(snapshot.screenshot, `${label}-${timestamp}`, 'png');
       if (p) parts.push(`screenshot: ${p}`);
     }
     if (snapshot.html) {
-      const p = await this.saveDebugArtifact(Buffer.from(snapshot.html, 'utf-8'), `${label}-${timestamp}`, 'html', 'text/html');
+      const p = await this.saveDebugArtifact(Buffer.from(snapshot.html, 'utf-8'), `${label}-${timestamp}`, 'html');
       if (p) parts.push(`html: ${p}`);
     }
     return parts.join(', ');

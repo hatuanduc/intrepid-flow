@@ -4,7 +4,8 @@ import { Queue } from 'bullmq';
 import { JobSchedulerService } from '../../common/job-scheduler.service';
 import * as crypto from 'crypto';
 import { PrismaService } from '../../prisma/prisma.service';
-import { GetObjectCommand, S3Client } from '@aws-sdk/client-s3';
+import * as fs from 'fs';
+import * as path from 'path';
 import type { Readable } from 'stream';
 import { UpdateSettingsDto } from './dto/settings.dto';
 import { UpdateTemplateDto } from './dto/template.dto';
@@ -170,10 +171,10 @@ function toDto(job: {
 
 @Injectable()
 export class BankStatementService implements OnModuleInit {
-  // Reads the PDF mirror uploaded by the worker's DriveService.uploadToS3() — same
-  // bucket/key scheme, see apps/worker/src/bank-sync/services/drive.service.ts.
-  private readonly s3 = new S3Client({});
-  private readonly pdfBucket = process.env.BANK_STATEMENT_PDF_BUCKET as string | undefined;
+  // Reads the PDF mirror written by the worker's DriveService.storePdfLocally() — same
+  // directory/key scheme, see apps/worker/src/bank-sync/services/drive.service.ts. Both
+  // containers mount the same Docker named volume at this path (see docker-compose).
+  private readonly pdfDir = process.env.BANK_STATEMENT_PDF_DIR as string | undefined;
 
   constructor(
     private prisma: PrismaService,
@@ -705,25 +706,23 @@ export class BankStatementService implements OnModuleInit {
     }));
   }
 
-  // Streams the S3 mirror of a transaction's PDF (see DriveService.uploadToS3) —
-  // mirrors reconcile.service.ts's downloadFilterMergeResult() pattern exactly
-  // (GetObjectCommand + pipe the returned stream straight through, no presigned URL).
+  // Streams the local-disk mirror of a transaction's PDF (see DriveService.storePdfLocally).
   async getTransactionPdf(transactionId: number): Promise<{ stream: Readable; filename: string; contentType: string }> {
     const pdf = await this.prisma.bankTransactionPdf.findUnique({ where: { bankTransactionId: transactionId } });
     if (!pdf || pdf.status !== 'fetched' || !pdf.s3Key) throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
-    if (!this.pdfBucket) throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
+    if (!this.pdfDir) throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
 
-    let res;
+    const filePath = path.join(this.pdfDir, pdf.s3Key);
     try {
-      res = await this.s3.send(new GetObjectCommand({ Bucket: this.pdfBucket, Key: pdf.s3Key }));
+      await fs.promises.access(filePath);
     } catch {
       throw new NotFoundException('TRANSACTION_PDF_NOT_FOUND');
     }
 
     return {
-      stream: res.Body as Readable,
+      stream: fs.createReadStream(filePath),
       filename: pdf.fileName ?? `transaction-${transactionId}.pdf`,
-      contentType: res.ContentType ?? 'application/pdf',
+      contentType: 'application/pdf',
     };
   }
 

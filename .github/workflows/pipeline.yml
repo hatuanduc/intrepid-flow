@@ -1,4 +1,4 @@
-name: CI + Infra + Deploy
+name: CI + Build Images
 
 on:
   pull_request:
@@ -11,10 +11,7 @@ on:
       - 'package.json'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
-      - 'docker-compose.prod.yml'
-      - 'infra/aws/environments/**'
-      - 'infra/aws/modules/**'
-      - 'infra/aws/scripts/**'
+      - 'docker-compose.local.yml'
       - '.github/workflows/pipeline.yml'
 
 concurrency:
@@ -22,15 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  id-token: write
   contents: read
-  pull-requests: write
-
-env:
-  TF_ENV:        ${{ (github.ref_name == 'main' || github.base_ref == 'main') && 'prod' || 'dev' }}
-  AWS_REGION:    ap-southeast-1
-  DEPLOY_BUCKET: intrepid-terraform-state
-  AWS_ACCOUNT:   "735295721292"
+  packages: write
 
 jobs:
   # ── Job 1: CI (lint + typecheck) ────────────────────────────────────────────
@@ -68,216 +58,50 @@ jobs:
       - name: Typecheck Reconcile Lambda
         run: pnpm --filter @intrepid/reconcile-lambda exec tsc -p tsconfig.json --noEmit
 
-  # ── Job 2: Terraform ─────────────────────────────────────────────────────
-  infra:
-    name: Infra (${{ (github.ref_name == 'main' || github.base_ref == 'main') && 'prod' || 'dev' }})
+  # ── Job 2: Build & push images to GHCR ──────────────────────────────────────
+  # Runs entirely on local Docker now (no AWS, no EC2 deploy) — docker-compose.local.yml
+  # just pulls these by tag, so a fresh machine never needs to build from source itself.
+  # Only builds on push (not on PRs) — PRs are covered by `check` above; images are tagged
+  # both `latest` (what docker-compose.local.yml defaults to) and the commit SHA (for
+  # pinning via IMAGE_TAG if you ever need to roll back).
+  build-and-push:
+    name: Build & push (${{ matrix.app }})
     runs-on: ubuntu-latest
     needs: check
-    defaults:
-      run:
-        working-directory: infra/aws/environments/${{ env.TF_ENV }}
-
-    outputs:
-      instance_id: ${{ steps.tf_output.outputs.instance_id }}
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      # The reconcile Lambda's terraform resource reads its code from
-      # apps/reconcile-lambda/dist/index.js (data "archive_file" in lambda-reconcile.tf) — dist/ is
-      # gitignored, so it must be built fresh here before any Terraform command runs, otherwise
-      # `terraform plan`/`apply` fails with "no such file" on a clean checkout.
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: pnpm
-
-      - name: Install dependencies
-        working-directory: .
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Reconcile Lambda bundle
-        working-directory: .
-        run: pnpm --filter @intrepid/reconcile-lambda build
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/intrepid-flow-infra-manager
-          aws-region: ${{ env.AWS_REGION }}
-
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: "1.8"
-          terraform_wrapper: false
-
-      - name: Terraform Init
-        run: terraform init
-
-      - name: Detect infra changes
-        id: detect
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BASE="${{ github.event.pull_request.base.sha }}"
-            HEAD="${{ github.event.pull_request.head.sha }}"
-          else
-            BASE="${{ github.event.before }}"
-            HEAD="${{ github.sha }}"
-          fi
-          CHANGED=$(git diff --name-only "$BASE" "$HEAD")
-          if echo "$CHANGED" | grep -qE '^infra/aws/(environments|modules|scripts)'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
-            echo "No infra changes — apply will be skipped"
-          fi
-
-      - name: Terraform Validate
-        run: terraform validate
-
-      - name: Terraform Plan
-        run: terraform plan -out=tfplan
-
-      - name: Terraform Apply
-        if: steps.detect.outputs.changed == 'true' && github.event_name == 'push'
-        run: terraform apply -auto-approve tfplan
-
-      - name: Render plan for PR comment
-        if: github.event_name == 'pull_request'
-        run: terraform show -no-color tfplan > /tmp/plan.txt
-
-      - name: Post plan to PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const plan = fs.readFileSync('/tmp/plan.txt', 'utf8').slice(0, 60000);
-            const marker = '<!-- terraform-plan -->';
-            const body = `${marker}\n### Terraform Plan (${process.env.TF_ENV})\n\`\`\`\n${plan}\n\`\`\``;
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-            });
-            const existing = comments.find(c => c.body.includes(marker));
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existing.id,
-                body,
-              });
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body,
-              });
-            }
-        env:
-          TF_ENV: ${{ env.TF_ENV }}
-
-      - name: Get EC2 instance ID
-        id: tf_output
-        if: github.event_name == 'push'
-        run: echo "instance_id=$(terraform output -raw instance_id)" >> $GITHUB_OUTPUT
-
-  # ── Job 3: Deploy ─────────────────────────────────────────────────────────
-  deploy:
-    name: Deploy (${{ github.ref_name == 'main' && 'prod' || 'dev' }})
-    runs-on: ubuntu-latest
-    needs: infra
     if: github.event_name == 'push'
+    strategy:
+      matrix:
+        app: [api, web, worker]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT }}:role/intrepid-flow-${{ env.TF_ENV }}-deploy-role
-          aws-region: ${{ env.AWS_REGION }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Upload code to S3
-        run: |
-          tar czf /tmp/deploy.tar.gz \
-            --exclude='.git' \
-            --exclude='node_modules' \
-            --exclude='.next' \
-            --exclude='dist' \
-            --exclude='*.env*' \
-            --exclude='.env*' \
-            .
-
-          aws s3 cp /tmp/deploy.tar.gz \
-            s3://${{ env.DEPLOY_BUCKET }}/deploy/${{ env.TF_ENV }}/${{ github.sha }}.tar.gz
-
-          echo "Uploaded $(du -sh /tmp/deploy.tar.gz | cut -f1) to S3"
-
-      - name: Deploy via SSM Run Command
-        run: |
-          EC2_ID="${{ needs.infra.outputs.instance_id }}"
-          SHA="${{ github.sha }}"
-          BUCKET="${{ env.DEPLOY_BUCKET }}"
-          TF_ENV="${{ env.TF_ENV }}"
-
-          COMMAND_ID=$(aws ssm send-command \
-            --region "${{ env.AWS_REGION }}" \
-            --instance-ids "$EC2_ID" \
-            --document-name "AWS-RunShellScript" \
-            --comment "Deploy $SHA ($TF_ENV)" \
-            --timeout-seconds 1200 \
-            --parameters "{\"commands\":[
-              \"set -eu\",
-              \"echo '=== Deploy $SHA ===' \",
-              \"aws s3 cp s3://$BUCKET/deploy/$TF_ENV/$SHA.tar.gz /tmp/deploy.tar.gz\",
-              \"find /app -mindepth 1 -maxdepth 1 -not -name '.env' -exec rm -rf {} +\",
-              \"tar xzf /tmp/deploy.tar.gz -C /app\",
-              \"APP_ENV=$TF_ENV AWS_DEFAULT_REGION=${{ env.AWS_REGION }} bash /app/infra/aws/scripts/deploy.sh\",
-              \"echo '=== Done ==='\"
-            ]}" \
-            --output text \
-            --query "Command.CommandId")
-
-          echo "SSM Command ID: $COMMAND_ID"
-
-          # `aws ssm wait command-executed` doesn't accept --delay/--max-attempts (unlike
-          # most other AWS waiters) — it's hardcoded to 5s x 20 attempts = 100s, nowhere
-          # near enough for slow steps like rebuilding the worker image with apt-get/xvfb.
-          # Poll get-command-invocation manually instead: 15s x 80 = 1200s, matching the
-          # --timeout-seconds given to the command above.
-          STATUS="Pending"
-          for i in $(seq 1 80); do
-            STATUS=$(aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$EC2_ID" \
-              --query "Status" --output text 2>/dev/null || echo "Pending")
-            case "$STATUS" in
-              Success|Failed|Cancelled|TimedOut|Undeliverable|Terminated) break ;;
-              *) sleep 15 ;;
-            esac
-          done
-
-          if [ "$STATUS" != "Success" ]; then
-            echo "Command ended with status: $STATUS"
-            echo "--- STDERR ---"
-            aws ssm get-command-invocation \
-              --command-id "$COMMAND_ID" \
-              --instance-id "$EC2_ID" \
-              --query StandardErrorContent --output text
-            exit 1
-          fi
-
-          echo "--- Output ---"
-          aws ssm get-command-invocation \
-            --command-id "$COMMAND_ID" \
-            --instance-id "$EC2_ID" \
-            --query StandardOutputContent --output text
+      - name: Build & push intrepid-${{ matrix.app }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          # NEXT_PUBLIC_* vars are baked into the web bundle at build time (see
+          # apps/web/Dockerfile) — ignored for api/worker. Hardcoded here rather than a
+          # repo Variable (not a secret either way — NEXT_PUBLIC_* ships to every browser
+          # regardless of where it's stored): to change the domain or OAuth client later,
+          # just edit the two values below and push — CI rebuilds, every host picks up
+          # the new image on its next `docker compose pull`, no per-machine .env edit.
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=https://api-dev-intrepid.naronx.asia
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=571910582489-36mh98d21srspcqpmreaen68ccfg2fr3.apps.googleusercontent.com
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/intrepid-${{ matrix.app }}:latest
+            ghcr.io/${{ github.repository_owner }}/intrepid-${{ matrix.app }}:${{ github.sha }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository_owner }}/intrepid-${{ matrix.app }}:latest
+          cache-to: type=inline

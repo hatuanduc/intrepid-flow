@@ -151,9 +151,10 @@ export default function ReconcilePage() {
       toast.success(t('reconcile.successToast'));
       setLastRun({ success: true, at: new Date(), fileCount: invoiceFiles.length, filename, blob });
     } catch (err) {
-      const message = err instanceof Error ? err.message : '';
-      toast.error(message || t('reconcile.genericError'));
-      setLastRun({ success: false, at: new Date(), message: message || t('reconcile.genericError') });
+      const code = err instanceof Error ? err.message : '';
+      const message = code === 'RECONCILE_DISABLED' ? t('reconcile.disabled') : code || t('reconcile.genericError');
+      toast.error(message);
+      setLastRun({ success: false, at: new Date(), message });
     } finally {
       setProcessing(false);
     }

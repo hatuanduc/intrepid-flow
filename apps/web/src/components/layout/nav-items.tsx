@@ -106,7 +106,11 @@ export const NAV_GROUPS: NavGroupDef[] = [
     label: 'nav.tool',
     icon: ToolIcon,
     children: [
-      { label: 'nav.reconcile', href: '/reconcile', icon: ReconcileIcon },
+      // nav.reconcile (the invoice filter-merge tool) hidden — it depends on the AWS
+      // Lambda this app no longer talks to (see ReconcileService.assertEnabled()). Page/
+      // API stay in place (submitting shows a clear "disabled" toast instead of a broken
+      // call), just not linked from the sidebar. nav.settingsReconcile below is unrelated
+      // (column config + master customer data, pure DB) and stays visible as normal.
       { label: 'nav.gasLinks', href: '/gas-links', icon: GasLinksIcon },
     ],
   },

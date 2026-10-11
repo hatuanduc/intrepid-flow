@@ -1,7 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { google, drive_v3 } from 'googleapis';
-import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Readable } from 'stream';
 
 export type DriveUploadResult =
@@ -12,8 +13,12 @@ export type DriveUploadResult =
 export class DriveService {
   private readonly logger = new Logger(DriveService.name);
   private readonly prisma = new PrismaClient();
-  private readonly s3 = new S3Client({});
-  private readonly s3Bucket = process.env.BANK_STATEMENT_PDF_BUCKET as string | undefined;
+  // Durable local store for the PDF mirror (see storePdfLocally() below) — a Docker named
+  // volume mounted at this same path in both the api and worker containers, so api can
+  // serve back what worker writes here. Replaces the S3 bucket this used before the app
+  // stopped running on AWS; the s3Key DB column/field names stayed as-is (just holds a
+  // relative path now) to avoid a schema migration.
+  private readonly pdfDir = process.env.BANK_STATEMENT_PDF_DIR as string | undefined;
 
   /**
    * Upload a transaction PDF into the configured Drive root folder for this
@@ -75,20 +80,20 @@ export class DriveService {
   }
 
   /**
-   * Mirror copy in S3 so the app can serve the PDF itself (see reconcile.service.ts's
-   * PutObjectCommand pattern) without depending on the Drive folder's sharing
-   * permissions for in-app viewing.
+   * Durable local mirror so the app can serve the PDF itself (see bank-statement.service.ts's
+   * getTransactionPdf()) without depending on the Drive folder's sharing permissions for
+   * in-app viewing.
    *
-   * Key layout mirrors uploadPdf()'s Drive folder hierarchy exactly — accountName /
+   * Path layout mirrors uploadPdf()'s Drive folder hierarchy exactly — accountName /
    * accountNumber / year / year-month / day — no extra "bank-statement-pdfs/" prefix
-   * (the bucket itself is dedicated to this, per env — see BANK_STATEMENT_PDF_BUCKET —
-   * so a prefix restating that is redundant, and previously meant this didn't line up
-   * with Drive's structure: accountName was missing entirely and month wasn't
+   * (pdfDir itself is dedicated to this, per env — see BANK_STATEMENT_PDF_DIR — so a
+   * prefix restating that is redundant, and previously meant this didn't line up with
+   * Drive's structure: accountName was missing entirely and month wasn't
    * zero-padded-with-year, so the two couldn't be visually cross-referenced).
    */
-  async uploadToS3(accountName: string, accountNumber: string, postDate: Date, buffer: Buffer, fileName: string): Promise<{ skipped: true; reason: string } | { skipped: false; s3Key: string }> {
-    if (!this.s3Bucket) {
-      this.logger.warn('BANK_STATEMENT_PDF_BUCKET not configured — skipping S3 upload');
+  async storePdfLocally(accountName: string, accountNumber: string, postDate: Date, buffer: Buffer, fileName: string): Promise<{ skipped: true; reason: string } | { skipped: false; s3Key: string }> {
+    if (!this.pdfDir) {
+      this.logger.warn('BANK_STATEMENT_PDF_DIR not configured — skipping local PDF mirror');
       return { skipped: true, reason: 'no_bucket_configured' };
     }
 
@@ -97,30 +102,23 @@ export class DriveService {
     const day = String(postDate.getUTCDate()).padStart(2, '0');
     const key = `${accountName}/${accountNumber}/${year}/${month}/${day}/${fileName}`;
 
-    await this.s3.send(new PutObjectCommand({
-      Bucket: this.s3Bucket,
-      Key: key,
-      Body: buffer,
-      ContentType: 'application/pdf',
-    }));
+    const filePath = path.join(this.pdfDir, key);
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.promises.writeFile(filePath, buffer);
 
     return { skipped: false, s3Key: key };
   }
 
   /**
-   * Read a previously-uploaded PDF back out of S3 — lets the Drive-sync retry path
-   * (see bank-sync.service.ts's syncPendingDriveUploads()) re-attempt just the Drive
-   * upload for a PDF that's already secured in S3, without touching Playwright/HSBC
+   * Read a previously-uploaded PDF back out of the local mirror — lets the Drive-sync
+   * retry path (see bank-sync.service.ts's syncPendingDriveUploads()) re-attempt just the
+   * Drive upload for a PDF that's already secured here, without touching Playwright/HSBC
    * at all (the fetch and the Drive sync are independently retryable — see
    * BankTransactionPdf.status vs .driveSyncStatus in schema.prisma).
    */
-  async downloadFromS3(s3Key: string): Promise<Buffer> {
-    if (!this.s3Bucket) throw new Error('BANK_STATEMENT_PDF_BUCKET not configured');
-    const res = await this.s3.send(new GetObjectCommand({ Bucket: this.s3Bucket, Key: s3Key }));
-    const stream = res.Body as Readable;
-    const chunks: Buffer[] = [];
-    for await (const chunk of stream) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    return Buffer.concat(chunks);
+  async readPdfLocally(s3Key: string): Promise<Buffer> {
+    if (!this.pdfDir) throw new Error('BANK_STATEMENT_PDF_DIR not configured');
+    return fs.promises.readFile(path.join(this.pdfDir, s3Key));
   }
 }
 

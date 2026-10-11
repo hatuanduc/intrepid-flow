@@ -736,6 +736,7 @@ export const vi: Translations = {
     processingHint: 'Đang gộp hóa đơn — có thể mất một lúc với file lớn.',
     successToast: 'Đã gộp file thành công.',
     genericError: 'Gộp file thất bại. Vui lòng thử lại.',
+    disabled: 'Chức năng Reconcile hiện đang tạm ngừng.',
     jobTimeout: 'Xử lý mất nhiều thời gian hơn dự kiến. Vui lòng thử lại sau.',
     errorNoFiles: 'Vui lòng chọn ít nhất 1 file hóa đơn.',
     errorHeaderRow: 'Vui lòng nhập dòng tiêu đề hợp lệ (số nguyên ≥ 1).',

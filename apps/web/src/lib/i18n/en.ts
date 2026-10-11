@@ -739,6 +739,7 @@ export const en = {
     processingHint: 'Merging invoices — this may take a while for large files.',
     successToast: 'Files merged successfully.',
     genericError: 'Merge failed. Please try again.',
+    disabled: 'The Reconcile feature is currently disabled.',
     jobTimeout: 'Processing is taking longer than expected. Please try again later.',
     errorNoFiles: 'Please select at least 1 invoice file.',
     errorHeaderRow: 'Please enter a valid header row (integer ≥ 1).',

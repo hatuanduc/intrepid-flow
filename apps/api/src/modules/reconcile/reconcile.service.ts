@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, UnprocessableEntityException } from '@nestjs/common';
+import { Injectable, NotFoundException, ServiceUnavailableException, UnprocessableEntityException } from '@nestjs/common';
 import * as ExcelJS from 'exceljs';
 import type { CellValue } from 'exceljs';
 import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
@@ -41,6 +41,12 @@ export class ReconcileService {
   // of RAM, which isn't safe to run inline on the same EC2 host as web/api/worker/db/redis. This
   // service's job is now just: stage the uploaded files in S3, invoke the Lambda asynchronously,
   // and let the caller poll/download via S3 — see getFilterMergeStatus()/downloadFilterMergeResult().
+  //
+  // Not used while the app only runs in local Docker (no AWS) — RECONCILE_BUCKET/
+  // RECONCILE_LAMBDA_NAME stay unset there, and assertEnabled() below turns that into a
+  // clear 503 instead of the S3Client/LambdaClient throwing on missing env vars deep in
+  // an AWS SDK call. The Lambda code (apps/reconcile-lambda) and the clients here are left
+  // in place rather than removed, in case this needs to point at AWS again later.
   private readonly s3 = new S3Client({});
   private readonly lambda = new LambdaClient({});
   private readonly bucket = process.env.RECONCILE_BUCKET as string;
@@ -48,10 +54,17 @@ export class ReconcileService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private assertEnabled(): void {
+    if (!this.bucket || !this.lambdaName) {
+      throw new ServiceUnavailableException('RECONCILE_DISABLED');
+    }
+  }
+
   async startFilterMerge(
     invoiceFiles: UploadedInvoiceFile[],
     outputFileName: string,
   ): Promise<{ jobId: string }> {
+    this.assertEnabled();
     const settings = await this.getSettings();
     const opts: FilterMergeOptions = {
       headerRow: settings.headerRow,
@@ -93,6 +106,7 @@ export class ReconcileService {
   }
 
   async getFilterMergeStatus(jobId: string): Promise<FilterMergeStatus> {
+    this.assertEnabled();
     const outputKey = `output/${jobId}.xlsx`;
 
     const isDone = await this.s3
@@ -114,6 +128,7 @@ export class ReconcileService {
   }
 
   async downloadFilterMergeResult(jobId: string): Promise<{ stream: Readable; filename: string; contentType: string }> {
+    this.assertEnabled();
     const outputKey = `output/${jobId}.xlsx`;
     let res;
     try {
