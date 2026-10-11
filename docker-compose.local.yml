@@ -158,22 +158,21 @@ services:
       start_period: 30s
     restart: unless-stopped
 
-  # Domain/Cloudflare Tunnel deferred for now — app runs on http://localhost:3000 (web) /
-  # http://localhost:4000 (api) in the meantime via the ports: mappings above, no tunnel
-  # needed for that. Uncomment once CLOUDFLARE_TUNNEL_TOKEN is set in .env (see its comment
-  # there for how to create the tunnel) to expose web/api under a real domain without
-  # port-forwarding — public hostname → local service mapping (e.g. app.yourdomain.vn →
-  # web:3000) is configured in the Cloudflare Zero Trust dashboard (Networks → Tunnels),
-  # not here.
-  # cloudflared:
-  #   image: cloudflare/cloudflared:latest
-  #   command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
-  #   depends_on:
-  #     web:
-  #       condition: service_healthy
-  #     api:
-  #       condition: service_healthy
-  #   restart: unless-stopped
+  # Exposes web/api under dev-intrepid.naronx.asia / api-dev-intrepid.naronx.asia without
+  # port-forwarding — public hostname → service mapping is configured in the Cloudflare
+  # Zero Trust dashboard (Networks → Tunnels), not here; Cloudflare auto-creates the DNS
+  # records for those hostnames when the mapping is added there. Only runs on the ONE
+  # machine meant to be the actual host (see HOSTING.md) — running this on two machines
+  # at once splits traffic between two un-synced databases.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      web:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    restart: unless-stopped
 
 volumes:
   postgres_data:
