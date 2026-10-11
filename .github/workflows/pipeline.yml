@@ -97,8 +97,15 @@ jobs:
           # regardless of where it's stored): to change the domain or OAuth client later,
           # just edit the two values below and push — CI rebuilds, every host picks up
           # the new image on its next `docker compose pull`, no per-machine .env edit.
+          #
+          # NEXT_PUBLIC_API_BASE_URL=http://localhost:4000 for now — "localhost first, domain
+          # later" phase (see HOSTING.md). This is baked server-side too (RootLayout reads
+          # process.env.NEXT_PUBLIC_API_BASE_URL directly, Next.js inlines it build-time even
+          # there), so setting API_BASE_URL at container runtime does NOT override it — confirmed
+          # by testing directly against the pulled image. Only a rebuild actually changes this.
+          # Switch back to the real domain here once Cloudflare Tunnel is set up.
           build-args: |
-            NEXT_PUBLIC_API_BASE_URL=https://api-dev-intrepid.naronx.asia
+            NEXT_PUBLIC_API_BASE_URL=http://localhost:4000
             NEXT_PUBLIC_GOOGLE_CLIENT_ID=571910582489-36mh98d21srspcqpmreaen68ccfg2fr3.apps.googleusercontent.com
           tags: |
             ghcr.io/${{ github.repository_owner }}/intrepid-${{ matrix.app }}:latest
